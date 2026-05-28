@@ -1,0 +1,33 @@
+{
+  "task_id": "{{TASK_ID}}",
+  "instance_id": "{{TASK_ID}}",
+  "repo": "{{REPO}}",
+  "repo_url": "https://github.com/{{REPO}}",
+  "source_url": "{{SOURCE_PR}}",
+  "base_commit": "{{BASE_COMMIT}}",
+  "docker_image": "local/{{PACKAGE_NAME}}:latest",
+  "dockerhub_tag": "local/{{PACKAGE_NAME}}:latest",
+  "problem_statement": "{{PROBLEM_STATEMENT_JSON}}",
+  "patch": "{{GOLD_PATCH_JSON}}",
+  "test_patch": "{{TEST_PATCH_JSON}}",
+  "fail_to_pass": {{FAIL_TO_PASS_JSON}},
+  "pass_to_pass": {{PASS_TO_PASS_JSON}},
+  "requirements": "{{REQUIREMENTS}}",
+  "interface": "{{INTERFACE}}",
+  "selected_test_files_to_run": {{SELECTED_TEST_FILES_JSON}},
+  "before_repo_set_cmd": "{{BEFORE_REPO_SET_CMD}}",
+  "repo_language": "{{REPO_LANGUAGE}}",
+  "issue_specificity": {{ISSUE_SPECIFICITY_JSON}},
+  "issue_categories": {{ISSUE_CATEGORIES_JSON}},
+  "evidence_links": {{EVIDENCE_LINKS_JSON}},
+  "metadata": {
+    "source_pr": "{{SOURCE_PR}}",
+    "base_commit_url": "{{BASE_COMMIT_URL}}",
+    "fix_commit_url": "{{FIX_COMMIT_URL}}",
+    "language": "{{LANGUAGE_LABEL}}",
+    "patch_stats": {},
+    "verification": {},
+    "model_evaluation": {},
+    "docker": {}
+  }
+}

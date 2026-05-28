@@ -1,0 +1,27 @@
+# Verification
+
+## Patch Application
+
+`bash scripts/verify_patch_application.sh` -> `apply_checks_ok`
+
+## Baseline
+
+`bash scripts/run_selected_tests.sh baseline` -> expected non-zero.
+
+## Fixed
+
+`bash scripts/run_selected_tests.sh fixed` -> expected zero.
+
+## Pass-To-Pass
+
+`bash scripts/run_selected_tests.sh pass-to-pass` -> expected zero.
+
+## Model Evaluation
+
+- Opus 4.7 pass@8: TODO
+- Qwen3.6-Plus pass@4: TODO
+
+## Docker
+
+- image tar: `docker-image/{{PACKAGE_NAME}}-image.tar`
+- sha256: TODO

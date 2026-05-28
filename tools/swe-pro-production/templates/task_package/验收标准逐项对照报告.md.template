@@ -1,0 +1,23 @@
+# {{PACKAGE_NAME}} 验收标准逐项对照报告
+
+对照文件：`swe-pro data 验收标准.docx`
+
+## 总结
+
+TODO: 简述真实 repo、PR、问题、patch 大小、模型结果。
+
+## 逐项对照
+
+| 序号 | 验收标准 | 样本状态 | 证据 / 说明 |
+|---:|---|---|---|
+| 1 | 环境可以跑通测试，并提供具体 docker image | TODO | TODO |
+| 2 | golden patch 能通过测试，并与 issue/problem statement 相符 | TODO | TODO |
+| 3 | 基于真实软件工程 repo 及上下文 | TODO | TODO |
+| 4 | 真实 issue + 修复 commit；禁止虚构 | TODO | TODO |
+| 9 | ground-truth patch 多文件且几百行以上 | TODO | TODO |
+| 10 | opus4.7 pass@8 != 0 | TODO | TODO |
+| 11 | qwen 3.6 plus pass rate@4 <= 50% | TODO | TODO |
+| 12 | repo 语言尽可能覆盖多个语言 | 批量项 | TODO |
+| 16 | test patch 避免 narrow/overfit | TODO | TODO |
+| 18 | issue_specificity / issue_categories 分布 | 批量项 | TODO |
+| 19 | 三重盲审 + 评审校准 | TODO | TODO |

@@ -1,0 +1,60 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: fly-agent-task
+  profiles:
+    active: dev
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3307/fly_agent?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456789
+    druid:
+      validation-query: SELECT 1
+      test-on-borrow: true
+      test-while-idle: true
+      test-on-return: false
+      keep-alive: true
+      time-between-eviction-runs-millis: 30000
+      min-evictable-idle-time-millis: 60000
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  mapper-locations: classpath:mapper/*.xml
+
+swe:
+  github:
+    token: ${GITHUB_TOKEN:}
+
+agent:
+  zhipu:
+    api-key: ${ZHIPU_API_KEY:}
+    model: ${ZHIPU_MODEL:glm-5}
+    temperature: ${ZHIPU_TEMPERATURE:0.7}
+    max-tokens: ${ZHIPU_MAX_TOKENS:2000}
+
+# XXL-Job 配置
+xxl:
+  job:
+    admin:
+      # XXL-Job Admin 调度中心地址
+      addresses: http://127.0.0.1:9090/xxl-job-admin
+    # 访问令牌（建议生产环境修改）
+    accessToken: default_token
+    executor:
+      # 执行器 AppName（用于注册到调度中心）
+      appname: fly-agent-executor
+      # 执行器注册地址（为空则自动获取）
+      address:
+      # 执行器 IP（为空则自动获取）
+      ip:
+      # 执行器端口
+      port: 9999
+      # 执行器日志文件路径
+      logpath: /data/applogs/xxl-job/jobhandler
+      # 执行器日志保留天数
+      logretentiondays: 30

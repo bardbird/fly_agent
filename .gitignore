@@ -1,0 +1,100 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.classpath
+.project
+.settings/
+*.factorypath
+*.swp
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Worktrees
+.worktrees/
+
+# Node.js (前端项目，应在 web 模块中)
+/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 前端构建产物
+/dist/
+/build/
+/.vite/
+*.local
+
+# 临时文件
+*.tmp
+*.temp
+*.cache
+*.bak
+*.swp
+*~
+
+# 数据库文件
+*.db
+*.sqlite
+*.h2.db
+
+# XXL-Job
+/xxl-job/
+
+# Claude AI 记忆
+/.claude/
+
+# 测试覆盖率
+/coverage/
+*.lcov
+.nyc_output/
+
+# Spring Boot
+/application-*.yml
+!/application.yml
+!/application-dev.yml
+
+# Docker deployment local environment
+/deploy/docker/.env
+
+# 备份文件
+*.backup
+*.bak
+*_backup
+/package-lock.json
+
+# 交付文件
+/swe-output
+/swe-output/*
+
+# Local external tool checkouts and generated Python caches
+/tools/SWE-agent/
+__pycache__/

@@ -1,0 +1,15 @@
+# {{PACKAGE_NAME}}
+
+Repo: `{{REPO}}`
+Source PR: {{SOURCE_PR}}
+Base commit: `{{BASE_COMMIT}}`
+Fix commit: `{{FIX_COMMIT}}`
+
+## Verify
+
+```bash
+bash scripts/verify_patch_application.sh
+bash scripts/run_selected_tests.sh baseline
+bash scripts/run_selected_tests.sh fixed
+bash scripts/run_selected_tests.sh pass-to-pass
+```

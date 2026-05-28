@@ -1,0 +1,101 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: fly-agent-server
+  profiles:
+    active: dev
+
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3307/fly_agent?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456789
+    druid:
+      validation-query: SELECT 1
+      test-on-borrow: true
+      test-while-idle: true
+      test-on-return: false
+      keep-alive: true
+      time-between-eviction-runs-millis: 30000
+      min-evictable-idle-time-millis: 60000
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    database: 0
+    timeout: 3000
+    password: homeX
+
+agent:
+  zhipu:
+    # 智谱AI API Key - 从 https://open.bigmodel.cn/ 获取
+    # 通过 AgentScope OpenAIChatModel 调用智谱AI的 OpenAI 兼容端点
+    api-key: 6cfac227f5414f458cf2579f354ba50e.gDAbBVLvuqAbBR59
+    # 支持的模型: glm-5, glm-4-plus, glm-4-air, glm-4-flash
+    model: glm-5
+    temperature: 0.7
+    max-tokens: 2000
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  mapper-locations: classpath:mapper/*.xml
+
+# XXL-Job 配置
+xxl:
+  job:
+    admin:
+      addresses: http://127.0.0.1:9090/xxl-job-admin
+    accessToken: default_token
+    executor:
+      appname: fly-agent-executor
+      address:
+      ip:
+      port: 8082
+      logpath: /data/applogs/xxl-job/jobhandler
+      logretentiondays: 30
+
+logging:
+  level:
+    com.fly.agent: DEBUG
+    com.alibaba.druid: INFO
+
+swe:
+  toolkit-root: ${SWE_TOOLKIT_ROOT:tools/swe-pro-production}
+  production-root: ${SWE_PRODUCTION_ROOT:swe-output}
+  python: python3
+  swe-agent:
+    root: ${SWE_AGENT_ROOT:tools/SWE-agent}
+    max-steps: ${SWE_AGENT_MAX_STEPS:20}
+  qwen-attempts: 4
+  opus-attempts: 8
+  opus-max-steps-schedule: ${SWE_OPUS_MAX_STEPS_SCHEDULE:180,10}
+  model-timeout-seconds: 600
+  github:
+    token: ${GITHUB_TOKEN:}
+  qwen:
+    base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    token: ${SWE_QWEN_TOKEN:}
+    model: ${SWE_QWEN_MODEL:qwen3.6-flash}
+    provider: openai
+    max-tokens: ${SWE_QWEN_MAX_TOKENS:8192}
+    max-input-tokens: ${SWE_QWEN_MAX_INPUT_TOKENS:22000}
+    temperature: ${SWE_QWEN_TEMPERATURE:0.7}
+  opus:
+    base-url: https://ai.yiqiu.dev/v1
+    token: ${SWE_OPUS_TOKEN:}
+    model: ${SWE_OPUS_MODEL:claude-opus-4-7}
+    provider: openai
+    max-tokens: ${SWE_OPUS_MAX_TOKENS:12000}
+    max-input-tokens: ${SWE_OPUS_MAX_INPUT_TOKENS:22000}
+    temperature: ${SWE_OPUS_TEMPERATURE:0.7}

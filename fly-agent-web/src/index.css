@@ -1,0 +1,494 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Fira+Code:wght@400;500;600&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  /* 极客风格 - 浅色主题 */
+
+  /* 主色调 - 微信绿 */
+  --color-primary-50: #f0fff4;
+  --color-primary-100: #d3f9e8;
+  --color-primary-200: #a7f3d0;
+  --color-primary-300: #6ee7b7;
+  --color-primary-400: #34d399;
+  --color-primary-500: #07C160;  /* 微信绿 */
+  --color-primary-600: #05a050;
+  --color-primary-700: #048c44;
+  --color-primary-800: #037838;
+  --color-primary-900: #026430;
+
+  /* 背景色 - 浅色风格 */
+  --color-primary: #f8f9fa;
+  --color-secondary: #ffffff;
+  --color-tertiary: #e9ecef;
+
+  /* 文字颜色 */
+  --color-text-primary: #212529;
+  --color-text-secondary: #6c757d;
+  --color-text-muted: #adb5bd;
+
+  /* 主题色 */
+  --color-cyan: #07C160;
+  --color-green: #07C160;
+  --color-purple: #6f42c1;
+  --color-pink: #e83e8c;
+  --color-yellow: #ffc107;
+
+  /* 状态颜色 - 霓虹风格 */
+  --color-success: #07C160;
+  --color-warning: #faff00;
+  --color-error: #ff0055;
+  --color-info: #00ff9d;
+
+  /* 边框 */
+  --color-terminal: #dee2e6;
+  --color-accent: #07C160;
+
+  /* 字体 */
+  --font-family-mono: "JetBrains Mono", "Fira Code", "Courier New", monospace;
+  --font-family-sans: "JetBrains Mono", "Inter", system-ui, sans-serif;
+
+  /* 动画 */
+  --transition-fast: 150ms ease-out;
+  --transition-normal: 300ms ease-out;
+  --transition-slow: 500ms ease-out;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-terminal);
+  }
+
+  body {
+    background-color: var(--color-primary);
+    color: var(--color-text-primary);
+    font-family: var(--font-family-mono);
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* CRT 扫描线效果（可选）- 浅色主题禁用 */
+  body::before {
+    display: none;
+  }
+
+  /* 终端风格容器 */
+  .terminal {
+    background-color: var(--color-secondary);
+    border: 1px solid var(--color-terminal);
+    border-radius: 0.5rem;
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+
+  /* 霓虹边框效果 */
+  .rainbow-border {
+    position: relative;
+    border: 2px solid transparent;
+    background:
+      linear-gradient(var(--color-secondary), var(--color-secondary)) padding-box,
+      linear-gradient(90deg,
+        var(--color-cyan),
+        var(--color-green),
+        var(--color-purple),
+        var(--color-pink),
+        var(--color-cyan)
+      ) border-box;
+    background-clip: padding-box, border-box;
+    animation: rainbow-rotate 3s linear infinite;
+  }
+
+  @keyframes rainbow-rotate {
+    0% {
+      filter: hue-rotate(0deg);
+      opacity: 1;
+    }
+    100% {
+      filter: hue-rotate(360deg);
+      opacity: 1;
+    }
+  }
+
+  /* 终端风格滚动条 */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: var(--color-tertiary);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--color-cyan);
+    border: 1px solid rgba(7, 193, 96, 0.2);
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #05a050;
+  }
+
+  /* 闪烁光标效果 */
+  @keyframes blink-cursor {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  .cursor-blink::after {
+    content: "▋";
+    animation: blink-cursor 1s infinite;
+    color: var(--color-cyan);
+  }
+}
+
+@layer components {
+  /* Markdown prose 样式 - 浅色风格 */
+  .prose {
+    max-width: none;
+    color: var(--color-text-primary);
+    line-height: 1.8;
+    font-size: 0.875rem;
+  }
+
+  .prose p {
+    margin-bottom: 1rem; /* 增加段落间距 */
+    font-weight: 400;
+    white-space: pre-wrap; /* 保留换行符 */
+    line-height: 1.8; /* 明确的行高 */
+  }
+
+  .prose h1,
+  .prose h2,
+  .prose h3,
+  .prose h4 {
+    font-weight: 500;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    color: var(--color-cyan);
+  }
+
+  .prose h1 {
+    font-size: 1.125rem;
+    text-shadow: 0 0 10px var(--color-cyan);
+  }
+
+  .prose h2 {
+    font-size: 1rem;
+    text-shadow: 0 0 8px var(--color-green);
+  }
+
+  .prose h3 {
+    font-size: 0.9375rem;
+    color: var(--color-purple);
+  }
+
+  .prose ul,
+  .prose ol {
+    margin-bottom: 0.75rem;
+    padding-left: 1.5rem;
+    color: var(--color-text-primary);
+  }
+
+  .prose li {
+    margin-bottom: 0.25rem;
+  }
+
+  .prose li::marker {
+    color: var(--color-cyan);
+  }
+
+  .prose code {
+    background-color: rgba(7, 193, 96, 0.1);
+    color: var(--color-cyan);
+    padding: 0.125rem 0.375rem;
+    border: 1px solid rgba(7, 193, 96, 0.2);
+    border-radius: 0.25rem;
+    font-size: 0.8125rem;
+    font-family: var(--font-family-mono);
+    font-weight: 400;
+  }
+
+  .prose pre {
+    background-color: #f1f3f5;
+    border: 1px solid var(--color-terminal);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    overflow-x: auto;
+    margin-bottom: 0.75rem;
+  }
+
+  .prose pre code {
+    background-color: transparent;
+    padding: 0;
+    color: var(--color-cyan);
+  }
+
+  .prose blockquote {
+    border-left: 4px solid var(--color-purple);
+    padding-left: 1rem;
+    margin: 0.75rem 0;
+    color: var(--color-text-secondary);
+    font-style: italic;
+  }
+
+  .prose a {
+    color: var(--color-cyan);
+    text-decoration: underline;
+    transition: var(--transition-fast);
+  }
+
+  .prose a:hover {
+    color: #05a050;
+  }
+
+  .prose strong {
+    font-weight: 600;
+    color: var(--color-yellow);
+  }
+
+  /* 按钮样式 - 浅色风格 */
+  .btn-primary {
+    background: linear-gradient(135deg, var(--color-cyan), var(--color-green));
+    color: #ffffff;
+    font-family: var(--font-family-mono);
+    font-weight: 500;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 0.375rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    box-shadow: 0 2px 8px rgba(7, 193, 96, 0.25);
+    transition: var(--transition-fast);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-primary::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: var(--transition-normal);
+  }
+
+  .btn-primary:hover::before {
+    left: 100%;
+  }
+
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #05a050, var(--color-cyan));
+    box-shadow: 0 4px 12px rgba(7, 193, 96, 0.35);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary {
+    background-color: transparent;
+    color: var(--color-cyan);
+    font-family: var(--font-family-mono);
+    font-weight: 500;
+    padding: 0.75rem 1.5rem;
+    border: 1px solid var(--color-cyan);
+    border-radius: 0.375rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: var(--transition-fast);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-secondary::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 100%;
+    background: var(--color-cyan);
+    transform: translate(-50%, -50%);
+    transition: var(--transition-normal);
+    z-index: 0;
+  }
+
+  .btn-secondary:hover::before {
+    width: 100%;
+  }
+
+  .btn-secondary:hover {
+    background-color: rgba(7, 193, 96, 0.1);
+    color: var(--color-green);
+    border-color: var(--color-green);
+    text-shadow: 0 0 10px var(--color-cyan);
+  }
+
+  .btn-secondary span {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* 输入框样式 - 浅色风格 */
+  .input-base {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    box-sizing: border-box;
+    border-radius: 0.375rem;
+    border: 1px solid var(--color-terminal);
+    background-color: var(--color-secondary);
+    color: var(--color-text-primary);
+    font-family: var(--font-family-mono);
+    line-height: 1.25rem;
+    transition: var(--transition-fast);
+  }
+
+  select.input-base {
+    padding-top: 0;
+    padding-right: 2rem;
+    padding-bottom: 0;
+    padding-left: 0.75rem;
+    line-height: 1.25rem;
+  }
+
+  .input-base::placeholder {
+    color: var(--color-text-muted);
+  }
+
+  .input-base:focus {
+    border-color: var(--color-cyan);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(7, 193, 96, 0.1);
+  }
+
+  /* 卡片样式 - 浅色风格 */
+  .card {
+    background-color: var(--color-secondary);
+    border: 1px solid var(--color-terminal);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    position: relative;
+  }
+
+  .card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg,
+      var(--color-cyan),
+      var(--color-green),
+      var(--color-purple),
+      var(--color-pink),
+      var(--color-cyan)
+    );
+    opacity: 0.5;
+  }
+
+  /* 动画类 - 极客风格 */
+  .animate-in {
+    animation: terminalFadeIn 0.4s ease-out;
+  }
+
+  @keyframes terminalFadeIn {
+    0% {
+      opacity: 0;
+      transform: translateY(10px) scale(0.98);
+      filter: blur(5px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+
+  /* 打字机效果 */
+  @keyframes typewriter {
+    from {
+      width: 0;
+    }
+    to {
+      width: 100%;
+    }
+  }
+
+  /* 扫描线动画 */
+  @keyframes scanline {
+    0% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(100%);
+    }
+    100% {
+      transform: translateY(100%);
+    }
+  }
+
+  .scanline::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      rgba(7, 193, 96, 0.3),
+      transparent
+    );
+    animation: scanline 3s linear infinite;
+    pointer-events: none;
+  }
+
+  /* 霓虹文字效果 */
+  .text-rainbow {
+    background: linear-gradient(
+      90deg,
+      var(--color-cyan),
+      var(--color-green),
+      var(--color-purple),
+      var(--color-pink),
+      var(--color-cyan)
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: rainbow-shift 3s linear infinite;
+  }
+
+  @keyframes rainbow-shift {
+    0% {
+      background-position: 0% 50%;
+    }
+    100% {
+      background-position: 200% 50%;
+    }
+  }
+
+  /* 动画类 */
+  .animate-in {
+    animation: animateIn 0.3s ease-out;
+  }
+
+  @keyframes animateIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+/* 全局样式 */
+#root {
+  min-height: 100vh;
+}

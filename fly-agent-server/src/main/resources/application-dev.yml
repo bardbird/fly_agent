@@ -1,0 +1,43 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3307/fly_agent?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456789
+
+  flyway:
+    enabled: false
+
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    database: 0
+    password: homeX
+
+logging:
+  level:
+    root: INFO
+    com.fly.agent: DEBUG
+
+swe:
+  qwen-attempts: 4
+  opus-attempts: 8
+  opus-max-steps-schedule: 180,10
+  swe-agent:
+    maxSteps: 20
+
+  github:
+    token: ${GITHUB_TOKEN:}
+
+  qwen:
+    base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    token: ${SWE_QWEN_TOKEN:}
+    model: qwen3.6-plus-2026-04-02
+    max-input-tokens: 22000
+
+  opus:
+    base-url: https://ai.yiqiu.dev/v1
+    token: ${SWE_OPUS_TOKEN:}
+    model: claude-opus-4-7

@@ -1,0 +1,166 @@
+package com.fly.agent.service.swe;
+
+import com.fly.agent.common.dto.swe.SweScaReportGenerateRequest;
+import com.fly.agent.common.dto.swe.SweScaReportGenerateResponse;
+import com.fly.agent.common.exception.BusinessException;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
+
+/**
+ * Generates task-level SCA delivery materials for an existing SWE-Pro package.
+ */
+@Service
+@RequiredArgsConstructor
+public class SweScaReportService {
+
+    private static final String DELIVERY_DIR_NAME = "SCA_交付材料";
+
+    private final SweProperties properties;
+    private final SweCommandRunner commandRunner;
+
+    public SweScaReportGenerateResponse generate(SweScaReportGenerateRequest request) {
+        Path packagePath = requirePackagePath(request);
+        Path scriptPath = requireFile(toolkitScript("generate_task_sca.py"), "generate_task_sca.py is required");
+        List<String> command = new ArrayList<>();
+        command.add(StringUtils.hasText(properties.getPython()) ? properties.getPython() : "python3");
+        command.add(scriptPath.toString());
+        command.add("--package");
+        command.add(packagePath.toString());
+        if (StringUtils.hasText(request.getRawScanPath())) {
+            command.add("--raw-scan");
+            command.add(requireFile(Path.of(request.getRawScanPath()), "rawScanPath does not exist").toString());
+            if (StringUtils.hasText(request.getScannerName())) {
+                command.add("--scanner-name");
+                command.add(request.getScannerName());
+            }
+        }
+        if (StringUtils.hasText(request.getOutputDir())) {
+            command.add("--output-dir");
+            command.add(Path.of(request.getOutputDir()).toAbsolutePath().normalize().toString());
+        }
+        if (Boolean.TRUE.equals(request.getManifestOnly())) {
+            command.add("--manifest-only");
+        }
+
+        SweCommandRunner.CommandResult result = commandRunner.run(
+                "generate_task_sca",
+                command,
+                toolkitRoot(),
+                logDir(packagePath),
+                Map.of(),
+                Duration.ofMinutes(10),
+                false);
+        Path outputDir = StringUtils.hasText(request.getOutputDir())
+                ? requireGeneratedScaDirectory(Path.of(request.getOutputDir()).toAbsolutePath().normalize())
+                : requireGeneratedScaDirectory(packagePath.resolve(DELIVERY_DIR_NAME));
+
+        SweScaReportGenerateResponse response = new SweScaReportGenerateResponse();
+        response.setPackagePath(packagePath.toString());
+        response.setOutputDir(outputDir.toString());
+        response.setSummary(result.getOutput());
+        response.setGeneratedFiles(findGeneratedFiles(outputDir).stream()
+                .map(path -> path.toAbsolutePath().normalize().toString())
+                .toList());
+        return response;
+    }
+
+    private Path requirePackagePath(SweScaReportGenerateRequest request) {
+        if (request == null || !StringUtils.hasText(request.getPackagePath())) {
+            throw new BusinessException("packagePath不能为空");
+        }
+        Path packagePath = requireDirectory(Path.of(request.getPackagePath()), "packagePath does not exist")
+                .toAbsolutePath()
+                .normalize();
+        requireFile(packagePath.resolve("task.json"), "task.json is required");
+        requireDirectory(packagePath.resolve("repo"), "repo directory is required");
+        return packagePath;
+    }
+
+    private Path requireGeneratedScaDirectory(Path outputPath) {
+        Path outputDir = requireDirectory(outputPath, "SCA delivery directory is required")
+                .toAbsolutePath()
+                .normalize();
+        requireFile(outputDir.resolve("01_task_SCA报告.md"), "SCA markdown report is required");
+        requireFile(outputDir.resolve("02_数据级SCA明细表.csv"), "SCA data detail CSV is required");
+        requireFile(outputDir.resolve("03_开源组件与许可证清单.csv"), "SCA component CSV is required");
+        requireFile(outputDir.resolve("07_风险数据清单.csv"), "SCA risk CSV is required");
+        requireDirectory(outputDir.resolve("04_SBOM文件"), "SCA SBOM directory is required");
+        requireDirectory(outputDir.resolve("05_原始扫描日志"), "SCA raw scan directory is required");
+        if (findGeneratedFiles(outputDir.resolve("04_SBOM文件")).isEmpty()) {
+            throw new BusinessException("SCA SBOM file is required");
+        }
+        if (findGeneratedFiles(outputDir.resolve("05_原始扫描日志")).isEmpty()) {
+            throw new BusinessException("SCA raw scan evidence is required");
+        }
+        return outputDir;
+    }
+
+    private List<Path> findGeneratedFiles(Path root) {
+        if (!Files.isDirectory(root)) {
+            return List.of();
+        }
+        try (Stream<Path> stream = Files.walk(root, 8)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .sorted(Comparator.comparing(Path::toString))
+                    .toList();
+        } catch (IOException e) {
+            throw new BusinessException("failed to list SCA generated files: " + root, e);
+        }
+    }
+
+    private Path logDir(Path packagePath) {
+        return packagePath.resolve(".sca-api-logs");
+    }
+
+    private Path toolkitScript(String scriptName) {
+        return toolkitRoot().resolve("scripts").resolve(scriptName);
+    }
+
+    private Path toolkitRoot() {
+        return resolveLocalPath(properties.getToolkitRoot(), "tools/swe-pro-production");
+    }
+
+    private Path resolveLocalPath(String configuredPath, String fallbackPath) {
+        String text = StringUtils.hasText(configuredPath) ? configuredPath : fallbackPath;
+        Path path = Path.of(text);
+        if (path.isAbsolute()) {
+            return path.normalize();
+        }
+        Path cwd = Path.of(".").toAbsolutePath().normalize();
+        Path current = cwd;
+        while (current != null) {
+            Path candidate = current.resolve(path).normalize();
+            if (Files.exists(candidate)) {
+                return candidate;
+            }
+            current = current.getParent();
+        }
+        return cwd.resolve(path).normalize();
+    }
+
+    private Path requireDirectory(Path path, String message) {
+        if (!Files.isDirectory(path)) {
+            throw new BusinessException(message + ": " + path);
+        }
+        return path;
+    }
+
+    private Path requireFile(Path path, String message) {
+        if (!Files.isRegularFile(path)) {
+            throw new BusinessException(message + ": " + path);
+        }
+        return path;
+    }
+}

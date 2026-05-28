@@ -1,0 +1,100 @@
+name: ${COMPOSE_PROJECT_NAME:-fly-agent}
+
+services:
+  fly-agent-server:
+    image: ${FLY_AGENT_IMAGE_PREFIX:-fly-agent}/server:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.spring
+      args:
+        APP_MODULE: fly-agent-server
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      JAVA_OPTS: ${SERVER_JAVA_OPTS:-}
+      SERVER_PORT: "8080"
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:mysql://host.docker.internal:3307/fly_agent?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-root}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-123456789}
+      SPRING_REDIS_HOST: ${SPRING_REDIS_HOST:-host.docker.internal}
+      SPRING_REDIS_PORT: ${SPRING_REDIS_PORT:-6379}
+      SPRING_REDIS_PASSWORD: ${SPRING_REDIS_PASSWORD:-homeX}
+      SPRING_DATA_REDIS_HOST: ${SPRING_REDIS_HOST:-host.docker.internal}
+      SPRING_DATA_REDIS_PORT: ${SPRING_REDIS_PORT:-6379}
+      SPRING_DATA_REDIS_PASSWORD: ${SPRING_REDIS_PASSWORD:-homeX}
+      XXL_JOB_ADMIN_ADDRESSES: ${XXL_JOB_ADMIN_ADDRESSES:-http://host.docker.internal:9090/xxl-job-admin}
+      XXL_JOB_ACCESS_TOKEN: ${XXL_JOB_ACCESS_TOKEN:-default_token}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      SWE_AGENT_ROOT: /opt/fly-agent/swe-agent
+      SWE_TOOLKIT_ROOT: /app/tools/swe-pro-production
+      SWE_PRODUCTION_ROOT: /data/fly-agent/swe-output
+      SWE_QWEN_TOKEN: ${SWE_QWEN_TOKEN:-}
+      SWE_OPUS_TOKEN: ${SWE_OPUS_TOKEN:-}
+      SWE_QWEN_MODEL: ${SWE_QWEN_MODEL:-qwen3.6-flash}
+      SWE_OPUS_MODEL: ${SWE_OPUS_MODEL:-claude-opus-4-7}
+      SWE_AGENT_MAX_STEPS: ${SWE_AGENT_MAX_STEPS:-20}
+      SWE_OPUS_MAX_STEPS_SCHEDULE: ${SWE_OPUS_MAX_STEPS_SCHEDULE:-180,10}
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    volumes:
+      - ${SWE_OUTPUT_HOST_DIR:-/data/fly-agent/swe-output}:/data/fly-agent/swe-output
+      - ${FLY_AGENT_LOG_DIR:-/data/fly-agent/logs}:/app/logs
+      - ${SWE_AGENT_HOST_ROOT:-/opt/fly-agent/swe-agent}:/opt/fly-agent/swe-agent:ro
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
+    networks:
+      - fly-agent
+
+  fly-agent-task:
+    image: ${FLY_AGENT_IMAGE_PREFIX:-fly-agent}/task:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.spring
+      args:
+        APP_MODULE: fly-agent-task
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      JAVA_OPTS: ${TASK_JAVA_OPTS:-}
+      SERVER_PORT: "8082"
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:mysql://host.docker.internal:3307/fly_agent?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-root}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-123456789}
+      XXL_JOB_ADMIN_ADDRESSES: ${XXL_JOB_ADMIN_ADDRESSES:-http://host.docker.internal:9090/xxl-job-admin}
+      XXL_JOB_ACCESS_TOKEN: ${XXL_JOB_ACCESS_TOKEN:-default_token}
+      XXL_JOB_EXECUTOR_PORT: "9999"
+      XXL_JOB_EXECUTOR_ADDRESS: ${XXL_JOB_EXECUTOR_ADDRESS:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      LOGGING_FILE_NAME: /app/logs/fly-agent-task.log
+    ports:
+      - "${TASK_PORT:-8082}:8082"
+      - "${XXL_JOB_EXECUTOR_PORT:-9999}:9999"
+    volumes:
+      - ${SWE_OUTPUT_HOST_DIR:-/data/fly-agent/swe-output}:/data/fly-agent/swe-output
+      - ${FLY_AGENT_LOG_DIR:-/data/fly-agent/logs}:/app/logs
+      - ${XXL_JOB_LOG_DIR:-/data/fly-agent/logs/xxl-job}:/data/applogs/xxl-job/jobhandler
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
+    networks:
+      - fly-agent
+
+  fly-agent-web:
+    image: ${FLY_AGENT_IMAGE_PREFIX:-fly-agent}/web:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      - fly-agent-server
+    ports:
+      - "${WEB_PORT:-6677}:80"
+    networks:
+      - fly-agent
+
+networks:
+  fly-agent:
+    driver: bridge

@@ -1,0 +1,13 @@
+docker-image/
+model_evaluation/
+logs/
+review/
+batch_evidence/
+*.tar
+*.tar.gz
+*.sha256
+.DS_Store
+repo/web/default/node_modules/
+repo/web/classic/node_modules/
+repo/web/default/dist/
+repo/web/classic/dist/
