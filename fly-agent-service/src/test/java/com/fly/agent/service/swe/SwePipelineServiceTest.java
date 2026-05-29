@@ -114,9 +114,10 @@ class SwePipelineServiceTest {
         assertTrue(source.contains("\"qwen3.6_flash_pass4_swebench_agentic\", runtimeSettingsService.resolveQwenModel(),\n"
                 + "                properties.getQwenAttempts(), \"QWEN_API_KEY\", false, true"));
         assertTrue(source.contains("\"opus4.7_pass8_swebench_agentic\", runtimeSettingsService.resolveOpusModel(),\n"
-                + "                positiveAttempts(properties.getOpusAttempts(), 8), \"OPUS_API_KEY\", true, true"));
-        assertTrue(devConfig.contains("qwen-attempts: 4"));
-        assertTrue(devConfig.contains("opus-max-steps-schedule: 180,10"));
+                + "                positiveAttempts(properties.getOpusAttempts(), 1), \"OPUS_API_KEY\", true, true"));
+        assertTrue(devConfig.contains("qwen-attempts: ${SWE_QWEN_ATTEMPTS:4}"));
+        assertTrue(devConfig.contains("opus-attempts: ${SWE_OPUS_ATTEMPTS:1}"));
+        assertTrue(devConfig.contains("opus-max-steps-schedule: ${SWE_OPUS_MAX_STEPS_SCHEDULE:180}"));
     }
 
     @Test

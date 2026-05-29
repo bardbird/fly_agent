@@ -584,22 +584,6 @@ def sanitize_model_input_text(text: str) -> str:
     return '\n'.join(cleaned).strip()
 
 
-def step_budget_guidance(max_steps: int) -> str:
-    explore_budget = max(4, min(10, max_steps // 4))
-    return '\n'.join([
-        '## SWE-agent Efficiency Guidance',
-        '',
-        f'You have at most {max_steps} actions.',
-        f'Aim to spend no more than about {explore_budget} actions on broad repository exploration.',
-        'Prefer targeted reads driven by the issue text before recursive scans.',
-        'Start editing once you have identified the relevant source paths.',
-        'Run the most targeted verification command that exercises the issue.',
-        'Inspect `git diff` before finishing.',
-        'Submit after you have made a plausible non-test source fix and run targeted verification when possible.',
-        'For multi-line source edits, prefer a quoted heredoc script over complex shell quoting.',
-    ])
-
-
 def write_swe_agent_problem_statement(package: Path, max_steps: int = 20) -> str:
     task = read_task(package)
     source = ''
@@ -611,7 +595,7 @@ def write_swe_agent_problem_statement(package: Path, max_steps: int = 20) -> str
     text = sanitize_model_input_text(source)
     if contains_forbidden_model_input(text):
         raise RuntimeError('problem statement contains forbidden oracle or patch metadata')
-    text = text.rstrip() + '\n\n' + step_budget_guidance(max_steps) + '\n'
+    text = text.rstrip() + '\n'
     src_dir = package / 'repo' / 'src'
     if src_dir.is_dir():
         packages = sorted(path.name for path in src_dir.iterdir() if path.is_dir() and not path.name.startswith('.'))

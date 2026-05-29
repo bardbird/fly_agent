@@ -885,7 +885,7 @@ public class SwePipelineService {
                     + "/" + summary.getIntValue("attempts");
         }
         JSONObject summary = runModelEvaluation(runId, packagePath, "opus4.7_pass8_swebench_agentic", runtimeSettingsService.resolveOpusModel(),
-                positiveAttempts(properties.getOpusAttempts(), 8), "OPUS_API_KEY", true, true);
+                positiveAttempts(properties.getOpusAttempts(), 1), "OPUS_API_KEY", true, true);
         ensureModelEvaluationInfrastructureReady("Opus", summary);
         if (summary.getIntValue("passes") <= 0) {
             throw new BusinessException("Opus pass@8 为 0，任务不满足验收难度" + modelStatusCountsSuffix(summary));

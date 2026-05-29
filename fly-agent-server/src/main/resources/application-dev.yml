@@ -22,9 +22,9 @@ logging:
     com.fly.agent: DEBUG
 
 swe:
-  qwen-attempts: 4
-  opus-attempts: 8
-  opus-max-steps-schedule: 180,10
+  qwen-attempts: ${SWE_QWEN_ATTEMPTS:4}
+  opus-attempts: ${SWE_OPUS_ATTEMPTS:1}
+  opus-max-steps-schedule: ${SWE_OPUS_MAX_STEPS_SCHEDULE:180}
   swe-agent:
     maxSteps: 20
 

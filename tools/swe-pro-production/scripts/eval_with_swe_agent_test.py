@@ -42,8 +42,9 @@ class EvalWithSweAgentTest(unittest.TestCase):
             text = eval_with_swe_agent.write_swe_agent_problem_statement(package)
 
             self.assertIn("Fix user login", text)
-            self.assertIn("Run the most targeted verification command", text)
-            self.assertIn("Submit after you have made a plausible non-test source fix", text)
+            self.assertNotIn("SWE-agent Efficiency Guidance", text)
+            self.assertNotIn("Run the most targeted verification command", text)
+            self.assertNotIn("Submit after you have made a plausible non-test source fix", text)
             self.assertNotIn("the final action must be exactly `submit`", text)
             self.assertNotIn("github.com/acme/project/issues/1", text)
             self.assertNotIn("Test Coverage", text)
