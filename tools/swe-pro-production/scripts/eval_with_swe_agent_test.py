@@ -105,6 +105,20 @@ class EvalWithSweAgentTest(unittest.TestCase):
 
             self.assertFalse((repo / "target").exists())
 
+    def test_reset_repo_marks_repo_as_git_safe_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            repo = package / "repo"
+            repo.mkdir()
+
+            with patch.object(eval_with_swe_agent, "run", return_value=(0, "")) as run_mock:
+                eval_with_swe_agent.reset_repo(package)
+
+            self.assertEqual(
+                ["git", "config", "--global", "--add", "safe.directory", str(repo)],
+                run_mock.call_args_list[0].args[0],
+            )
+
     def test_prune_repo_build_artifacts_keeps_tracked_config_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             package = Path(tmp)

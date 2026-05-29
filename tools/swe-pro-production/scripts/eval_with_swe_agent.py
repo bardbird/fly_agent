@@ -701,8 +701,14 @@ def extract_patch_from_swe_agent_artifacts(run_dir: Path, command_output: str) -
 
 def reset_repo(package: Path) -> None:
     repo = package / 'repo'
+    ensure_git_safe_directory(package, repo)
     run(['git', '-C', str(repo), 'reset', '--hard', 'HEAD'], package)
     run(['git', '-C', str(repo), 'clean', '-fdx'], package)
+
+
+def ensure_git_safe_directory(package: Path, repo: Path) -> None:
+    if repo.is_dir():
+        run(['git', 'config', '--global', '--add', 'safe.directory', str(repo)], package)
 
 
 def prune_repo_build_artifacts(package: Path) -> list[str]:
@@ -710,6 +716,7 @@ def prune_repo_build_artifacts(package: Path) -> list[str]:
     removed: list[str] = []
     if not repo.is_dir():
         return removed
+    ensure_git_safe_directory(package, repo)
     for path in sorted(repo.rglob('*'), key=lambda p: len(p.parts), reverse=True):
         if not path.is_dir() or path.name not in REPO_BUILD_ARTIFACT_DIRS:
             continue
