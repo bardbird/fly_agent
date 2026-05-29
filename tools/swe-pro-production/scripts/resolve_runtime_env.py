@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 NODE_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git bash build-essential && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y --no-install-recommends nodejs && rm -rf /var/lib/apt/lists/* && node --version && npm --version && git --version'
-PYTHON_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates git bash python3 python3-pip python3-venv python3-dev build-essential && rm -rf /var/lib/apt/lists/* && python3 --version && python3 -m pip --version'
+PYTHON_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates git bash python3 python3-pip python3-venv python3-dev build-essential && rm -rf /var/lib/apt/lists/* && python3 --version && python3 -m pip --version && PIP_NO_CACHE_DIR=1 PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install --upgrade pip setuptools wheel'
 JAVA_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates git bash openjdk-17-jdk-headless maven gradle && rm -rf /var/lib/apt/lists/* && java -version && mvn -version && gradle --version'
 GO_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git bash build-essential unzip && ARCH="$(dpkg --print-architecture)" && case "$ARCH" in amd64) GOARCH=amd64 ;; arm64) GOARCH=arm64 ;; *) echo "unsupported Go architecture: $ARCH" >&2; exit 1 ;; esac && curl -fsSL "https://go.dev/dl/go1.25.1.linux-${GOARCH}.tar.gz" -o /tmp/go.tgz && tar -C /usr/local -xzf /tmp/go.tgz && ln -s /usr/local/go/bin/go /usr/local/bin/go && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt && rm -f /tmp/go.tgz && rm -rf /var/lib/apt/lists/* && go env -w GOPROXY=https://goproxy.cn,direct GOSUMDB=sum.golang.google.cn && go version'
 RUST_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git bash build-essential pkg-config libssl-dev libxtst-dev libx11-dev libwayland-dev libxkbcommon-dev && curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal && ln -s /root/.cargo/bin/cargo /usr/local/bin/cargo && ln -s /root/.cargo/bin/rustc /usr/local/bin/rustc && rm -rf /var/lib/apt/lists/* && rustc --version && cargo --version'
@@ -60,7 +60,7 @@ def safe_repo_relative(value: str) -> str | None:
 
 
 def add_unique(values: list[str], value: str | None) -> None:
-    if value and value not in values:
+    if value is not None and value not in values:
         values.append(value)
 
 
@@ -169,7 +169,17 @@ def go_module_dirs(root: Path, task: dict) -> list[str]:
 
 
 def pip_install_command(args: str) -> str:
-    return f'(python3 -m pip install --break-system-packages {args} || python3 -m pip install {args})'
+    return f'PIP_NO_CACHE_DIR=1 PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install {args}'
+
+
+def python_project_install_command(package_dir: Path) -> str:
+    has_setup = (package_dir / 'setup.py').is_file() or (package_dir / 'setup.cfg').is_file()
+    has_pyproject = (package_dir / 'pyproject.toml').is_file()
+    if has_setup:
+        return f'({pip_install_command("-e .")} || {pip_install_command(".")})'
+    if has_pyproject:
+        return pip_install_command('.')
+    return pip_install_command('-e .')
 
 
 def pyproject_dev_dependencies(pyproject: Path) -> list[str]:
@@ -208,8 +218,8 @@ def python_setup_commands(root: Path, task: dict) -> list[str]:
         prefix = '' if rel == '' else f'cd {shlex.quote(rel)} && '
         if (package_dir / 'requirements.txt').is_file():
             commands.append(prefix + pip_install_command('-r requirements.txt'))
-        if (package_dir / 'pyproject.toml').is_file() or (package_dir / 'setup.py').is_file():
-            commands.append(prefix + pip_install_command('-e .'))
+        if (package_dir / 'pyproject.toml').is_file() or (package_dir / 'setup.py').is_file() or (package_dir / 'setup.cfg').is_file():
+            commands.append(prefix + python_project_install_command(package_dir))
         dev_deps = pyproject_dev_dependencies(package_dir / 'pyproject.toml')
         if dev_deps:
             commands.append(prefix + pip_install_command(' '.join(shlex.quote(dep) for dep in dev_deps)))

@@ -15,6 +15,13 @@ NODE_TOOLCHAIN_STAGE = 'FROM node:22-bookworm AS node_toolchain'
 NODE_TOOLCHAIN_COPY = 'COPY --from=node_toolchain / /'
 OLD_NODE_DEPENDENCIES_CMD = 'node --version && npm --version && git --version'
 NODE_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git bash build-essential && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y --no-install-recommends nodejs && rm -rf /var/lib/apt/lists/* && node --version && npm --version && git --version'
+MAX_PASS_TO_PASS_TEST_FILES = 2
+HEAVY_PASS_TO_PASS_TOKENS = (
+    'benchmark', 'browser', 'chat', 'cloud', 'cuda', 'deepspeed', 'docker',
+    'e2e', 'gpu', 'integration', 'live', 'logger', 'loggers', 'model',
+    'playwright', 'selenium', 'slow', 'test_utils', 'training', 'ui', 'wave',
+    'yaml',
+)
 
 LANG_DEFAULTS = {
     'go': {
@@ -30,8 +37,8 @@ LANG_DEFAULTS = {
         'base_image': 'ubuntu:22.04',
         'toolchain_stages': '',
         'toolchain_copy': '',
-        'dependencies_cmd': 'apt-get update && apt-get install -y --no-install-recommends ca-certificates git bash python3 python3-pip python3-venv python3-dev build-essential && rm -rf /var/lib/apt/lists/* && python3 --version && python3 -m pip --version',
-        'before_cmd': 'python3 -m pip install --break-system-packages -e . || python3 -m pip install -e .',
+        'dependencies_cmd': 'apt-get update && apt-get install -y --no-install-recommends ca-certificates git bash python3 python3-pip python3-venv python3-dev build-essential && rm -rf /var/lib/apt/lists/* && python3 --version && python3 -m pip --version && PIP_NO_CACHE_DIR=1 PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install --upgrade pip setuptools wheel pytest',
+        'before_cmd': '',
         'fail_cmd': 'python3 -m pytest',
         'pass_cmd': 'python3 -m pytest',
     },
@@ -445,6 +452,72 @@ def quote_paths(paths: list[str]) -> str:
     return ' '.join(shlex.quote(p) for p in paths)
 
 
+def path_has_heavy_pass_to_pass_signal(path: str) -> bool:
+    parts = [part.lower() for part in Path(path).parts]
+    stem = Path(path).stem.lower()
+    return any(token in parts or token in stem for token in HEAVY_PASS_TO_PASS_TOKENS)
+
+
+def estimate_test_count(path: Path) -> int:
+    try:
+        text = path.read_text(encoding='utf-8', errors='ignore')
+    except OSError:
+        return 1000
+    patterns = (
+        r'(?m)^\s*def\s+test_',
+        r'(?m)^\s*func\s+Test[A-Za-z0-9_]+\s*\(',
+        r'(?m)^\s*(?:test|it)\s*\(',
+        r'(?m)^\s*@Test\b',
+        r'(?m)^\s*#\[test\]',
+    )
+    count = sum(len(re.findall(pattern, text)) for pattern in patterns)
+    if '@pytest.mark.parametrize' in text:
+        count += len(re.findall(r'(?m)^\s*\([^#\n]+,\s*[^#\n]*\),?\s*$', text))
+    return count if count > 0 else max(1, min(1000, len(text.splitlines()) // 50))
+
+
+def nearby_test_files(
+    repo_dir: Path,
+    changed_files: list[str],
+    suffixes: tuple[str, ...],
+    max_files: int = MAX_PASS_TO_PASS_TEST_FILES,
+) -> list[str]:
+    changed = set(changed_files)
+    changed_dirs = {Path(path).parent for path in changed_files}
+    changed_top_dirs = {Path(path).parts[0] for path in changed_files if Path(path).parts}
+    candidates: list[tuple[int, int, int, str]] = []
+    if not repo_dir.is_dir():
+        return []
+
+    for path in repo_dir.rglob('*'):
+        if not path.is_file():
+            continue
+        try:
+            rel = path.relative_to(repo_dir).as_posix()
+        except ValueError:
+            continue
+        if rel in changed or not rel.endswith(suffixes) or not is_test_file(rel):
+            continue
+        parts = set(Path(rel).parts)
+        if {'node_modules', 'vendor', 'target', 'dist', 'build', '.git'} & parts:
+            continue
+        if path_has_heavy_pass_to_pass_signal(rel):
+            continue
+        parent = Path(rel).parent
+        top_dir = Path(rel).parts[0] if Path(rel).parts else ''
+        if parent in changed_dirs:
+            locality = 0
+        elif top_dir and top_dir in changed_top_dirs:
+            locality = 1
+        elif any(parent.is_relative_to(changed_dir) or changed_dir.is_relative_to(parent) for changed_dir in changed_dirs):
+            locality = 2
+        else:
+            locality = 3
+        candidates.append((locality, estimate_test_count(path), len(Path(rel).parts), rel))
+
+    return [rel for _, _, _, rel in sorted(candidates)[:max_files]]
+
+
 def nearest_package_dir(repo_dir: Path, path: str) -> str:
     cur = Path(path).parent
     while str(cur) not in {'', '.'}:
@@ -509,6 +582,63 @@ def go_test_command(repo_dir: Path, module_dir: str, files: list[str]) -> str:
             packages.append('./' + package_dir)
     prefix = f'cd {shlex.quote(module_dir)} && ' if module_dir != '.' else ''
     return f'{prefix}go test {quote_paths(packages)} -count=1'
+
+
+def go_test_names(repo_dir: Path, path: str) -> list[str]:
+    try:
+        text = (repo_dir / path).read_text(encoding='utf-8', errors='ignore')
+    except OSError:
+        return []
+    names = re.findall(r'(?m)^\s*func\s+(Test[A-Za-z0-9_]+)\s*\(\s*t\s+\*testing\.T\s*\)', text)
+    return list(dict.fromkeys(names))
+
+
+def go_pass_to_pass_command(repo_dir: Path, module_dir: str, files: list[str]) -> str:
+    candidates = nearby_test_files(repo_dir, files, ('_test.go',), max_files=MAX_PASS_TO_PASS_TEST_FILES)
+    if not candidates:
+        return go_test_command(repo_dir, module_dir, files)
+
+    by_package: dict[str, list[str]] = {}
+    for path in candidates:
+        if nearest_go_module_dir(repo_dir, path) != module_dir:
+            continue
+        package_dir = str(Path(path).parent.relative_to(module_dir)) if module_dir != '.' else str(Path(path).parent)
+        package = './...' if package_dir in {'', '.'} else './' + package_dir
+        by_package.setdefault(package, []).extend(go_test_names(repo_dir, path))
+
+    commands: list[str] = []
+    prefix = f'cd {shlex.quote(module_dir)} && ' if module_dir != '.' else ''
+    for package, names in sorted(by_package.items()):
+        selected = sorted(dict.fromkeys(names))[:3]
+        if selected:
+            pattern = '^(' + '|'.join(re.escape(name) for name in selected) + ')$'
+            commands.append(f'{prefix}go test {shlex.quote(package)} -run {shlex.quote(pattern)} -count=1')
+    return shell_join(commands) if commands else go_test_command(repo_dir, module_dir, files)
+
+
+def nearest_maven_module_dir(repo_dir: Path, path: str) -> str:
+    cur = Path(path).parent
+    while str(cur) not in {'', '.'}:
+        if (repo_dir / cur / 'pom.xml').exists():
+            return cur.as_posix()
+        cur = cur.parent
+    return '.'
+
+
+def java_test_class(path: str) -> str:
+    return Path(path).stem
+
+
+def java_test_command(repo_dir: Path, files: list[str]) -> str:
+    by_module: dict[str, list[str]] = {}
+    for path in files:
+        by_module.setdefault(nearest_maven_module_dir(repo_dir, path), []).append(path)
+    commands: list[str] = []
+    for module_dir, paths in sorted(by_module.items()):
+        prefix = f'cd {shlex.quote(module_dir)} && ' if module_dir != '.' else ''
+        classes = ','.join(sorted(java_test_class(path) for path in paths))
+        commands.append(f'{prefix}mvn test -Dtest={shlex.quote(classes)}')
+    return shell_join(commands)
 
 
 def nearest_cargo_package_dir(repo_dir: Path, path: str) -> str:
@@ -982,6 +1112,10 @@ def test_command_for_files(pkg: Path, row: dict, test_files: list[str], test_ids
     for package_dir, paths in sorted(js_by_package.items()):
         commands.append(npm_test_command(repo_dir, package_dir, paths))
 
+    java_files = [p for p in test_files if p.endswith('.java')]
+    if java_files:
+        commands.append(java_test_command(repo_dir, java_files))
+
     commands.extend(rust_test_commands(repo_dir, test_files, include_filter=True, test_ids=test_ids))
 
     if commands:
@@ -1009,19 +1143,39 @@ def pass_to_pass_command_for_files(pkg: Path, row: dict, test_files: list[str], 
     for path in [p for p in test_files if p.endswith('_test.go')]:
         go_by_module.setdefault(nearest_go_module_dir(repo_dir, path), []).append(path)
     for module_dir, paths in sorted(go_by_module.items()):
-        commands.append(go_test_command(repo_dir, module_dir, paths))
+        commands.append(go_pass_to_pass_command(repo_dir, module_dir, paths))
 
-    py_dirs = sorted({str(Path(p).parent) for p in test_files if p.endswith('.py')})
-    if py_dirs:
-        ignores = ' '.join('--ignore=' + shlex.quote(path) for path in sorted(p for p in test_files if p.endswith('.py')))
-        commands.append('python -m pytest ' + quote_paths(py_dirs) + (f' {ignores}' if ignores else ''))
+    py_files = [p for p in test_files if p.endswith('.py')]
+    if py_files:
+        candidates = nearby_test_files(repo_dir, py_files, ('.py',))
+        if candidates:
+            commands.append('python -m pytest ' + quote_paths(candidates))
+        else:
+            py_dirs = sorted({str(Path(p).parent) for p in py_files})
+            ignores = ' '.join('--ignore=' + shlex.quote(path) for path in sorted(py_files))
+            commands.append('python -m pytest ' + quote_paths(py_dirs) + (f' {ignores}' if ignores else ''))
 
     js_exts = ('.test.js', '.test.jsx', '.test.ts', '.test.tsx', '.spec.js', '.spec.jsx', '.spec.ts', '.spec.tsx')
     js_by_package: dict[str, list[str]] = {}
     for path in [p for p in test_files if p.endswith(js_exts)]:
         js_by_package.setdefault(nearest_package_dir(repo_dir, path), []).append(path)
-    for package_dir in sorted(js_by_package):
-        commands.append(npm_package_test_command(repo_dir, package_dir))
+    for package_dir, paths in sorted(js_by_package.items()):
+        candidates = [
+            path for path in nearby_test_files(repo_dir, paths, js_exts)
+            if nearest_package_dir(repo_dir, path) == package_dir
+        ]
+        if candidates:
+            commands.append(npm_test_command(repo_dir, package_dir, candidates))
+        else:
+            commands.append(npm_package_test_command(repo_dir, package_dir))
+
+    java_files = [p for p in test_files if p.endswith('.java')]
+    if java_files:
+        candidates = nearby_test_files(repo_dir, java_files, ('.java',))
+        if candidates:
+            commands.append(java_test_command(repo_dir, candidates))
+        else:
+            commands.append(java_test_command(repo_dir, java_files))
 
     commands.extend(rust_pass_to_pass_commands(repo_dir, test_files, test_ids))
 
@@ -1437,7 +1591,10 @@ def update_run_selected_tests(pkg: Path, fail_cmd: str, pass_cmd: str, before_cm
     path = pkg / 'scripts' / 'run_selected_tests.sh'
     if not path.exists() or not fail_cmd:
         return
+    fail_cmd = normalize_python_test_command(fail_cmd)
+    pass_cmd = normalize_python_test_command(pass_cmd)
     before_assignment = shlex.quote(before_cmd or '')
+    python_path_export = 'export PYTHONPATH="$ROOT/repo:${PYTHONPATH:-}"\n' if is_python_test_command(fail_cmd, pass_cmd) else ''
     pass_block = f'''    git apply "$ROOT/patches/gold.patch"
     run_before_repo_set_cmd
     {pass_cmd}
@@ -1449,6 +1606,13 @@ set -euo pipefail
 MODE="${{1:-baseline}}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT/repo"
+{python_path_export}if [ ! -d .git ]; then
+  git init -q
+  git config user.email "fly-agent@example.invalid"
+  git config user.name "fly-agent"
+  git add -A
+  git commit -q -m "baseline snapshot"
+fi
 BEFORE_REPO_SET_CMD={before_assignment}
 run_before_repo_set_cmd() {{
   if [ -n "$BEFORE_REPO_SET_CMD" ]; then
@@ -1480,6 +1644,17 @@ esac
 '''
     path.write_text(text, encoding='utf-8')
     path.chmod(0o755)
+
+
+def is_python_test_command(*commands: str) -> bool:
+    text = '\n'.join(command or '' for command in commands)
+    return bool(re.search(r'\bpython(?:3)?\s+-m\s+pytest\b|\bpytest\b', text))
+
+
+def normalize_python_test_command(command: str) -> str:
+    if not command:
+        return command
+    return re.sub(r'\bpython\s+-m\s+pytest\b', 'python3 -m pytest', command)
 
 
 def reference_roots_from_env() -> list[Path]:

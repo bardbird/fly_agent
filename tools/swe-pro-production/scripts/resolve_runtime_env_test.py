@@ -54,6 +54,39 @@ class ResolveRuntimeEnvTest(unittest.TestCase):
             self.assertTrue(any("nodejs" in cmd for cmd in runtime["docker"]["dependency_commands"]))
             self.assertTrue(any("go.dev/dl" in cmd for cmd in runtime["docker"]["dependency_commands"]))
 
+    def test_python_pyproject_without_setup_uses_non_editable_install(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            (package / "repo").mkdir()
+            (package / "scripts").mkdir()
+            (package / "repo" / "pyproject.toml").write_text(
+                "[project]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+                encoding="utf-8",
+            )
+            (package / "task.json").write_text(
+                json.dumps(
+                    {
+                        "repo": "acme/demo",
+                        "base_commit": "abc123",
+                        "repo_language": "python",
+                        "fail_to_pass": ["python -m pytest tests/test_demo.py"],
+                        "pass_to_pass": ["python -m pytest tests/test_demo.py"],
+                        "selected_test_files_to_run": ["tests/test_demo.py"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (package / "scripts" / "run_selected_tests.sh").write_text(
+                "python -m pytest tests/test_demo.py\n",
+                encoding="utf-8",
+            )
+
+            runtime = resolve_runtime_env.resolve_runtime_env(package)
+
+            self.assertIn("PIP_NO_CACHE_DIR=1 PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install .", runtime["setup_commands"])
+            self.assertNotIn("pip install -e .", "\n".join(runtime["setup_commands"]))
+            self.assertNotIn("--break-system-packages", "\n".join(runtime["setup_commands"]))
+
     def test_package_task_does_not_mutate_dockerfile_from_runtime_env_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             package = Path(tmp)

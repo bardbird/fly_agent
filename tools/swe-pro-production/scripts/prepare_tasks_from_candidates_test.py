@@ -212,11 +212,14 @@ class ReferencePackageHydrationTest(unittest.TestCase):
             self.assertIn("(go test ./middleware -count=1)", script)
             self.assertNotIn("npm test -- --runInBand", script)
 
-    def test_python_pass_to_pass_excludes_fail_to_pass_files(self) -> None:
+    def test_python_pass_to_pass_prefers_lightweight_unmodified_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             package = Path(tmp) / "production-task-demo-7"
             (package / "repo" / "tests" / "acp").mkdir(parents=True)
             (package / "repo" / "tests" / "acp" / "test_initialize.py").write_text("", encoding="utf-8")
+            (package / "repo" / "tests" / "acp" / "test_helpers.py").write_text("", encoding="utf-8")
+            (package / "repo" / "tests" / "acp" / "test_model_training.py").write_text("", encoding="utf-8")
+            (package / "repo" / "tests" / "test_order.py").write_text("", encoding="utf-8")
 
             command = prepare.pass_to_pass_command_for_files(
                 package,
@@ -224,8 +227,85 @@ class ReferencePackageHydrationTest(unittest.TestCase):
                 ["tests/acp/test_initialize.py"],
             )
 
-            self.assertIn("python -m pytest tests/acp", command)
-            self.assertIn("--ignore=tests/acp/test_initialize.py", command)
+            self.assertIn("python -m pytest", command)
+            self.assertIn("tests/acp/test_helpers.py", command)
+            self.assertIn("tests/test_order.py", command)
+            self.assertNotIn("--ignore=", command)
+            self.assertNotIn("test_initialize.py", command)
+            self.assertNotIn("test_model_training.py", command)
+
+    def test_javascript_pass_to_pass_uses_unmodified_test_files_not_whole_package(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp) / "production-task-demo-js"
+            app = package / "repo" / "web"
+            (app / "src").mkdir(parents=True)
+            (app / "package.json").write_text('{"scripts":{"test":"vitest"}}', encoding="utf-8")
+            (app / "src" / "widget.test.ts").write_text("", encoding="utf-8")
+            (app / "src" / "format.test.ts").write_text("", encoding="utf-8")
+            (app / "src" / "browser.e2e.test.ts").write_text("", encoding="utf-8")
+
+            command = prepare.pass_to_pass_command_for_files(
+                package,
+                {"primary_language": "typescript"},
+                ["web/src/widget.test.ts"],
+            )
+
+            self.assertIn("cd web && npm run test -- src/format.test.ts", command)
+            self.assertNotIn("widget.test.ts", command)
+            self.assertNotIn("browser.e2e.test.ts", command)
+            self.assertNotEqual("(cd web && npm run test)", command)
+
+    def test_java_pass_to_pass_uses_unmodified_test_classes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp) / "production-task-demo-java"
+            repo = package / "repo"
+            test_root = repo / "src" / "test" / "java" / "com" / "acme"
+            test_root.mkdir(parents=True)
+            (repo / "pom.xml").write_text("<project />", encoding="utf-8")
+            (test_root / "WidgetTest.java").write_text("", encoding="utf-8")
+            (test_root / "ParserTest.java").write_text("", encoding="utf-8")
+            (test_root / "IntegrationTest.java").write_text("", encoding="utf-8")
+
+            command = prepare.pass_to_pass_command_for_files(
+                package,
+                {"primary_language": "java"},
+                ["src/test/java/com/acme/WidgetTest.java"],
+            )
+
+            self.assertIn("mvn test -Dtest=ParserTest", command)
+            self.assertNotIn("WidgetTest", command)
+            self.assertNotIn("IntegrationTest", command)
+
+    def test_go_pass_to_pass_uses_run_filter_when_unmodified_tests_exist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp) / "production-task-demo-go"
+            repo = package / "repo"
+            (repo / "middleware").mkdir(parents=True)
+            (repo / "go.mod").write_text("module demo\n", encoding="utf-8")
+            (repo / "middleware" / "auth_test.go").write_text(
+                "package middleware\n"
+                "import \"testing\"\n"
+                "func TestAuth(t *testing.T) {}\n",
+                encoding="utf-8",
+            )
+            (repo / "middleware" / "public_test.go").write_text(
+                "package middleware\n"
+                "import \"testing\"\n"
+                "func TestPublic(t *testing.T) {}\n"
+                "func TestGuest(t *testing.T) {}\n",
+                encoding="utf-8",
+            )
+
+            command = prepare.pass_to_pass_command_for_files(
+                package,
+                {"primary_language": "go"},
+                ["middleware/auth_test.go"],
+            )
+
+            self.assertIn("go test ./middleware -run", command)
+            self.assertIn("TestPublic", command)
+            self.assertIn("TestGuest", command)
+            self.assertNotIn("TestAuth", command)
 
     def test_rust_integration_test_command_uses_cargo_package_and_test_target(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
