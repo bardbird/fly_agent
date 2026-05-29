@@ -2,6 +2,7 @@ package com.fly.agent.service.swe;
 
 import com.fly.agent.dao.entity.swe.SweCandidateEntity;
 import com.fly.agent.dao.entity.swe.SweTaskEntity;
+import com.fly.agent.common.dto.swe.SweModelIoAttemptDTO;
 import com.fly.agent.dao.mapper.swe.SweArtifactMapper;
 import com.fly.agent.dao.mapper.swe.SweCandidateMapper;
 import com.fly.agent.dao.mapper.swe.SwePipelineRunMapper;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -109,9 +111,9 @@ class SwePipelineServiceTest {
         String devConfig = java.nio.file.Files.readString(java.nio.file.Path.of(
                 "../fly-agent-server/src/main/resources/application-dev.yml"));
 
-        assertTrue(source.contains("\"qwen3.6_flash_pass4_swebench_agentic\", properties.getQwen(),\n"
+        assertTrue(source.contains("\"qwen3.6_flash_pass4_swebench_agentic\", runtimeSettingsService.resolveQwenModel(),\n"
                 + "                properties.getQwenAttempts(), \"QWEN_API_KEY\", false, true"));
-        assertTrue(source.contains("\"opus4.7_pass8_swebench_agentic\", properties.getOpus(),\n"
+        assertTrue(source.contains("\"opus4.7_pass8_swebench_agentic\", runtimeSettingsService.resolveOpusModel(),\n"
                 + "                positiveAttempts(properties.getOpusAttempts(), 8), \"OPUS_API_KEY\", true, true"));
         assertTrue(devConfig.contains("qwen-attempts: 4"));
         assertTrue(devConfig.contains("opus-max-steps-schedule: 180,10"));
@@ -197,6 +199,8 @@ class SwePipelineServiceTest {
         assertTrue(source.contains("lower.contains(\"opus\") && summary.getIntValue(\"passes\") <= 0"));
         assertTrue(source.contains("modelStatusCountsSuffix(json)"));
         assertTrue(source.contains("statusCounts="));
+        assertTrue(source.contains("modelStatusCount(summary, \"invalid\") > 0"));
+        assertTrue(source.contains("modelStatusCount(summary, \"model_failed\") > 0"));
     }
 
     @Test
@@ -317,6 +321,43 @@ class SwePipelineServiceTest {
     }
 
     @Test
+    void modelIoConsoleReadsSweAgentTrajectoryWhenRawResponseJsonlIsMissing() throws Exception {
+        Path packagePath = tempDir.resolve("production-task-demo-1");
+        Path runDir = packagePath.resolve("model_evaluation/opus_eval/run_01");
+        Path trajectoryDir = runDir.resolve("swe_agent/abc123");
+        Files.createDirectories(trajectoryDir);
+        Files.writeString(runDir.resolve("swe_agent_output.log"), "SWE-agent log without raw jsonl", StandardCharsets.UTF_8);
+        Files.writeString(trajectoryDir.resolve("abc123.traj"), """
+                {
+                  "trajectory": [
+                    {
+                      "query": [
+                        {"role": "system", "content": "system prompt", "message_type": "system_prompt"},
+                        {"role": "user", "content": [{"type": "text", "text": "issue text"}], "message_type": "observation"}
+                      ],
+                      "response": "THOUGHT: inspect\\n\\n```bash\\nls\\n```",
+                      "thought": "THOUGHT: inspect",
+                      "action": "ls",
+                      "execution_time": 1.25
+                    }
+                  ]
+                }
+                """, StandardCharsets.UTF_8);
+
+        SwePipelineService service = newService(mock(SweCandidateMapper.class));
+        Method method = SwePipelineService.class.getDeclaredMethod("readModelIoAttempt", Path.class, Path.class);
+        method.setAccessible(true);
+        SweModelIoAttemptDTO attempt = (SweModelIoAttemptDTO) method.invoke(service, packagePath, runDir);
+
+        assertEquals(1, attempt.getRawResponseLines());
+        assertEquals(1, attempt.getResponses().size());
+        assertTrue(attempt.getRawResponsePath().endsWith("abc123.traj"));
+        assertTrue(attempt.getResponses().get(0).getAssistantContent().contains("THOUGHT: inspect"));
+        assertTrue(attempt.getModelInputBlocks().get(0).contains("system prompt"));
+        assertTrue(attempt.getModelInputBlocks().get(0).contains("issue text"));
+    }
+
+    @Test
     void dockerPackageCleansTempFilesBeforeStaticChecks() throws Exception {
         Path packagePath = tempDir.resolve("production-task-demo-1");
         Files.createDirectories(packagePath);
@@ -426,6 +467,10 @@ class SwePipelineServiceTest {
 
     private SwePipelineService newService(SweCandidateMapper candidateMapper, SweCommandRunner commandRunner) {
         SweProperties properties = new SweProperties();
+        SweRuntimeSettingsService runtimeSettingsService = mock(SweRuntimeSettingsService.class);
+        when(runtimeSettingsService.resolveQwenModel()).thenReturn(properties.getQwen());
+        when(runtimeSettingsService.resolveOpusModel()).thenReturn(properties.getOpus());
+        when(runtimeSettingsService.resolveGithubToken(any())).thenAnswer(invocation -> invocation.getArgument(0));
         return new SwePipelineService(
                 mock(SweTaskMapper.class),
                 mock(SwePipelineRunMapper.class),
@@ -433,6 +478,7 @@ class SwePipelineServiceTest {
                 mock(SweArtifactMapper.class),
                 candidateMapper,
                 properties,
+                runtimeSettingsService,
                 commandRunner,
                 mock(SweAcceptanceReportService.class));
     }

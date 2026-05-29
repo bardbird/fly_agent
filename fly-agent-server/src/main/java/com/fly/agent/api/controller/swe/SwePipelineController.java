@@ -7,6 +7,8 @@ import com.fly.agent.common.dto.swe.GithubRepositorySearchRequest;
 import com.fly.agent.common.dto.swe.GithubRepositorySearchResponse;
 import com.fly.agent.common.dto.swe.SwePipelineRunDTO;
 import com.fly.agent.common.dto.swe.SwePipelineStartRequest;
+import com.fly.agent.common.dto.swe.SweRuntimeSettingsRequest;
+import com.fly.agent.common.dto.swe.SweRuntimeSettingsResponse;
 import com.fly.agent.common.dto.swe.SweModelIoConsoleDTO;
 import com.fly.agent.common.dto.swe.SweScaReportGenerateRequest;
 import com.fly.agent.common.dto.swe.SweScaReportGenerateResponse;
@@ -16,6 +18,7 @@ import com.fly.agent.common.dto.swe.SweTaskFromCandidateRequest;
 import com.fly.agent.service.swe.GithubPullCandidateService;
 import com.fly.agent.service.swe.GithubRepositorySearchService;
 import com.fly.agent.service.swe.SwePipelineService;
+import com.fly.agent.service.swe.SweRuntimeSettingsService;
 import com.fly.agent.service.swe.SweScaReportService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -46,6 +49,17 @@ public class SwePipelineController {
     private final SweScaReportService sweScaReportService;
     private final GithubRepositorySearchService githubRepositorySearchService;
     private final GithubPullCandidateService githubPullCandidateService;
+    private final SweRuntimeSettingsService sweRuntimeSettingsService;
+
+    @GetMapping("/settings")
+    public Result<SweRuntimeSettingsResponse> getSettings() {
+        return Result.ok(sweRuntimeSettingsService.getSettings());
+    }
+
+    @PostMapping("/settings")
+    public Result<SweRuntimeSettingsResponse> saveSettings(@RequestBody SweRuntimeSettingsRequest request) {
+        return Result.ok(sweRuntimeSettingsService.saveSettings(request));
+    }
 
     @GetMapping("/github/repositories/search")
     public Result<GithubRepositorySearchResponse> searchGithubRepositories(

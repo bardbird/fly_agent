@@ -136,7 +136,7 @@ sudo rsync -a tools/SWE-agent/ /opt/fly-agent/swe-agent/
 - `FLY_AGENT_LOG_DIR`
 - `XXL_JOB_LOG_DIR`
 
-默认配置假设 MySQL、Redis、XXL-Job Admin 在宿主机运行，容器通过 `host.docker.internal` 访问宿主机。
+默认配置假设 MySQL、Redis、XXL-Job Admin 在 `51.161.15.134` 上运行；如部署环境不同，通过 `deploy/docker/.env` 覆盖对应地址。
 
 ## 构建和启动
 

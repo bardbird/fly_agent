@@ -103,6 +103,7 @@ public class GithubPullCandidateService {
     private final SweTaskMapper taskMapper;
     private final TransactionTemplate transactionTemplate;
     private final SweRepoPrecheckService repoPrecheckService;
+    private final SweRuntimeSettingsService runtimeSettingsService;
 
     @Autowired
     public GithubPullCandidateService(
@@ -110,12 +111,14 @@ public class GithubPullCandidateService {
             SweCandidateMapper candidateMapper,
             SweTaskMapper taskMapper,
             PlatformTransactionManager transactionManager,
-            SweRepoPrecheckService repoPrecheckService) {
+            SweRepoPrecheckService repoPrecheckService,
+            SweRuntimeSettingsService runtimeSettingsService) {
         this.githubToken = githubToken;
         this.candidateMapper = candidateMapper;
         this.taskMapper = taskMapper;
         this.transactionTemplate = transactionManager == null ? null : new TransactionTemplate(transactionManager);
         this.repoPrecheckService = repoPrecheckService;
+        this.runtimeSettingsService = runtimeSettingsService;
         WebClient.Builder builder = WebClient.builder()
                 .baseUrl(GITHUB_API_BASE_URL)
                 .defaultHeader(HttpHeaders.ACCEPT, "application/vnd.github+json")
@@ -130,7 +133,7 @@ public class GithubPullCandidateService {
             SweCandidateMapper candidateMapper,
             SweTaskMapper taskMapper,
             PlatformTransactionManager transactionManager) {
-        this(githubToken, candidateMapper, taskMapper, transactionManager, null);
+        this(githubToken, candidateMapper, taskMapper, transactionManager, null, null);
     }
 
     public GithubPullScanResponse scanMergedPulls(
@@ -1030,6 +1033,9 @@ public class GithubPullCandidateService {
         String token = GithubTokenContext.currentToken();
         if (!StringUtils.hasText(token)) {
             token = githubToken;
+        }
+        if (runtimeSettingsService != null) {
+            token = runtimeSettingsService.resolveGithubToken(token);
         }
         if (!StringUtils.hasText(token)) {
             token = System.getenv("GITHUB_TOKEN");

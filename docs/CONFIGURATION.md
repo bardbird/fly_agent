@@ -112,7 +112,7 @@ swe:
     max-steps: ${SWE_AGENT_MAX_STEPS:20}
   qwen-attempts: 4
   opus-attempts: 8
-  model-timeout-seconds: 600
+  model-timeout-seconds: ${SWE_MODEL_TIMEOUT_SECONDS:3600}
   github:
     token: ${GITHUB_TOKEN:}
   qwen:

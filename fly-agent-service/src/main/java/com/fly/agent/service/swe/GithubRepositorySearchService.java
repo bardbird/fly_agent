@@ -70,12 +70,15 @@ public class GithubRepositorySearchService {
     private final WebClient webClient;
     private final String githubToken;
     private final SweRepoPrecheckService repoPrecheckService;
+    private final SweRuntimeSettingsService runtimeSettingsService;
 
     public GithubRepositorySearchService(
             @Value("${swe.github.token:}") String githubToken,
-            SweRepoPrecheckService repoPrecheckService) {
+            SweRepoPrecheckService repoPrecheckService,
+            SweRuntimeSettingsService runtimeSettingsService) {
         this.githubToken = githubToken;
         this.repoPrecheckService = repoPrecheckService;
+        this.runtimeSettingsService = runtimeSettingsService;
         WebClient.Builder builder = WebClient.builder()
                 .baseUrl(GITHUB_API_BASE_URL)
                 .defaultHeader(HttpHeaders.ACCEPT, "application/vnd.github+json")
@@ -204,6 +207,7 @@ public class GithubRepositorySearchService {
         if (!StringUtils.hasText(token)) {
             token = githubToken;
         }
+        token = runtimeSettingsService.resolveGithubToken(token);
         if (!StringUtils.hasText(token)) {
             token = System.getenv("GITHUB_TOKEN");
         }

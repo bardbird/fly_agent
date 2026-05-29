@@ -25,7 +25,7 @@ public class SweProperties {
 
     private String opusMaxStepsSchedule = "180,10";
 
-    private Integer modelTimeoutSeconds = 600;
+    private Integer modelTimeoutSeconds = 3600;
 
     private SweAgent sweAgent = new SweAgent();
 

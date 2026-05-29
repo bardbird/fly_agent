@@ -34,6 +34,24 @@ export interface SwePipelineStartRequest {
   workspacePath?: string
 }
 
+export interface SweRuntimeSetting {
+  key: string
+  label: string
+  value?: string
+  maskedValue?: string
+  configured: boolean
+  secret: boolean
+  description?: string
+}
+
+export interface SweRuntimeSettingsResponse {
+  settings: SweRuntimeSetting[]
+}
+
+export interface SweRuntimeSettingsRequest {
+  values: Record<string, string>
+}
+
 export interface SweTaskFromCandidateRequest {
   candidateId: number
   taskName?: string

@@ -1586,7 +1586,7 @@ spring:
 
 agent:
   zhipu:
-    api-key: 5ae82851c361407cb40756bdaa6397ad.pqsvPmBEMop791h0
+    api-key: ${ZHIPU_API_KEY:}
     model: glm-4-plus
     temperature: 0.7
     max-tokens: 2000

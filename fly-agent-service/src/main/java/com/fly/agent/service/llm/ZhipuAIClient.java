@@ -2,6 +2,7 @@ package com.fly.agent.service.llm;
 
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
+import com.fly.agent.service.swe.SweRuntimeSettingsService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -39,14 +40,18 @@ public class ZhipuAIClient {
 
     private final WebClient webClient;
     private final String apiKey;
+    private final SweRuntimeSettingsService runtimeSettingsService;
 
     /**
      * 构造函数
      *
      * @param apiKey 智谱AI API Key
      */
-    public ZhipuAIClient(@Value("${agent.zhipu.api-key}") String apiKey) {
+    public ZhipuAIClient(
+            @Value("${agent.zhipu.api-key}") String apiKey,
+            SweRuntimeSettingsService runtimeSettingsService) {
         this.apiKey = apiKey;
+        this.runtimeSettingsService = runtimeSettingsService;
         this.webClient = buildWebClient();
     }
 
@@ -58,7 +63,6 @@ public class ZhipuAIClient {
     private WebClient buildWebClient() {
         return WebClient.builder()
                 .baseUrl(CHAT_COMPLETION_URL)
-                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, "application/json")
                 .build();
     }
@@ -78,6 +82,7 @@ public class ZhipuAIClient {
         log.info("Calling ZhipuAI chat completion, model: {}", model);
 
         return webClient.post()
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + runtimeSettingsService.resolveZhipuApiKey(apiKey))
                 .bodyValue(requestBody.toJSONString())
                 .retrieve()
                 .bodyToMono(String.class)

@@ -64,22 +64,22 @@
 ```yaml
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/fly_agent
-    username: root
-    password: 123456789
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://51.161.15.134:3307/fly_agent}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:123456789}
 
   redis:
-    host: 127.0.0.1
-    port: 6379
-    database: 0
-    password: homeX
+    host: ${SPRING_REDIS_HOST:51.161.15.134}
+    port: ${SPRING_REDIS_PORT:6379}
+    database: ${SPRING_REDIS_DATABASE:0}
+    password: ${SPRING_REDIS_PASSWORD:homeX}
 
 agent:
   zhipu:
-    api-key: 6cfac227f5414f458cf2579f354ba50e.gDAbBVLvuqAbBR59
-    model: glm-5  # 支持的模型: glm-5, glm-4-plus, glm-4-air, glm-4-flash
-    temperature: 0.7
-    max-tokens: 2000
+    api-key: ${ZHIPU_API_KEY:}
+    model: ${ZHIPU_MODEL:glm-5}  # 支持的模型: glm-5, glm-4-plus, glm-4-air, glm-4-flash
+    temperature: ${ZHIPU_TEMPERATURE:0.7}
+    max-tokens: ${ZHIPU_MAX_TOKENS:2000}
 ```
 
 ### 开发环境配置

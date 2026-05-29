@@ -10,6 +10,8 @@ import type {
   SweModelIoConsole,
   SwePipelineRun,
   SwePipelineStartRequest,
+  SweRuntimeSettingsRequest,
+  SweRuntimeSettingsResponse,
   SweTask,
   SweTaskCreateRequest,
   SweTaskFromCandidateRequest,
@@ -247,6 +249,26 @@ export async function getSweModelIoConsole(runId: number): Promise<SweModelIoCon
           responses: Array.isArray(attempt.responses) ? attempt.responses : [],
         }))
       : [],
+  }
+}
+
+export async function getSweRuntimeSettings(): Promise<SweRuntimeSettingsResponse> {
+  const response = unwrapResult(
+    await api.get<ApiResult<SweRuntimeSettingsResponse>>('/swe/settings')
+  )
+  return {
+    settings: Array.isArray(response?.settings) ? response.settings : [],
+  }
+}
+
+export async function saveSweRuntimeSettings(
+  data: SweRuntimeSettingsRequest
+): Promise<SweRuntimeSettingsResponse> {
+  const response = unwrapResult(
+    await api.post<ApiResult<SweRuntimeSettingsResponse>>('/swe/settings', data)
+  )
+  return {
+    settings: Array.isArray(response?.settings) ? response.settings : [],
   }
 }
 

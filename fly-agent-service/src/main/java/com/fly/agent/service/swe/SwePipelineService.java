@@ -83,7 +83,7 @@ public class SwePipelineService {
     private static final String DEFAULT_GO_SUMDB = "sum.golang.google.cn";
     private static final int SWE_BENCH_PRO_AGENT_MAX_STEPS = 20;
     private static final int MODEL_IO_MAX_RAW_RESPONSES_PER_ATTEMPT = 80;
-    private static final int MODEL_IO_MAX_MODEL_INPUT_BLOCKS_PER_ATTEMPT = 30;
+    private static final int MODEL_IO_MAX_MODEL_INPUT_BLOCKS_PER_ATTEMPT = 80;
     private static final int MODEL_IO_MAX_TEXT_CHARS = 240_000;
     private static final String DOCKERIGNORE_TEXT = String.join("\n",
             ".git",
@@ -129,6 +129,7 @@ public class SwePipelineService {
     private final SweArtifactMapper artifactMapper;
     private final SweCandidateMapper candidateMapper;
     private final SweProperties properties;
+    private final SweRuntimeSettingsService runtimeSettingsService;
     private final SweCommandRunner commandRunner;
     private final SweAcceptanceReportService acceptanceReportService;
 
@@ -636,8 +637,8 @@ public class SwePipelineService {
         runEnvironmentProbe(runId, "git_version", List.of("git", "--version"));
         runEnvironmentProbe(runId, "python_version", List.of(properties.getPython(), "--version"));
         runEnvironmentProbe(runId, "docker_info", List.of("docker", "info", "--format", "{{.ServerVersion}}"));
-        ensureModelConfig("qwen", properties.getQwen());
-        ensureModelConfig("opus", properties.getOpus());
+        ensureModelConfig("qwen", runtimeSettingsService.resolveQwenModel());
+        ensureModelConfig("opus", runtimeSettingsService.resolveOpusModel());
         return "Environment ready: git/python/docker/toolkit/model configs are available";
     }
 
@@ -861,7 +862,7 @@ public class SwePipelineService {
                     + ", passRate=" + passRate
                     + modelStatusCountsSuffix(summary);
         }
-        JSONObject summary = runModelEvaluation(runId, packagePath, "qwen3.6_flash_pass4_swebench_agentic", properties.getQwen(),
+        JSONObject summary = runModelEvaluation(runId, packagePath, "qwen3.6_flash_pass4_swebench_agentic", runtimeSettingsService.resolveQwenModel(),
                 properties.getQwenAttempts(), "QWEN_API_KEY", false, true);
         ensureModelEvaluationInfrastructureReady("Qwen", summary);
         double passRate = summary.getDoubleValue("pass_rate");
@@ -883,7 +884,7 @@ public class SwePipelineService {
                     + summary.getIntValue("passes")
                     + "/" + summary.getIntValue("attempts");
         }
-        JSONObject summary = runModelEvaluation(runId, packagePath, "opus4.7_pass8_swebench_agentic", properties.getOpus(),
+        JSONObject summary = runModelEvaluation(runId, packagePath, "opus4.7_pass8_swebench_agentic", runtimeSettingsService.resolveOpusModel(),
                 positiveAttempts(properties.getOpusAttempts(), 8), "OPUS_API_KEY", true, true);
         ensureModelEvaluationInfrastructureReady("Opus", summary);
         if (summary.getIntValue("passes") <= 0) {
@@ -1327,8 +1328,10 @@ public class SwePipelineService {
 
     private Map<String, String> githubEnv() {
         Map<String, String> env = new HashMap<>();
-        if (properties.getGithub() != null && StringUtils.hasText(properties.getGithub().getToken())) {
-            env.put("GITHUB_TOKEN", properties.getGithub().getToken());
+        String githubToken = properties.getGithub() == null ? null : properties.getGithub().getToken();
+        githubToken = runtimeSettingsService.resolveGithubToken(githubToken);
+        if (StringUtils.hasText(githubToken)) {
+            env.put("GITHUB_TOKEN", githubToken);
         }
         if (isGithubProxyAvailable()) {
             String proxyUrl = "http://" + GITHUB_PROXY_HOST + ":" + GITHUB_PROXY_PORT;
@@ -1521,16 +1524,16 @@ public class SwePipelineService {
         if (!Files.isDirectory(root)) {
             return List.of();
         }
-        try (Stream<Path> stream = Files.walk(root, 3)) {
+        try (Stream<Path> stream = Files.walk(root, 6)) {
             return stream
                     .filter(Files::isRegularFile)
                     .filter(path -> "model_api_raw_responses.jsonl".equals(path.getFileName().toString())
                             || "swe_agent_output.log".equals(path.getFileName().toString())
                             || "test_output.json".equals(path.getFileName().toString())
-                            || "eval.log".equals(path.getFileName().toString()))
-                    .map(Path::getParent)
-                    .filter(path -> path != null && path.getFileName() != null
-                            && path.getFileName().toString().startsWith("run_"))
+                            || "eval.log".equals(path.getFileName().toString())
+                            || path.getFileName().toString().endsWith(".traj"))
+                    .map(this::modelIoRunDir)
+                    .filter(path -> path != null)
                     .distinct()
                     .sorted(Comparator.comparing(this::pathLastModified).reversed())
                     .map(runDir -> readModelIoAttempt(packagePath, runDir))
@@ -1559,9 +1562,18 @@ public class SwePipelineService {
         }
 
         Path rawResponse = runDir.resolve("model_api_raw_responses.jsonl");
-        attempt.setRawResponsePath(rawResponse.toString());
-        attempt.setRawResponseBytes(fileSize(rawResponse));
-        attempt.setResponses(readRawModelResponses(rawResponse));
+        List<Path> trajectoryFiles = findTrajectoryFiles(runDir);
+        attempt.setRawResponsePath(Files.isRegularFile(rawResponse)
+                ? rawResponse.toString()
+                : trajectoryFiles.stream().findFirst().map(Path::toString).orElse(rawResponse.toString()));
+        attempt.setRawResponseBytes(Files.isRegularFile(rawResponse)
+                ? fileSize(rawResponse)
+                : trajectoryFiles.stream().mapToLong(this::fileSize).sum());
+        List<SweModelIoResponseDTO> responses = readRawModelResponses(rawResponse);
+        if (responses.isEmpty()) {
+            responses = readTrajectoryModelResponses(trajectoryFiles);
+        }
+        attempt.setResponses(responses);
         attempt.setRawResponseLines(attempt.getResponses().size());
 
         Path sweAgentOutput = runDir.resolve("swe_agent_output.log");
@@ -1569,7 +1581,8 @@ public class SwePipelineService {
         attempt.setSweAgentOutputBytes(fileSize(sweAgentOutput));
         String outputText = readTextIfRegular(sweAgentOutput);
         attempt.setSweAgentOutputTail(tailText(outputText, MODEL_IO_MAX_TEXT_CHARS));
-        attempt.setModelInputBlocks(extractModelInputBlocks(outputText));
+        List<String> modelInputBlocks = readTrajectoryModelInputs(trajectoryFiles);
+        attempt.setModelInputBlocks(modelInputBlocks.isEmpty() ? extractModelInputBlocks(outputText) : modelInputBlocks);
 
         if (!StringUtils.hasText(attempt.getError())) {
             String evalLog = readTextIfRegular(runDir.resolve("eval.log"));
@@ -1582,6 +1595,33 @@ public class SwePipelineService {
             attempt.setStatus(StringUtils.hasText(attempt.getError()) ? "error" : "running_or_pending");
         }
         return attempt;
+    }
+
+    private Path modelIoRunDir(Path file) {
+        Path path = file == null ? null : file.getParent();
+        while (path != null && path.getFileName() != null) {
+            if (path.getFileName().toString().startsWith("run_")) {
+                return path;
+            }
+            path = path.getParent();
+        }
+        return null;
+    }
+
+    private List<Path> findTrajectoryFiles(Path runDir) {
+        Path sweAgentDir = runDir.resolve("swe_agent");
+        if (!Files.isDirectory(sweAgentDir)) {
+            return List.of();
+        }
+        try (Stream<Path> stream = Files.walk(sweAgentDir, 3)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".traj"))
+                    .sorted(Comparator.comparing(this::pathLastModified))
+                    .toList();
+        } catch (IOException e) {
+            return List.of();
+        }
     }
 
     private List<SweModelIoResponseDTO> readRawModelResponses(Path rawResponse) {
@@ -1632,6 +1672,116 @@ public class SwePipelineService {
             // Keep rawJson even when a provider writes a non-standard JSON line.
         }
         return response;
+    }
+
+    private List<SweModelIoResponseDTO> readTrajectoryModelResponses(List<Path> trajectoryFiles) {
+        List<SweModelIoResponseDTO> responses = new ArrayList<>();
+        for (Path trajectoryFile : trajectoryFiles) {
+            JSONArray trajectory = readTrajectoryArray(trajectoryFile);
+            for (int i = 0; i < trajectory.size() && responses.size() < MODEL_IO_MAX_RAW_RESPONSES_PER_ATTEMPT; i++) {
+                JSONObject step = trajectory.getJSONObject(i);
+                String content = step == null ? null : step.getString("response");
+                if (!StringUtils.hasText(content)) {
+                    continue;
+                }
+                SweModelIoResponseDTO response = new SweModelIoResponseDTO();
+                response.setApiCallIndex(responses.size() + 1);
+                response.setProvider("swe-agent-traj");
+                response.setFinishReason(StringUtils.hasText(step.getString("action")) ? "action" : "response");
+                response.setAssistantContent(content);
+                JSONObject raw = new JSONObject();
+                raw.put("trajectory_file", trajectoryFile.toString());
+                raw.put("step", i + 1);
+                raw.put("execution_time", step.get("execution_time"));
+                raw.put("thought", step.getString("thought"));
+                raw.put("action", step.getString("action"));
+                raw.put("response", content);
+                response.setRawJson(tailText(raw.toJSONString(), MODEL_IO_MAX_TEXT_CHARS));
+                responses.add(response);
+            }
+        }
+        return responses;
+    }
+
+    private List<String> readTrajectoryModelInputs(List<Path> trajectoryFiles) {
+        List<String> inputs = new ArrayList<>();
+        for (Path trajectoryFile : trajectoryFiles) {
+            JSONArray trajectory = readTrajectoryArray(trajectoryFile);
+            for (int i = 0; i < trajectory.size() && inputs.size() < MODEL_IO_MAX_MODEL_INPUT_BLOCKS_PER_ATTEMPT; i++) {
+                JSONObject step = trajectory.getJSONObject(i);
+                JSONArray query = step == null ? null : step.getJSONArray("query");
+                if (query == null || query.isEmpty()) {
+                    continue;
+                }
+                inputs.add(tailText(formatTrajectoryQuery(query), MODEL_IO_MAX_TEXT_CHARS));
+            }
+        }
+        return inputs;
+    }
+
+    private JSONArray readTrajectoryArray(Path trajectoryFile) {
+        try {
+            JSONObject json = JSON.parseObject(Files.readString(trajectoryFile, StandardCharsets.UTF_8));
+            JSONArray trajectory = json.getJSONArray("trajectory");
+            return trajectory == null ? new JSONArray() : trajectory;
+        } catch (Exception ignored) {
+            return new JSONArray();
+        }
+    }
+
+    private String formatTrajectoryQuery(JSONArray query) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < query.size(); i++) {
+            JSONObject message = query.getJSONObject(i);
+            if (message == null) {
+                continue;
+            }
+            if (!builder.isEmpty()) {
+                builder.append("\n\n");
+            }
+            builder.append("[").append(stringValue(message.getString("role")).toUpperCase()).append("]");
+            String messageType = message.getString("message_type");
+            if (StringUtils.hasText(messageType)) {
+                builder.append(" ").append(messageType);
+            }
+            builder.append("\n").append(jsonContentToText(message.get("content")));
+            String thought = message.getString("thought");
+            if (StringUtils.hasText(thought)) {
+                builder.append("\n\nthought:\n").append(thought);
+            }
+            String action = message.getString("action");
+            if (StringUtils.hasText(action)) {
+                builder.append("\n\naction:\n").append(action);
+            }
+        }
+        return builder.toString();
+    }
+
+    private String jsonContentToText(Object content) {
+        if (content == null) {
+            return "";
+        }
+        if (content instanceof String text) {
+            return text;
+        }
+        if (content instanceof JSONArray array) {
+            List<String> parts = new ArrayList<>();
+            for (int i = 0; i < array.size(); i++) {
+                Object item = array.get(i);
+                if (item instanceof JSONObject object) {
+                    String text = object.getString("text");
+                    parts.add(StringUtils.hasText(text) ? text : object.toJSONString());
+                } else {
+                    parts.add(stringValue(item));
+                }
+            }
+            return String.join("\n", parts);
+        }
+        if (content instanceof JSONObject object) {
+            String text = object.getString("text");
+            return StringUtils.hasText(text) ? text : object.toJSONString();
+        }
+        return stringValue(content);
     }
 
     private List<String> extractModelInputBlocks(String outputText) {
@@ -1727,6 +1877,12 @@ public class SwePipelineService {
                         try {
                             JSONObject summary = readJson(path);
                             validateInspectedModelSummaryGate(key, summary);
+                            if (modelStatusCount(summary, "invalid") > 0) {
+                                return false;
+                            }
+                            if (modelStatusCount(summary, "model_failed") > 0) {
+                                return false;
+                            }
                             return true;
                         } catch (Exception e) {
                             return false;

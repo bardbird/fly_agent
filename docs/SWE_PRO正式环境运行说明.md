@@ -52,6 +52,7 @@ swe:
   swe-agent:
     maxSteps: 20
   opus-max-steps-schedule: 180,10
+  model-timeout-seconds: ${SWE_MODEL_TIMEOUT_SECONDS:3600}
 ```
 
 含义：

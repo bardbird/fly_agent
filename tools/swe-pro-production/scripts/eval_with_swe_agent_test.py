@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -199,6 +200,7 @@ class EvalWithSweAgentTest(unittest.TestCase):
                 timeout=30,
                 enable_thinking="false",
                 history_observations=4,
+                swe_rex_runtime_host="http://host.docker.internal",
             )
             captured = {}
 
@@ -227,11 +229,24 @@ class EvalWithSweAgentTest(unittest.TestCase):
                 )
 
             command_text = " ".join(captured["cmd"])
-            self.assertIn("--agent.model.api_key=super-secret-token", command_text)
+            self.assertIn("--agent.model.api_key=$QWEN_API_KEY", command_text)
+            self.assertNotIn("--agent.max_steps", command_text)
+            self.assertNotIn("--agent.model.raw_response_log_path", command_text)
+            self.assertNotIn("super-secret-token", command_text)
             self.assertNotIn("super-secret-token", eval_with_swe_agent.command_for_display(captured["cmd"]))
             self.assertEqual("super-secret-token", captured["env"]["QWEN_API_KEY"])
             self.assertEqual("super-secret-token", captured["env"]["OPENAI_API_KEY"])
             self.assertEqual("super-secret-token", captured["env"]["DASHSCOPE_API_KEY"])
+            self.assertEqual("http://host.docker.internal", captured["env"]["SWE_REX_RUNTIME_HOST"])
+            self.assertIn("_swe_agent_runtime_patch", captured["env"]["PYTHONPATH"])
+
+    def test_swe_rex_runtime_host_patch_keeps_bare_metal_default_empty(self) -> None:
+        with patch.dict(os.environ, {}, clear=True), patch.object(eval_with_swe_agent.Path, "exists", return_value=False):
+            self.assertEqual("", eval_with_swe_agent.default_swe_rex_runtime_host())
+
+    def test_swe_rex_runtime_host_patch_normalizes_env_override(self) -> None:
+        with patch.dict(os.environ, {"SWE_REX_RUNTIME_HOST": "host.docker.internal"}, clear=True):
+            self.assertEqual("http://host.docker.internal", eval_with_swe_agent.default_swe_rex_runtime_host())
 
     def test_write_summary_uses_existing_contract_without_mutating_task_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -361,6 +376,31 @@ CMD ["bash", "/workspace/scripts/run_selected_tests.sh", "fixed"]
         }
 
         self.assertEqual("test_infra_failed", eval_with_swe_agent.standard_status(result))
+
+    def test_max_steps_exhaustion_is_model_failure_not_invalid(self) -> None:
+        result = {
+            "passed": False,
+            "error": "SWE-agent reached max_steps=20 without producing a patch",
+        }
+
+        self.assertEqual("model_failed", eval_with_swe_agent.standard_status(result))
+
+    def test_swe_agent_no_patch_after_call_limit_is_model_failure(self) -> None:
+        result = {
+            "passed": False,
+            "error": "no patch found in SWE-agent output",
+        }
+        log_text = "API calls 25 exceeds limit 24"
+
+        self.assertEqual("model_failed", eval_with_swe_agent.standard_status(result, log_text))
+
+    def test_swe_agent_timeout_is_model_failure_not_invalid(self) -> None:
+        result = {
+            "passed": False,
+            "error": "Command '['sweagent', 'run']' timed out after 600 seconds",
+        }
+
+        self.assertEqual("model_failed", eval_with_swe_agent.standard_status(result))
 
     def test_max_steps_schedule_repeats_last_value(self) -> None:
         schedule = eval_with_swe_agent.parse_max_steps_schedule("20,50,10", 20)

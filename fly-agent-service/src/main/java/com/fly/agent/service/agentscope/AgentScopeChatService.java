@@ -1,12 +1,15 @@
 package com.fly.agent.service.agentscope;
 
 import com.fly.agent.common.util.JsonUtil;
+import com.fly.agent.service.properties.ZhipuProperties;
+import com.fly.agent.service.swe.SweRuntimeSettingsService;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.EventType;
 import io.agentscope.core.agent.StreamOptions;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.OpenAIChatModel;
 import io.agentscope.core.memory.InMemoryMemory;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +28,10 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class AgentScopeChatService {
 
-    private final OpenAIChatModel openAIChatModel;
+    private static final String ZHIPU_BASE_URL = "https://open.bigmodel.cn/api/coding/paas/v4";
+
+    private final ZhipuProperties zhipuProperties;
+    private final SweRuntimeSettingsService runtimeSettingsService;
 
     /**
      * 系统提示词
@@ -53,8 +59,22 @@ public class AgentScopeChatService {
         return ReActAgent.builder()
                 .name("FlyAgent")
                 .sysPrompt(SYSTEM_PROMPT)
-                .model(openAIChatModel)  // 使用 OpenAIChatModel（配置为智谱AI端点）
+                .model(createChatModel())
                 .memory(memory)
+                .build();
+    }
+
+    private OpenAIChatModel createChatModel() {
+        GenerateOptions options = GenerateOptions.builder()
+                .temperature(zhipuProperties.getTemperature())
+                .maxTokens(zhipuProperties.getMaxTokens())
+                .build();
+        return OpenAIChatModel.builder()
+                .apiKey(runtimeSettingsService.resolveZhipuApiKey(zhipuProperties.getApiKey()))
+                .modelName(zhipuProperties.getModel())
+                .baseUrl(ZHIPU_BASE_URL)
+                .generateOptions(options)
+                .stream(Boolean.TRUE)
                 .build();
     }
 

@@ -15,28 +15,31 @@ services:
       JAVA_OPTS: ${SERVER_JAVA_OPTS:-}
       SERVER_PORT: "8080"
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
-      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:mysql://host.docker.internal:3307/fly_agent?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:mysql://51.161.15.134:3307/fly_agent?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-root}
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-123456789}
-      SPRING_REDIS_HOST: ${SPRING_REDIS_HOST:-host.docker.internal}
+      SPRING_REDIS_HOST: ${SPRING_REDIS_HOST:-51.161.15.134}
       SPRING_REDIS_PORT: ${SPRING_REDIS_PORT:-6379}
       SPRING_REDIS_PASSWORD: ${SPRING_REDIS_PASSWORD:-homeX}
-      SPRING_DATA_REDIS_HOST: ${SPRING_REDIS_HOST:-host.docker.internal}
+      SPRING_DATA_REDIS_HOST: ${SPRING_REDIS_HOST:-51.161.15.134}
       SPRING_DATA_REDIS_PORT: ${SPRING_REDIS_PORT:-6379}
       SPRING_DATA_REDIS_PASSWORD: ${SPRING_REDIS_PASSWORD:-homeX}
-      XXL_JOB_ADMIN_ADDRESSES: ${XXL_JOB_ADMIN_ADDRESSES:-http://host.docker.internal:9090/xxl-job-admin}
+      XXL_JOB_ADMIN_ADDRESSES: ${XXL_JOB_ADMIN_ADDRESSES:-http://51.161.15.134:9090/xxl-job-admin}
       XXL_JOB_ACCESS_TOKEN: ${XXL_JOB_ACCESS_TOKEN:-default_token}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
       SWE_AGENT_ROOT: /opt/fly-agent/swe-agent
       SWE_TOOLKIT_ROOT: /app/tools/swe-pro-production
       SWE_PRODUCTION_ROOT: /data/fly-agent/swe-output
+      SWE_QWEN_BASE_URL: ${SWE_QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       SWE_QWEN_TOKEN: ${SWE_QWEN_TOKEN:-}
+      SWE_OPUS_BASE_URL: ${SWE_OPUS_BASE_URL:-https://ai.yiqiu.dev/v1}
       SWE_OPUS_TOKEN: ${SWE_OPUS_TOKEN:-}
       SWE_QWEN_MODEL: ${SWE_QWEN_MODEL:-qwen3.6-flash}
       SWE_OPUS_MODEL: ${SWE_OPUS_MODEL:-claude-opus-4-7}
       SWE_AGENT_MAX_STEPS: ${SWE_AGENT_MAX_STEPS:-20}
       SWE_OPUS_MAX_STEPS_SCHEDULE: ${SWE_OPUS_MAX_STEPS_SCHEDULE:-180,10}
+      SWE_MODEL_TIMEOUT_SECONDS: ${SWE_MODEL_TIMEOUT_SECONDS:-3600}
     ports:
       - "${SERVER_PORT:-8080}:8080"
     volumes:
@@ -61,10 +64,16 @@ services:
       JAVA_OPTS: ${TASK_JAVA_OPTS:-}
       SERVER_PORT: "8082"
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
-      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:mysql://host.docker.internal:3307/fly_agent?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:mysql://51.161.15.134:3307/fly_agent?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-root}
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-123456789}
-      XXL_JOB_ADMIN_ADDRESSES: ${XXL_JOB_ADMIN_ADDRESSES:-http://host.docker.internal:9090/xxl-job-admin}
+      SPRING_REDIS_HOST: ${SPRING_REDIS_HOST:-51.161.15.134}
+      SPRING_REDIS_PORT: ${SPRING_REDIS_PORT:-6379}
+      SPRING_REDIS_PASSWORD: ${SPRING_REDIS_PASSWORD:-homeX}
+      SPRING_DATA_REDIS_HOST: ${SPRING_REDIS_HOST:-51.161.15.134}
+      SPRING_DATA_REDIS_PORT: ${SPRING_REDIS_PORT:-6379}
+      SPRING_DATA_REDIS_PASSWORD: ${SPRING_REDIS_PASSWORD:-homeX}
+      XXL_JOB_ADMIN_ADDRESSES: ${XXL_JOB_ADMIN_ADDRESSES:-http://51.161.15.134:9090/xxl-job-admin}
       XXL_JOB_ACCESS_TOKEN: ${XXL_JOB_ACCESS_TOKEN:-default_token}
       XXL_JOB_EXECUTOR_PORT: "9999"
       XXL_JOB_EXECUTOR_ADDRESS: ${XXL_JOB_EXECUTOR_ADDRESS:-}

@@ -146,6 +146,7 @@ batch_evidence/
 STANDARD_EVALUATION_STATUSES = {
     'resolved',
     'partial',
+    'model_failed',
     'compile_error',
     'patch_apply_failed',
     'test_infra_failed',
@@ -767,6 +768,20 @@ def is_compile_failure(output: str) -> bool:
     return any(needle in lower for needle in needles)
 
 
+def is_model_failure(output: str) -> bool:
+    lower = (output or '').lower()
+    needles = (
+        'maximum agent steps exceeded',
+        'reached max_steps',
+        'without producing a patch',
+        'no patch found in swe-agent output',
+        'partial_no_submit',
+        'timed out after',
+        'timeoutexpired',
+    )
+    return any(needle in lower for needle in needles) or ('api calls' in lower and 'exceeds limit' in lower)
+
+
 def standard_status(result: dict, log_text: str = '') -> str:
     if result.get('passed'):
         return 'resolved'
@@ -774,6 +789,8 @@ def standard_status(result: dict, log_text: str = '') -> str:
     signal = (error + '\n' + (log_text or '')).lower()
     if is_infrastructure_failure(signal):
         return 'test_infra_failed'
+    if is_model_failure(signal):
+        return 'model_failed'
     if any(needle in signal for needle in (
         'model patch did not apply',
         'test patch did not apply',
@@ -1089,6 +1106,53 @@ def swe_agent_env(api_key_env: str, api_key: str, enable_thinking: str) -> dict[
     return env
 
 
+def normalize_http_host(host: str) -> str:
+    host = (host or '').strip()
+    if host and not host.startswith(('http://', 'https://')):
+        host = 'http://' + host
+    return host
+
+
+def default_swe_rex_runtime_host() -> str:
+    configured = os.environ.get('SWE_REX_RUNTIME_HOST')
+    if configured:
+        return normalize_http_host(configured)
+    if Path('/.dockerenv').exists():
+        return 'http://host.docker.internal'
+    return ''
+
+
+def write_swe_rex_runtime_host_patch(package: Path) -> Path:
+    patch_dir = package / 'model_evaluation' / '_swe_agent_runtime_patch'
+    patch_dir.mkdir(parents=True, exist_ok=True)
+    sitecustomize = patch_dir / 'sitecustomize.py'
+    sitecustomize.write_text(
+        "import os\n"
+        "host = os.environ.get('SWE_REX_RUNTIME_HOST')\n"
+        "if host:\n"
+        "    try:\n"
+        "        from swerex.runtime.config import RemoteRuntimeConfig\n"
+        "        field = RemoteRuntimeConfig.model_fields.get('host')\n"
+        "        if field is not None:\n"
+        "            field.default = host\n"
+        "            RemoteRuntimeConfig.model_rebuild(force=True)\n"
+        "    except Exception as exc:\n"
+        "        print(f'[swe-agent-runtime-patch] failed to set SWE-ReX runtime host: {exc}', flush=True)\n",
+        encoding='utf-8',
+    )
+    return patch_dir
+
+
+def apply_swe_rex_runtime_host_patch(env: dict[str, str], package: Path, host: str) -> None:
+    host = normalize_http_host(host)
+    if not host:
+        return
+    patch_dir = write_swe_rex_runtime_host_patch(package)
+    env['SWE_REX_RUNTIME_HOST'] = host
+    existing = env.get('PYTHONPATH')
+    env['PYTHONPATH'] = str(patch_dir) if not existing else str(patch_dir) + os.pathsep + existing
+
+
 def swe_agent_api_key_reference(api_key_env: str) -> str:
     if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', api_key_env):
         raise ValueError(f'invalid API key env var name: {api_key_env}')
@@ -1103,7 +1167,6 @@ def write_swe_agent_guard_config(package: Path, args: argparse.Namespace) -> Pat
     call_limit = max_steps + max(2, min(4, max_steps // 2))
     lines = [
         'agent:',
-        f'  max_steps: {max_steps}',
         '  model:',
         f'    max_input_tokens: {max_input_tokens}',
         f'    per_instance_call_limit: {call_limit}',
@@ -1177,14 +1240,12 @@ def run_swe_agent_attempt(
         str(guard_config),
         f'--agent.model.name={model_name_for_swe_agent(args.model, args.provider)}',
         f'--agent.model.api_base={args.base_url}',
-        f'--agent.model.api_key={args.api_key}',
+        f'--agent.model.api_key={swe_agent_api_key_reference(args.api_key_env)}',
         f'--agent.model.temperature={args.temperature}',
         f'--agent.model.max_output_tokens={args.max_tokens}',
         '--agent.model.per_instance_cost_limit=0',
         '--agent.model.total_cost_limit=0',
-        f'--agent.max_steps={args.agent_max_steps}',
         f'--agent.model.max_input_tokens={args.max_input_tokens}',
-        f'--agent.model.raw_response_log_path={run_dir / "model_api_raw_responses.jsonl"}',
         f'--env.repo.path={package / "repo"}',
         f'--env.repo.base_commit={task.get("base_commit") or "HEAD"}',
         f'--problem_statement.path={problem_path}',
@@ -1194,6 +1255,7 @@ def run_swe_agent_attempt(
     if safe_image:
         cmd.append(f'--env.deployment.image={safe_image}')
     env = swe_agent_env(args.api_key_env, args.api_key, args.enable_thinking)
+    apply_swe_rex_runtime_host_patch(env, package, args.swe_rex_runtime_host)
     code, output = run(cmd, args.swe_agent_root, env=env, timeout=args.timeout)
     (run_dir / 'swe_agent_output.raw.log').write_text(redact_secret_log_text(output), encoding='utf-8')
     (run_dir / 'swe_agent_output.log').write_text(redact_display_log_text(output), encoding='utf-8')
@@ -1259,12 +1321,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description='Run SWE-agent model evaluations for a SWE-Pro task package.')
     parser.add_argument('package_dir')
     parser.add_argument('--swe-agent-root', type=Path, required=True)
+    parser.add_argument('--swe-rex-runtime-host', default=default_swe_rex_runtime_host())
     parser.add_argument('--model', required=True)
     parser.add_argument('--base-url', required=True)
     parser.add_argument('--api-key-env', required=True)
     parser.add_argument('--attempts', type=int, required=True)
     parser.add_argument('--out-name', required=True)
-    parser.add_argument('--timeout', type=int, default=600)
+    parser.add_argument('--timeout', type=int, default=3600)
     parser.add_argument('--max-tokens', type=int, default=4096)
     parser.add_argument('--max-input-tokens', type=int, default=22000)
     parser.add_argument('--temperature', type=float, default=0.7)
