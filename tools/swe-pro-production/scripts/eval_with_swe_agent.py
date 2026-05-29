@@ -528,7 +528,7 @@ def preflight_model_safe_image(package: Path, safe_image: str | None) -> dict:
         'docker', 'run', '--rm',
         safe_image,
         '/bin/sh',
-        '-lc',
+        '-c',
         model_safe_image_preflight_script(),
     ]
     code, output = run(cmd, package, env=docker_proxy_env(), timeout=45)

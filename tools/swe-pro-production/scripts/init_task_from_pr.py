@@ -29,6 +29,10 @@ def replace_tokens(dst: Path, values: dict[str, str]) -> None:
         p.write_text(text, encoding='utf-8')
 
 
+def shell_noop_if_empty(command: str) -> str:
+    return command.strip() or 'true'
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description='Initialize a SWE-Pro task package from templates. This scaffolds files; repo checkout and test authoring remain manual.')
     ap.add_argument('--package-name', required=True)
@@ -58,7 +62,7 @@ def main() -> int:
         'LANGUAGE_DEPENDENCIES_CMD': args.language_dependencies_cmd,
         'TOOLCHAIN_STAGES': args.toolchain_stages,
         'TOOLCHAIN_COPY': args.toolchain_copy,
-        'BEFORE_REPO_SET_CMD': args.before_cmd,
+        'BEFORE_REPO_SET_CMD': shell_noop_if_empty(args.before_cmd),
         'FAIL_TO_PASS_CMD': args.fail_cmd,
         'PASS_TO_PASS_CMD': args.pass_cmd,
         'TASK_ID': task_id,

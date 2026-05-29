@@ -7,9 +7,18 @@ import unittest
 from pathlib import Path
 
 import prepare_tasks_from_candidates as prepare
+import init_task_from_pr
 
 
 class ReferencePackageHydrationTest(unittest.TestCase):
+    def test_empty_before_cmd_uses_shell_noop_in_dockerfile(self) -> None:
+        self.assertEqual("true", init_task_from_pr.shell_noop_if_empty(""))
+        self.assertEqual("true", init_task_from_pr.shell_noop_if_empty("   "))
+        self.assertEqual(
+            "python -m pip install -e .",
+            init_task_from_pr.shell_noop_if_empty("python -m pip install -e ."),
+        )
+
     def make_oracle_package(self, root: Path) -> Path:
         package = root / "production-task-demo-7"
         repo = package / "repo"

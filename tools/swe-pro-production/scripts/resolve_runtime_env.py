@@ -10,7 +10,8 @@ from pathlib import Path
 
 
 NODE_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git bash build-essential && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y --no-install-recommends nodejs && rm -rf /var/lib/apt/lists/* && node --version && npm --version && git --version'
-PYTHON_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates git bash python3 python3-pip python3-venv python3-dev build-essential && rm -rf /var/lib/apt/lists/* && python3 --version && python3 -m pip --version && PIP_NO_CACHE_DIR=1 PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install --upgrade pip setuptools wheel'
+PYTHON_BASE_IMAGE = 'python:3.11-slim-bookworm'
+PYTHON_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates git bash python3-dev build-essential && rm -rf /var/lib/apt/lists/* && python3 --version && python3 -m pip --version && PIP_NO_CACHE_DIR=1 python3 -m pip install --upgrade pip setuptools wheel'
 JAVA_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates git bash openjdk-17-jdk-headless maven gradle && rm -rf /var/lib/apt/lists/* && java -version && mvn -version && gradle --version'
 GO_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git bash build-essential unzip && ARCH="$(dpkg --print-architecture)" && case "$ARCH" in amd64) GOARCH=amd64 ;; arm64) GOARCH=arm64 ;; *) echo "unsupported Go architecture: $ARCH" >&2; exit 1 ;; esac && curl -fsSL "https://go.dev/dl/go1.25.1.linux-${GOARCH}.tar.gz" -o /tmp/go.tgz && tar -C /usr/local -xzf /tmp/go.tgz && ln -s /usr/local/go/bin/go /usr/local/bin/go && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt && rm -f /tmp/go.tgz && rm -rf /var/lib/apt/lists/* && go env -w GOPROXY=https://goproxy.cn,direct GOSUMDB=sum.golang.google.cn && go version'
 RUST_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git bash build-essential pkg-config libssl-dev libxtst-dev libx11-dev libwayland-dev libxkbcommon-dev && curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal && ln -s /root/.cargo/bin/cargo /usr/local/bin/cargo && ln -s /root/.cargo/bin/rustc /usr/local/bin/rustc && rm -rf /var/lib/apt/lists/* && rustc --version && cargo --version'
@@ -182,6 +183,15 @@ def python_project_install_command(package_dir: Path) -> str:
     return pip_install_command('-e .')
 
 
+def looks_like_python_package_manifest(path: Path) -> bool:
+    if path.name != 'setup.py':
+        return True
+    text = read_text(path)
+    if not text.strip():
+        return False
+    return bool(re.search(r'\bsetup\s*\(', text) and re.search(r'\b(setuptools|distutils)\b', text))
+
+
 def pyproject_dev_dependencies(pyproject: Path) -> list[str]:
     try:
         data = tomllib.loads(pyproject.read_text(encoding='utf-8'))
@@ -205,6 +215,8 @@ def python_manifest_dirs(root: Path, task: dict) -> list[str]:
         for manifest in ('pyproject.toml', 'setup.py', 'requirements.txt'):
             add_unique(dirs, nearest_manifest_dir(root, item, manifest))
     for manifest in repo_files(root, ('pyproject.toml', 'setup.py', 'requirements.txt'), 5):
+        if not looks_like_python_package_manifest(manifest):
+            continue
         rel = manifest.parent.relative_to(repo).as_posix()
         add_unique(dirs, '' if rel == '.' else rel)
     return dirs
@@ -311,10 +323,69 @@ def resolve_runtime_env(root: Path) -> dict:
             'pass_to_pass': task.get('pass_to_pass') if isinstance(task.get('pass_to_pass'), list) else [],
         },
         'docker': {
-            'base_image': 'ubuntu:22.04',
+            'base_image': docker_base_image(languages),
             'dependency_commands': dependency_commands,
         },
     }
+
+
+def compose_setup_command(commands: list[str]) -> str:
+    return ' && '.join(f'({command})' for command in commands if command.strip())
+
+
+def docker_base_image(languages: list[str]) -> str:
+    return PYTHON_BASE_IMAGE if 'python' in languages else 'ubuntu:22.04'
+
+
+def update_run_selected_tests_before_cmd(root: Path, before_cmd: str) -> None:
+    path = root / 'scripts' / 'run_selected_tests.sh'
+    if not path.is_file():
+        return
+    text = path.read_text(encoding='utf-8')
+    assignment = f'BEFORE_REPO_SET_CMD={shlex.quote(before_cmd or "")}'
+    if re.search(r'^BEFORE_REPO_SET_CMD=.*$', text, flags=re.M):
+        text = re.sub(r'^BEFORE_REPO_SET_CMD=.*$', assignment, text, count=1, flags=re.M)
+    else:
+        marker = 'git reset --hard HEAD >/dev/null\n'
+        helper = (
+            f'{assignment}\n'
+            'run_before_repo_set_cmd() {\n'
+            '  if [ -n "$BEFORE_REPO_SET_CMD" ]; then\n'
+            '    eval "$BEFORE_REPO_SET_CMD"\n'
+            '  fi\n'
+            '}\n'
+        )
+        text = text.replace(marker, helper + marker, 1)
+        text = text.replace('git apply "$ROOT/patches/test.patch"\n', 'git apply "$ROOT/patches/test.patch"\n    run_before_repo_set_cmd\n', 1)
+        text = text.replace('git apply "$ROOT/patches/test.patch"\n', 'git apply "$ROOT/patches/test.patch"\n    run_before_repo_set_cmd\n', 1)
+        text = text.replace('git apply "$ROOT/patches/gold.patch"\n    {{PASS_TO_PASS_CMD}}', 'git apply "$ROOT/patches/gold.patch"\n    run_before_repo_set_cmd\n    {{PASS_TO_PASS_CMD}}')
+    path.write_text(text, encoding='utf-8')
+    path.chmod(0o755)
+
+
+def update_dockerfile_runtime(root: Path, runtime_env: dict, before_cmd: str) -> None:
+    path = root / 'dockerfiles' / 'Dockerfile'
+    if not path.is_file():
+        return
+    lines = path.read_text(encoding='utf-8').splitlines()
+    base_image = str((runtime_env.get('docker') or {}).get('base_image') or '').strip()
+    dependency_commands = (runtime_env.get('docker') or {}).get('dependency_commands') or []
+    if base_image:
+        for index, line in enumerate(lines):
+            if line.startswith('FROM ') and ' AS ' not in line:
+                lines[index] = f'FROM {base_image}'
+                break
+    if len(dependency_commands) == 1:
+        for index, line in enumerate(lines):
+            if line.startswith('RUN apt-get update'):
+                lines[index] = f'RUN {dependency_commands[0]}'
+                break
+    replacement = f'    && {before_cmd or "true"} \\'
+    for index, line in enumerate(lines[:-1]):
+        if 'if [ ! -d .git ]; then' in line and lines[index + 1].lstrip().startswith('&& '):
+            lines[index + 1] = replacement
+            path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+            return
 
 
 def update_task_metadata(root: Path, runtime_env: dict) -> None:
@@ -322,6 +393,10 @@ def update_task_metadata(root: Path, runtime_env: dict) -> None:
     task = load_json(task_path)
     if not task:
         return
+    setup_command = compose_setup_command(runtime_env.get('setup_commands') or [])
+    if setup_command:
+        task['before_repo_set_cmd'] = setup_command
+        task['requirements'] = setup_command
     metadata = task.setdefault('metadata', {})
     metadata['runtime_env'] = {
         'schema_version': runtime_env['schema_version'],
@@ -331,6 +406,9 @@ def update_task_metadata(root: Path, runtime_env: dict) -> None:
         'docker_dependency_count': len(runtime_env['docker']['dependency_commands']),
     }
     task_path.write_text(json.dumps(task, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    if setup_command:
+        update_run_selected_tests_before_cmd(root, setup_command)
+        update_dockerfile_runtime(root, runtime_env, setup_command)
 
 
 def main() -> int:

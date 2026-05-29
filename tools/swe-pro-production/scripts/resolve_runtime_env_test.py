@@ -87,6 +87,63 @@ class ResolveRuntimeEnvTest(unittest.TestCase):
             self.assertNotIn("pip install -e .", "\n".join(runtime["setup_commands"]))
             self.assertNotIn("--break-system-packages", "\n".join(runtime["setup_commands"]))
 
+    def test_update_task_metadata_publishes_before_repo_set_cmd(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            (package / "repo" / "src" / "demo").mkdir(parents=True)
+            (package / "scripts").mkdir()
+            (package / "dockerfiles").mkdir()
+            (package / "repo" / "pyproject.toml").write_text(
+                "[project]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+                encoding="utf-8",
+            )
+            (package / "repo" / "src" / "demo" / "setup.py").write_text(
+                "print('not a packaging manifest')\n",
+                encoding="utf-8",
+            )
+            (package / "task.json").write_text(
+                json.dumps(
+                    {
+                        "repo": "acme/demo",
+                        "base_commit": "abc123",
+                        "repo_language": "python",
+                        "before_repo_set_cmd": "true",
+                        "requirements": "",
+                        "fail_to_pass": ["python3 -m pytest tests/test_demo.py"],
+                        "pass_to_pass": ["python3 -m pytest tests/test_demo.py"],
+                        "selected_test_files_to_run": ["tests/test_demo.py"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (package / "scripts" / "run_selected_tests.sh").write_text(
+                "#!/usr/bin/env bash\nBEFORE_REPO_SET_CMD=true\nrun_before_repo_set_cmd() { eval \"$BEFORE_REPO_SET_CMD\"; }\n",
+                encoding="utf-8",
+            )
+            (package / "dockerfiles" / "Dockerfile").write_text(
+                """FROM python:3.11-slim-bookworm
+RUN git config --global --add safe.directory /workspace/repo \\
+    && cd /workspace/repo \\
+    && if [ ! -d .git ]; then git init -q && git config user.email "fly-agent@example.invalid" && git config user.name "fly-agent" && git add -A && git commit -q -m "baseline snapshot"; fi \\
+    && true \\
+    && chmod +x /workspace/scripts/*.sh /workspace/scripts/parser.py
+""",
+                encoding="utf-8",
+            )
+
+            runtime = resolve_runtime_env.resolve_runtime_env(package)
+            resolve_runtime_env.update_task_metadata(package, runtime)
+
+            task = json.loads((package / "task.json").read_text(encoding="utf-8"))
+            self.assertIn("python3 -m pip install .", task["before_repo_set_cmd"])
+            self.assertEqual(task["before_repo_set_cmd"], task["requirements"])
+            self.assertNotIn("src/demo", task["before_repo_set_cmd"])
+            self.assertIn("python3 -m pip install .", (package / "scripts" / "run_selected_tests.sh").read_text(encoding="utf-8"))
+            dockerfile = (package / "dockerfiles" / "Dockerfile").read_text(encoding="utf-8")
+            self.assertIn("FROM python:3.11-slim-bookworm", dockerfile)
+            self.assertIn("python3 -m pip install .", dockerfile)
+            self.assertIn("&& cd /workspace/repo", dockerfile)
+
     def test_package_task_does_not_mutate_dockerfile_from_runtime_env_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             package = Path(tmp)

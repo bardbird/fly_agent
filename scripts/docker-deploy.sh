@@ -39,6 +39,22 @@ init_env() {
     fi
 }
 
+host_run_uid() {
+    if [[ "$(id -u)" == "0" && -n "${SUDO_UID:-}" ]]; then
+        printf '%s\n' "$SUDO_UID"
+        return
+    fi
+    id -u
+}
+
+host_run_gid() {
+    if [[ "$(id -u)" == "0" && -n "${SUDO_GID:-}" ]]; then
+        printf '%s\n' "$SUDO_GID"
+        return
+    fi
+    id -g
+}
+
 env_value() {
     local key="$1"
     local fallback="${2:-}"
@@ -56,18 +72,70 @@ env_value() {
     printf '%s\n' "$value"
 }
 
-ensure_owned_dir() {
-    local dir="$1"
-    if mkdir -p "$dir" 2>/dev/null; then
+docker_socket_gid() {
+    local sock
+    sock="$(env_value DOCKER_SOCK /var/run/docker.sock)"
+    if [[ -e "$sock" ]]; then
+        stat -c '%g' "$sock"
+        return
+    fi
+    if getent group docker >/dev/null 2>&1; then
+        getent group docker | awk -F: '{print $3}'
+        return
+    fi
+    host_run_gid
+}
+
+ensure_env_default() {
+    local key="$1"
+    local value="$2"
+    if grep -Eq "^${key}=" "$ENV_FILE" 2>/dev/null; then
+        return
+    fi
+    printf '\n%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+}
+
+ensure_runtime_identity_env() {
+    ensure_env_default FLY_AGENT_RUN_UID "$(host_run_uid)"
+    ensure_env_default FLY_AGENT_RUN_GID "$(host_run_gid)"
+    ensure_env_default DOCKER_GID "$(docker_socket_gid)"
+}
+
+run_root_cmd() {
+    if [[ "$(id -u)" == "0" ]]; then
+        "$@"
         return
     fi
     if command -v sudo >/dev/null 2>&1; then
-        sudo mkdir -p "$dir"
-        sudo chown -R "$(id -u):$(id -g)" "$dir"
+        sudo "$@"
         return
     fi
-    echo "Cannot create $dir. Create it manually or run with a user that can write there." >&2
+    echo "Cannot run privileged command: $*" >&2
+    echo "Install sudo or create/chown the deployment directories manually." >&2
     exit 1
+}
+
+ensure_owned_dir() {
+    local dir="$1"
+    local uid gid current_owner
+    uid="$(env_value FLY_AGENT_RUN_UID "$(host_run_uid)")"
+    gid="$(env_value FLY_AGENT_RUN_GID "$(host_run_gid)")"
+
+    if [[ ! -d "$dir" ]]; then
+        mkdir -p "$dir" 2>/dev/null || run_root_cmd mkdir -p "$dir"
+    fi
+
+    current_owner="$(stat -c '%u:%g' "$dir")"
+    if [[ "$current_owner" != "$uid:$gid" ]]; then
+        run_root_cmd chown "$uid:$gid" "$dir"
+    fi
+
+    chmod u+rwx,g+rwx "$dir" 2>/dev/null || run_root_cmd chmod u+rwx,g+rwx "$dir"
+
+    if find "$dir" -xdev \( ! -uid "$uid" -o ! -gid "$gid" \) -print -quit 2>/dev/null | grep -q .; then
+        echo "Repairing entries not owned by $uid:$gid under $dir"
+        run_root_cmd find "$dir" -xdev \( ! -uid "$uid" -o ! -gid "$gid" \) -exec chown -h "$uid:$gid" {} +
+    fi
 }
 
 python_for_swe_agent() {
@@ -164,6 +232,7 @@ clean_images() {
 command="${1:-help}"
 if [[ "$command" != "help" && "$command" != "-h" && "$command" != "--help" ]]; then
     init_env
+    ensure_runtime_identity_env
 fi
 
 case "$command" in

@@ -39,6 +39,16 @@ FLY_AGENT_LOG_DIR=/data/fly-agent/logs
 XXL_JOB_LOG_DIR=/data/fly-agent/logs/xxl-job
 ```
 
+`fly-agent-server` 和 `fly-agent-task` 默认以宿主机部署用户运行，避免评测产物在宿主机上变成 root-owned 文件。`scripts/docker-deploy.sh` 会在 `deploy/docker/.env` 缺失以下值时自动写入：
+
+```bash
+FLY_AGENT_RUN_UID=$(id -u)
+FLY_AGENT_RUN_GID=$(id -g)
+DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
+```
+
+启动前脚本也会创建并校正 `SWE_OUTPUT_HOST_DIR`、`FLY_AGENT_LOG_DIR`、`XXL_JOB_LOG_DIR` 的 owner，并修复历史 root-owned 产物。
+
 日志默认落在宿主机：
 
 ```bash
@@ -135,6 +145,9 @@ sudo rsync -a tools/SWE-agent/ /opt/fly-agent/swe-agent/
 - `SWE_OUTPUT_HOST_DIR`
 - `FLY_AGENT_LOG_DIR`
 - `XXL_JOB_LOG_DIR`
+- `FLY_AGENT_RUN_UID`
+- `FLY_AGENT_RUN_GID`
+- `DOCKER_GID`
 
 默认配置假设 MySQL、Redis、XXL-Job Admin 在 `51.161.15.134` 上运行；如部署环境不同，通过 `deploy/docker/.env` 覆盖对应地址。
 
@@ -238,5 +251,6 @@ curl -sS http://127.0.0.1:6677/api/v1/swe/tasks | head
 
 - `deploy/docker/.env` 不提交仓库，真实 token 只保存在部署机器。
 - SWE-Pro 评测会从容器内调用 Docker，因此 compose 默认挂载 `/var/run/docker.sock`。
+- 后端容器默认不以 root 运行，必须保证 `DOCKER_GID` 等于宿主机 Docker socket 的 group id，否则容器内无法访问 Docker。
 - 评测输出目录固定为宿主机 `/data/fly-agent/swe-output`，容器内路径也是 `/data/fly-agent/swe-output`，避免容器内再启动 Docker 时出现路径不一致。
 - 如果 XXL-Job Admin 不在宿主机，需要把 `XXL_JOB_ADMIN_ADDRESSES` 改为容器可访问地址。

@@ -34,7 +34,8 @@ WORKDIR /app
 COPY --from=build /tmp/app.jar /app/app.jar
 COPY tools/swe-pro-production /app/tools/swe-pro-production
 
-RUN mkdir -p /data/fly-agent/swe-output /data/applogs/xxl-job/jobhandler /opt/fly-agent/swe-agent
+RUN mkdir -p /data/fly-agent/swe-output /data/applogs/xxl-job/jobhandler /opt/fly-agent/swe-agent /tmp/fly-agent-home /app/logs \
+    && chmod 1777 /tmp/fly-agent-home /data/fly-agent/swe-output /data/applogs/xxl-job/jobhandler /app/logs
 
 ENV JAVA_OPTS="" \
     SWE_TOOLKIT_ROOT=/app/tools/swe-pro-production \

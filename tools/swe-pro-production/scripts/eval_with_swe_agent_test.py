@@ -323,6 +323,12 @@ CMD ["bash", "/workspace/scripts/run_selected_tests.sh", "fixed"]
         self.assertIn("command -v swerex-remote", sanitized)
         self.assertIn('CMD ["bash"]', sanitized)
 
+    def test_model_safe_preflight_does_not_use_login_shell(self) -> None:
+        source = Path(eval_with_swe_agent.__file__).read_text(encoding="utf-8")
+
+        self.assertIn("'/bin/sh',\n        '-c',", source)
+        self.assertNotIn("'/bin/sh',\n        '-lc',", source)
+
     def test_summary_counts_only_model_attempts_but_keeps_preflight_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             package = Path(tmp)

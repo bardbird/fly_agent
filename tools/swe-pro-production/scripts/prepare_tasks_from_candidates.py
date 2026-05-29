@@ -34,10 +34,10 @@ LANG_DEFAULTS = {
         'pass_cmd': "go test ./... -count=1",
     },
     'python': {
-        'base_image': 'ubuntu:22.04',
+        'base_image': 'python:3.11-slim-bookworm',
         'toolchain_stages': '',
         'toolchain_copy': '',
-        'dependencies_cmd': 'apt-get update && apt-get install -y --no-install-recommends ca-certificates git bash python3 python3-pip python3-venv python3-dev build-essential && rm -rf /var/lib/apt/lists/* && python3 --version && python3 -m pip --version && PIP_NO_CACHE_DIR=1 PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install --upgrade pip setuptools wheel pytest',
+        'dependencies_cmd': 'apt-get update && apt-get install -y --no-install-recommends ca-certificates git bash python3-dev build-essential && rm -rf /var/lib/apt/lists/* && python3 --version && python3 -m pip --version && PIP_NO_CACHE_DIR=1 python3 -m pip install --upgrade pip setuptools wheel pytest',
         'before_cmd': '',
         'fail_cmd': 'python3 -m pytest',
         'pass_cmd': 'python3 -m pytest',
