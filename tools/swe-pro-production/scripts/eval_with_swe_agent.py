@@ -586,21 +586,16 @@ def sanitize_model_input_text(text: str) -> str:
 
 def step_budget_guidance(max_steps: int) -> str:
     explore_budget = max(4, min(10, max_steps // 4))
-    edit_deadline = max(1, max_steps - 8)
-    verify_deadline = max(1, max_steps - 3)
-    submit_deadline = max(1, max_steps - 1)
     return '\n'.join([
         '## SWE-agent Efficiency Guidance',
         '',
         f'You have at most {max_steps} actions.',
-        f'Use no more than {explore_budget} actions for broad repository exploration.',
+        f'Aim to spend no more than about {explore_budget} actions on broad repository exploration.',
         'Prefer targeted reads driven by the issue text before recursive scans.',
-        f'By action {edit_deadline}, stop broad exploration and start editing source files.',
-        f'By action {verify_deadline}, run the most targeted verification command you can afford.',
-        f'By action {submit_deadline}, inspect `git diff` and then finish.',
-        'Submission is mandatory: the final action must be exactly `submit`.',
-        'Do not spend the final action reading files, searching, explaining, or running another edit.',
-        'If verification is incomplete but you have plausible non-test source changes, run `submit` anyway.',
+        'Start editing once you have identified the relevant source paths.',
+        'Run the most targeted verification command that exercises the issue.',
+        'Inspect `git diff` before finishing.',
+        'Submit after you have made a plausible non-test source fix and run targeted verification when possible.',
         'For multi-line source edits, prefer a quoted heredoc script over complex shell quoting.',
     ])
 
