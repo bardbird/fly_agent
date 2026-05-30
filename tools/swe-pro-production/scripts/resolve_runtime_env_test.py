@@ -144,6 +144,108 @@ RUN git config --global --add safe.directory /workspace/repo \\
             self.assertIn("python3 -m pip install .", dockerfile)
             self.assertIn("&& cd /workspace/repo", dockerfile)
 
+    def test_update_task_metadata_publishes_multiple_docker_toolchains(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            (package / "repo" / "frontend").mkdir(parents=True)
+            (package / "repo" / "backend").mkdir()
+            (package / "scripts").mkdir()
+            (package / "dockerfiles").mkdir()
+            (package / "repo" / "frontend" / "package.json").write_text("{}", encoding="utf-8")
+            (package / "repo" / "backend" / "requirements.txt").write_text("pytest\n", encoding="utf-8")
+            (package / "task.json").write_text(
+                json.dumps(
+                    {
+                        "repo": "acme/demo",
+                        "base_commit": "abc123",
+                        "repo_language": "python",
+                        "fail_to_pass": ["python3 -m pytest test/sdk/test_demo.py"],
+                        "pass_to_pass": ["python3 -m pytest test/sdk/test_demo.py"],
+                        "selected_test_files_to_run": [
+                            "frontend/src/App.test.tsx",
+                            "test/sdk/test_demo.py",
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (package / "scripts" / "run_selected_tests.sh").write_text(
+                "#!/usr/bin/env bash\npython3 -m pytest test/sdk/test_demo.py\n",
+                encoding="utf-8",
+            )
+            (package / "dockerfiles" / "Dockerfile").write_text(
+                """FROM python:3.11-slim-bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git bash python3-dev build-essential && rm -rf /var/lib/apt/lists/*
+RUN git config --global --add safe.directory /workspace/repo \\
+    && cd /workspace/repo \\
+    && if [ ! -d .git ]; then git init -q && git config user.email "fly-agent@example.invalid" && git config user.name "fly-agent" && git add -A && git commit -q -m "baseline snapshot"; fi \\
+    && true \\
+    && chmod +x /workspace/scripts/*.sh /workspace/scripts/parser.py
+""",
+                encoding="utf-8",
+            )
+
+            runtime = resolve_runtime_env.resolve_runtime_env(package)
+            resolve_runtime_env.update_task_metadata(package, runtime)
+
+            dockerfile = (package / "dockerfiles" / "Dockerfile").read_text(encoding="utf-8")
+            self.assertIn("python3-dev", dockerfile)
+            self.assertIn("pytest", dockerfile)
+            self.assertIn("/root/.cache/pip", dockerfile)
+            self.assertIn("deb.nodesource.com/setup_22.x", dockerfile)
+            self.assertIn("nodejs", dockerfile)
+            self.assertIn("npm --version", dockerfile)
+            self.assertIn("npm cache clean --force", dockerfile)
+            self.assertIn("/root/.npm", dockerfile)
+
+    def test_generated_before_repo_set_cmd_is_not_readded_on_resume(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            (package / "repo" / "frontend").mkdir(parents=True)
+            (package / "repo" / "backend").mkdir()
+            (package / "scripts").mkdir()
+            (package / "repo" / "frontend" / "package.json").write_text("{}", encoding="utf-8")
+            (package / "repo" / "backend" / "requirements.txt").write_text("pytest\n", encoding="utf-8")
+            generated_before = (
+                "(cd frontend && npm install --legacy-peer-deps) && "
+                "(cd backend && PIP_NO_CACHE_DIR=1 PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install -r requirements.txt) && "
+                "(cd sdk && PIP_NO_CACHE_DIR=1 PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install .)"
+            )
+            (package / "repo" / "sdk").mkdir()
+            (package / "repo" / "sdk" / "pyproject.toml").write_text(
+                "[project]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+                encoding="utf-8",
+            )
+            (package / "task.json").write_text(
+                json.dumps(
+                    {
+                        "repo": "acme/demo",
+                        "base_commit": "abc123",
+                        "repo_language": "python",
+                        "before_repo_set_cmd": generated_before,
+                        "fail_to_pass": ["python3 -m pytest test/sdk/test_demo.py"],
+                        "pass_to_pass": ["python3 -m pytest test/sdk/test_demo.py"],
+                        "selected_test_files_to_run": [
+                            "frontend/src/App.test.tsx",
+                            "test/sdk/test_demo.py",
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (package / "scripts" / "run_selected_tests.sh").write_text(
+                f"#!/usr/bin/env bash\nBEFORE_REPO_SET_CMD={json.dumps(generated_before)}\n",
+                encoding="utf-8",
+            )
+
+            runtime = resolve_runtime_env.resolve_runtime_env(package)
+            setup = resolve_runtime_env.compose_setup_command(runtime["setup_commands"])
+
+            self.assertEqual(3, len(runtime["setup_commands"]))
+            self.assertEqual(1, setup.count("cd frontend && npm install --legacy-peer-deps"))
+            self.assertEqual(1, setup.count("cd backend && PIP_NO_CACHE_DIR=1 PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install -r requirements.txt"))
+            self.assertEqual(1, setup.count("cd sdk && PIP_NO_CACHE_DIR=1 PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install ."))
+
     def test_package_task_does_not_mutate_dockerfile_from_runtime_env_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             package = Path(tmp)

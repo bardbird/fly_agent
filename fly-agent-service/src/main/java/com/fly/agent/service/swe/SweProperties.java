@@ -21,9 +21,9 @@ public class SweProperties {
 
     private Integer qwenAttempts = 4;
 
-    private Integer opusAttempts = 1;
+    private Integer opusAttempts = 8;
 
-    private String opusMaxStepsSchedule = "180";
+    private String opusMaxStepsSchedule = "180,50,10";
 
     private Integer modelTimeoutSeconds = 3600;
 

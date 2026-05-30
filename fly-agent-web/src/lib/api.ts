@@ -7,6 +7,7 @@ import type {
   GithubPullScanResponse,
   GithubRepositorySearchResponse,
   GithubSortOrder,
+  SweAllowedRepoListResponse,
   SweModelIoConsole,
   SwePipelineRun,
   SwePipelineStartRequest,
@@ -333,4 +334,35 @@ export async function listSweCandidates(params?: {
     totalPages: response?.totalPages ?? 1,
     candidates: Array.isArray(response?.candidates) ? response.candidates : [],
   }
+}
+
+export async function listSweAllowedRepos(params?: {
+  page?: number
+  perPage?: number
+  language?: string
+  inCandidate?: boolean
+}): Promise<SweAllowedRepoListResponse> {
+  const response = unwrapResult(
+    await api.get<ApiResult<SweAllowedRepoListResponse>>('/swe/sca-report/allowed-repos', {
+      params,
+    })
+  )
+  return {
+    page: response?.page ?? params?.page ?? 1,
+    perPage: response?.perPage ?? params?.perPage ?? 20,
+    total: response?.total ?? 0,
+    totalPages: response?.totalPages ?? 1,
+    repositories: Array.isArray(response?.repositories) ? response.repositories : [],
+  }
+}
+
+export async function exportSweAllowedRepos(params?: {
+  language?: string
+  inCandidate?: boolean
+}): Promise<Blob> {
+  const response = await api.get('/swe/sca-report/allowed-repos/export', {
+    params,
+    responseType: 'blob',
+  })
+  return response.data
 }

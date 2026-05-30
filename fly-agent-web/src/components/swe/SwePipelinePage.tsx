@@ -8,9 +8,11 @@ import { cn } from '@/lib/utils'
 import {
   createSweTask,
   createSweTaskFromCandidate,
+  exportSweAllowedRepos,
   getSweModelIoConsole,
   getSweRuntimeSettings,
   getSweRun,
+  listSweAllowedRepos,
   listSweCandidates,
   listSweRuns,
   listSweTasks,
@@ -26,6 +28,7 @@ import type {
   GithubRepository,
   GithubSortOrder,
   PipelineStatus,
+  SweAllowedRepo,
   SweArtifact,
   SweModelIoAttempt,
   SweModelIoConsole,
@@ -59,6 +62,21 @@ const GITHUB_LANGUAGES: Array<{ value: GithubLanguage; label: string }> = [
   { value: 'javascript', label: 'JavaScript' },
   { value: 'php', label: 'PHP' },
   { value: 'ts', label: 'TypeScript' },
+  { value: 'python', label: 'Python' },
+  { value: 'java', label: 'Java' },
+]
+
+const SCA_LANGUAGE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'all', label: '全部语言' },
+  { value: 'unknown', label: 'Unknown' },
+  { value: 'c', label: 'C' },
+  { value: 'c++', label: 'C++' },
+  { value: 'ruby', label: 'Ruby' },
+  { value: 'rust', label: 'Rust' },
+  { value: 'go', label: 'Go' },
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'php', label: 'PHP' },
+  { value: 'typescript', label: 'TypeScript' },
   { value: 'python', label: 'Python' },
   { value: 'java', label: 'Java' },
 ]
@@ -115,6 +133,15 @@ export function SwePipelinePage() {
   const [githubTotal, setGithubTotal] = useState<number | null>(null)
   const [githubRepos, setGithubRepos] = useState<GithubRepository[]>([])
   const [selectedRepository, setSelectedRepository] = useState<GithubRepository | null>(null)
+  const [allowedRepos, setAllowedRepos] = useState<SweAllowedRepo[]>([])
+  const [allowedRepoLoading, setAllowedRepoLoading] = useState(false)
+  const [allowedRepoExporting, setAllowedRepoExporting] = useState(false)
+  const [allowedRepoPage, setAllowedRepoPage] = useState(1)
+  const [allowedRepoPerPage, setAllowedRepoPerPage] = useState(20)
+  const [allowedRepoTotal, setAllowedRepoTotal] = useState(0)
+  const [allowedRepoTotalPages, setAllowedRepoTotalPages] = useState(1)
+  const [allowedRepoLanguage, setAllowedRepoLanguage] = useState('all')
+  const [allowedRepoCandidateFilter, setAllowedRepoCandidateFilter] = useState('all')
   const [candidates, setCandidates] = useState<GithubPullCandidate[]>([])
   const [candidateLoading, setCandidateLoading] = useState(false)
   const [candidatePage, setCandidatePage] = useState(1)
@@ -202,6 +229,45 @@ export function SwePipelinePage() {
     }
   }
 
+  async function refreshAllowedRepos(
+    nextPage = allowedRepoPage,
+    nextPerPage = allowedRepoPerPage
+  ) {
+    setAllowedRepoLoading(true)
+    try {
+      const response = await listSweAllowedRepos({
+        page: nextPage,
+        perPage: nextPerPage,
+        language: allowedRepoLanguage === 'all' ? undefined : allowedRepoLanguage,
+        inCandidate: parseCandidateFilter(allowedRepoCandidateFilter),
+      })
+      setAllowedRepos(response.repositories)
+      setAllowedRepoPage(response.page)
+      setAllowedRepoPerPage(response.perPage)
+      setAllowedRepoTotal(response.total)
+      setAllowedRepoTotalPages(response.totalPages)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : '加载 SCA 放行仓库失败')
+    } finally {
+      setAllowedRepoLoading(false)
+    }
+  }
+
+  async function handleExportAllowedRepos() {
+    setAllowedRepoExporting(true)
+    try {
+      const blob = await exportSweAllowedRepos({
+        language: allowedRepoLanguage === 'all' ? undefined : allowedRepoLanguage,
+        inCandidate: parseCandidateFilter(allowedRepoCandidateFilter),
+      })
+      downloadBlob(blob, 'swe_sca_allowed_repos.csv')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : '导出 SCA 放行仓库失败')
+    } finally {
+      setAllowedRepoExporting(false)
+    }
+  }
+
   async function refreshRuntimeSettings(quiet = false) {
     if (!quiet) {
       setSettingsLoading(true)
@@ -235,6 +301,11 @@ export function SwePipelinePage() {
       setError(requestError instanceof Error ? requestError.message : '加载运行记录失败')
     )
   }, [selectedTaskId])
+
+  useEffect(() => {
+    if (activeStep !== 'discover') return
+    refreshAllowedRepos(1, allowedRepoPerPage)
+  }, [activeStep, allowedRepoLanguage, allowedRepoCandidateFilter])
 
   useEffect(() => {
     if (!selectedRun || selectedRun.status !== 'RUNNING') return
@@ -536,34 +607,53 @@ export function SwePipelinePage() {
         <WorkflowStepper activeStep={activeStep} onChange={setActiveStep} />
 
         {activeStep === 'discover' && (
-          <div className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
-            <GithubSearchPanel
-              language={searchLanguage}
-              keyword={searchKeyword}
-              minStars={minStars}
-              maxStars={maxStars}
-              starOrder={starOrder}
-              perPage={githubPerPage}
-              searching={searching}
-              onLanguageChange={setSearchLanguage}
-              onKeywordChange={setSearchKeyword}
-              onMinStarsChange={setMinStars}
-              onMaxStarsChange={setMaxStars}
-              onStarOrderChange={setStarOrder}
-              onPerPageChange={setGithubPerPage}
-              onSubmit={handleSearchGithub}
-            />
-            <RepositoryResultsPanel
-              repositories={githubRepos}
-              total={githubTotal}
-              page={githubPage}
-              totalPages={githubTotalPages}
-              searching={searching}
-              selectedRepository={selectedRepository}
-              onSelectRepository={setSelectedRepository}
-              onPageChange={runGithubSearch}
-              onUseRepository={useRepository}
-              onCreateAndRunCandidate={handleCreateAndRunFromCandidate}
+          <div className="space-y-4">
+            <div className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
+              <GithubSearchPanel
+                language={searchLanguage}
+                keyword={searchKeyword}
+                minStars={minStars}
+                maxStars={maxStars}
+                starOrder={starOrder}
+                perPage={githubPerPage}
+                searching={searching}
+                onLanguageChange={setSearchLanguage}
+                onKeywordChange={setSearchKeyword}
+                onMinStarsChange={setMinStars}
+                onMaxStarsChange={setMaxStars}
+                onStarOrderChange={setStarOrder}
+                onPerPageChange={setGithubPerPage}
+                onSubmit={handleSearchGithub}
+              />
+              <RepositoryResultsPanel
+                repositories={githubRepos}
+                total={githubTotal}
+                page={githubPage}
+                totalPages={githubTotalPages}
+                searching={searching}
+                selectedRepository={selectedRepository}
+                onSelectRepository={setSelectedRepository}
+                onPageChange={runGithubSearch}
+                onUseRepository={useRepository}
+                onCreateAndRunCandidate={handleCreateAndRunFromCandidate}
+              />
+            </div>
+            <AllowedRepoRegistryPanel
+              repositories={allowedRepos}
+              loading={allowedRepoLoading}
+              exporting={allowedRepoExporting}
+              page={allowedRepoPage}
+              perPage={allowedRepoPerPage}
+              total={allowedRepoTotal}
+              totalPages={allowedRepoTotalPages}
+              language={allowedRepoLanguage}
+              candidateFilter={allowedRepoCandidateFilter}
+              onLanguageChange={setAllowedRepoLanguage}
+              onCandidateFilterChange={setAllowedRepoCandidateFilter}
+              onRefresh={() => refreshAllowedRepos(allowedRepoPage, allowedRepoPerPage)}
+              onPageChange={(page) => refreshAllowedRepos(page, allowedRepoPerPage)}
+              onPerPageChange={(perPage) => refreshAllowedRepos(1, perPage)}
+              onExport={handleExportAllowedRepos}
             />
           </div>
         )}
@@ -1285,6 +1375,192 @@ function RepositoryResultsPanel({
           onCreateAndRunCandidate={onCreateAndRunCandidate}
         />
       )}
+    </div>
+  )
+}
+
+function AllowedRepoRegistryPanel({
+  repositories,
+  loading,
+  exporting,
+  page,
+  perPage,
+  total,
+  totalPages,
+  language,
+  candidateFilter,
+  onLanguageChange,
+  onCandidateFilterChange,
+  onRefresh,
+  onPageChange,
+  onPerPageChange,
+  onExport,
+}: {
+  repositories: SweAllowedRepo[]
+  loading: boolean
+  exporting: boolean
+  page: number
+  perPage: number
+  total: number
+  totalPages: number
+  language: string
+  candidateFilter: string
+  onLanguageChange: (language: string) => void
+  onCandidateFilterChange: (filter: string) => void
+  onRefresh: () => void
+  onPageChange: (page: number) => void
+  onPerPageChange: (perPage: number) => void
+  onExport: () => void
+}) {
+  return (
+    <div className="rounded-lg border border-terminal bg-white p-4 shadow-sm">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-2">
+          <Icon icon="mdi:shield-check-outline" className="h-5 w-5 text-cyan" />
+          <div>
+            <h3 className="text-sm font-bold text-text-primary">SCA 放行仓库</h3>
+            <p className="mt-1 text-xs text-text-secondary">
+              compatibility_status=ALLOW · {total.toLocaleString()} 条
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-[150px_150px_96px_96px_auto]">
+          <select
+            className="input-base h-9 text-xs"
+            value={language}
+            onChange={(event) => onLanguageChange(event.target.value)}
+          >
+            {SCA_LANGUAGE_OPTIONS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <select
+            className="input-base h-9 text-xs"
+            value={candidateFilter}
+            onChange={(event) => onCandidateFilterChange(event.target.value)}
+          >
+            <option value="all">全部候选状态</option>
+            <option value="in">已入候选</option>
+            <option value="not_in">未入候选</option>
+          </select>
+          <select
+            className="input-base h-9 text-xs"
+            value={perPage}
+            onChange={(event) => onPerPageChange(Number(event.target.value))}
+          >
+            <option value={10}>10/页</option>
+            <option value={20}>20/页</option>
+            <option value={50}>50/页</option>
+            <option value={100}>100/页</option>
+          </select>
+          <Button type="button" variant="outline" size="sm" disabled={loading} onClick={onRefresh}>
+            刷新
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={exporting || total === 0}
+            className="inline-flex items-center justify-center gap-2"
+            onClick={onExport}
+          >
+            <Icon icon="mdi:download" className="h-4 w-4" />
+            {exporting ? '导出中' : '导出'}
+          </Button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-left text-xs">
+          <thead className="border-b border-terminal text-text-muted">
+            <tr>
+              <th className="whitespace-nowrap px-3 py-2 font-bold">仓库</th>
+              <th className="whitespace-nowrap px-3 py-2 font-bold">语言</th>
+              <th className="whitespace-nowrap px-3 py-2 font-bold">Stars</th>
+              <th className="whitespace-nowrap px-3 py-2 font-bold">许可证</th>
+              <th className="whitespace-nowrap px-3 py-2 font-bold">候选</th>
+              <th className="whitespace-nowrap px-3 py-2 font-bold">检查时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            {repositories.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-3 py-8">
+                  <EmptyState icon={loading ? 'mdi:loading' : 'mdi:database-search'} text={loading ? '加载中' : '暂无 SCA 放行仓库'} />
+                </td>
+              </tr>
+            ) : (
+              repositories.map((repo) => (
+                <tr key={repo.id} className="border-b border-terminal/70 last:border-0">
+                  <td className="max-w-[360px] px-3 py-3">
+                    <a
+                      href={repo.githubUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block truncate font-bold text-cyan hover:underline"
+                    >
+                      {repo.repo}
+                    </a>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3 text-text-secondary">
+                    {repo.primaryLanguage || 'unknown'}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3 text-text-secondary">
+                    {(repo.githubStars ?? 0).toLocaleString()}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3">
+                    <span className="rounded-full bg-emerald-50 px-2 py-1 font-bold text-emerald-700">
+                      {repo.licenseSpdxId || '-'}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3">
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-1 font-bold',
+                        repo.inCandidate
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'bg-slate-100 text-slate-600'
+                      )}
+                    >
+                      {repo.inCandidate ? '已入库' : '未入库'}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3 text-text-secondary">
+                    {formatDate(repo.checkedAt)}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <span className="text-xs text-text-secondary">
+          第 {page} / {totalPages} 页
+        </span>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={loading || page <= 1}
+            onClick={() => onPageChange(page - 1)}
+          >
+            上一页
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={loading || page >= totalPages || repositories.length === 0}
+            onClick={() => onPageChange(page + 1)}
+          >
+            下一页
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -2446,6 +2722,23 @@ function parseOptionalNumber(value: string) {
   if (!trimmed) return undefined
   const parsed = Number(trimmed)
   return Number.isFinite(parsed) ? Math.max(parsed, 0) : undefined
+}
+
+function parseCandidateFilter(value: string) {
+  if (value === 'in') return true
+  if (value === 'not_in') return false
+  return undefined
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
 }
 
 function shorten(value?: string) {

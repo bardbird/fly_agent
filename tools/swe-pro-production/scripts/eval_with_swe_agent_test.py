@@ -391,6 +391,51 @@ CMD ["bash", "/workspace/scripts/run_selected_tests.sh", "fixed"]
             self.assertIn("- conclusion: partial", report)
             self.assertIn("- pr_diff_hidden_from_model: true", report)
 
+    def test_evaluate_model_patch_uses_startup_task_spec(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            run_dir = package / "model_evaluation" / "demo" / "run_01"
+            run_dir.mkdir(parents=True)
+            (package / "task.json").write_text(
+                json.dumps({
+                    "before_repo_set_cmd": "MUTATED",
+                    "fail_to_pass": ["MUTATED_FAIL"],
+                    "pass_to_pass": ["MUTATED_PASS"],
+                }),
+                encoding="utf-8",
+            )
+            startup_task = {
+                "before_repo_set_cmd": "FROZEN",
+                "fail_to_pass": ["FROZEN_FAIL"],
+                "pass_to_pass": ["FROZEN_PASS"],
+            }
+            captured = []
+
+            def fake_run_phase(package_arg, run_dir_arg, image, task, phase):
+                captured.append((phase, dict(task)))
+                return {
+                    "model_patch": 0,
+                    "test_patch": 0,
+                    "before_repo_set_cmd": 0,
+                    phase: 0,
+                }, ""
+
+            with patch.object(eval_with_swe_agent, "run_docker_eval_phase", side_effect=fake_run_phase), \
+                    patch.object(eval_with_swe_agent, "reset_repo"):
+                result = eval_with_swe_agent.evaluate_model_patch(
+                    package,
+                    run_dir,
+                    ["src/app.py"],
+                    "validation-image",
+                    startup_task,
+                )
+
+            self.assertTrue(result["passed"])
+            self.assertEqual(["fail_to_pass", "pass_to_pass"], [phase for phase, _ in captured])
+            self.assertEqual("FROZEN", captured[0][1]["before_repo_set_cmd"])
+            self.assertEqual(["FROZEN_FAIL"], captured[0][1]["fail_to_pass"])
+            self.assertEqual(["FROZEN_PASS"], captured[1][1]["pass_to_pass"])
+
     def test_missing_api_key_error_is_infrastructure_failure(self) -> None:
         result = {
             "passed": False,

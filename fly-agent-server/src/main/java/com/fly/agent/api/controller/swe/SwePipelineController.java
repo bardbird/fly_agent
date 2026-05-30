@@ -10,6 +10,7 @@ import com.fly.agent.common.dto.swe.SwePipelineStartRequest;
 import com.fly.agent.common.dto.swe.SweRuntimeSettingsRequest;
 import com.fly.agent.common.dto.swe.SweRuntimeSettingsResponse;
 import com.fly.agent.common.dto.swe.SweModelIoConsoleDTO;
+import com.fly.agent.common.dto.swe.SweAllowedRepoListResponse;
 import com.fly.agent.common.dto.swe.SweScaReportGenerateRequest;
 import com.fly.agent.common.dto.swe.SweScaReportGenerateResponse;
 import com.fly.agent.common.dto.swe.SweTaskCreateRequest;
@@ -23,6 +24,10 @@ import com.fly.agent.service.swe.SweScaReportService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -159,6 +164,29 @@ public class SwePipelineController {
     public Result<SweScaReportGenerateResponse> generateScaReport(
             @Valid @RequestBody SweScaReportGenerateRequest request) {
         return Result.ok(sweScaReportService.generate(request));
+    }
+
+    @GetMapping("/sca-report/allowed-repos")
+    public Result<SweAllowedRepoListResponse> listAllowedScaRepos(
+            @RequestParam(value = "page", required = false) Integer page,
+            @RequestParam(value = "perPage", required = false) Integer perPage,
+            @RequestParam(value = "language", required = false) String language,
+            @RequestParam(value = "inCandidate", required = false) Boolean inCandidate) {
+        return Result.ok(sweScaReportService.listAllowedRepos(page, perPage, language, inCandidate));
+    }
+
+    @GetMapping(value = "/sca-report/allowed-repos/export", produces = "text/csv;charset=UTF-8")
+    public ResponseEntity<String> exportAllowedScaRepos(
+            @RequestParam(value = "language", required = false) String language,
+            @RequestParam(value = "inCandidate", required = false) Boolean inCandidate) {
+        String csv = sweScaReportService.exportAllowedRepoCsv(language, inCandidate);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                        .filename("swe_sca_allowed_repos.csv")
+                        .build()
+                        .toString())
+                .body(csv);
     }
 
     @GetMapping("/runs")

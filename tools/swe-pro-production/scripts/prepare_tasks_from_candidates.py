@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse, csv, html, json, os, re, shlex, shutil, subprocess, sys, zipfile
 from pathlib import Path
 from typing import Iterable
+from urllib import error as urlerror
+from urllib import request as urlrequest
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 INIT_SCRIPT = SCRIPT_DIR / 'init_task_from_pr.py'
@@ -21,6 +23,12 @@ HEAVY_PASS_TO_PASS_TOKENS = (
     'e2e', 'gpu', 'integration', 'live', 'logger', 'loggers', 'model',
     'playwright', 'selenium', 'slow', 'test_utils', 'training', 'ui', 'wave',
     'yaml',
+)
+EXTERNAL_TEST_PATCH_PATTERNS = (
+    ('network fetch', r'\b(?:urlopen|urlretrieve|requests\.(?:get|post|put|delete|patch)|httpx\.(?:get|post|put|delete|patch))\b'),
+    ('literal remote URL', r'https?://'),
+    ('local service endpoint', r'localhost:\d+|127\.0\.0\.1:\d+'),
+    ('runtime API key', r'\b(?:api[_-]?key|API_KEY|Authorization)\b'),
 )
 
 LANG_DEFAULTS = {
@@ -435,7 +443,15 @@ def is_test_file(path: str) -> bool:
         'test' in parts
         or 'tests' in parts
         or '__tests__' in parts
-        or name.endswith(('_test.go', '_test.py', '.test.js', '.test.jsx', '.test.ts', '.test.tsx', '.spec.js', '.spec.jsx', '.spec.ts', '.spec.tsx'))
+        or any(part in {'src/test', 'src/androidtest'} for part in ('/'.join(parts[:idx + 1]) for idx in range(len(parts))))
+        or any(part.endswith('test') and part not in {'latest'} for part in parts)
+        or name.endswith((
+            '_test.go', '_test.py',
+            '.test.js', '.test.jsx', '.test.ts', '.test.tsx',
+            '.spec.js', '.spec.jsx', '.spec.ts', '.spec.tsx',
+            'test.java', 'tests.java', 'test.kt', 'tests.kt',
+            'test.cs', 'tests.cs', 'spec.rb', '_spec.rb',
+        ))
         or name.startswith('test_')
     )
 
@@ -1237,12 +1253,19 @@ def summarize_source_files(source_files: list[str]) -> str:
     return shown + extra
 
 
-def assess_test_patch(test_patch: str, test_files: list[str]) -> dict:
+def assess_test_patch(
+    test_patch: str,
+    test_files: list[str],
+    gold_patch: str = '',
+    issue_text: str = '',
+) -> dict:
     lines = test_patch.splitlines()
-    added = [line for line in lines if line.startswith('+') and not line.startswith('+++')]
-    removed = [line for line in lines if line.startswith('-') and not line.startswith('---')]
+    added = ['+' + line for line in added_lines_from_patch(test_patch)]
+    removed = ['-' + line for line in removed_lines_from_patch(test_patch)]
     changed = added + removed
     changed_text = '\n'.join(changed)
+    test_patch_paths = changed_paths_from_patch(test_patch)
+    non_test_patch_paths = [path for path in test_patch_paths if not is_test_support_file(path)]
 
     assertion_markers = (
         'assert', 'expect(', 'should', 'throws', 'fail(', 'assertThat(', 'assertEquals(',
@@ -1279,8 +1302,19 @@ def assess_test_patch(test_patch: str, test_files: list[str]) -> dict:
     if changed and structural_lines / max(len(changed), 1) >= 0.7:
         risks.append('测试改动多数是注解、导入、注释或空白调整，需人工确认不是噪声。')
 
+    if non_test_patch_paths:
+        risks.append('test.patch 包含非测试/fixture 文件，建议拆回 gold.patch: ' + ', '.join(non_test_patch_paths[:8]) + (' ...' if len(non_test_patch_paths) > 8 else '。'))
+
     if skip_lines > 0:
         risks.append(f'检测到约 {skip_lines} 行 skip/兼容性注解相关改动，需确认不是单纯放宽测试。')
+
+    external_signals = sorted(
+        label
+        for label, pattern in EXTERNAL_TEST_PATCH_PATTERNS
+        if re.search(pattern, changed_text, flags=re.I)
+    )
+    if external_signals:
+        risks.append('test.patch 可能依赖本地 Docker 不保证存在的外部资源: ' + ', '.join(external_signals) + '。')
 
     added_versions = sorted(set(re.findall(r'version[^"\']*["\']([^"\']+)["\']', changed_text, flags=re.I)))
     if added_versions:
@@ -1289,15 +1323,17 @@ def assess_test_patch(test_patch: str, test_files: list[str]) -> dict:
     if len(test_files) >= 3:
         strengths.append('测试改动覆盖多个测试文件，通常比单点 helper 锁定更抗过拟合。')
 
+    force_high = bool(external_signals or non_test_patch_paths)
+
     if not risks:
         level = 'low'
         summary = 'test.patch 启发式检查未发现明显噪声信号。'
-    elif len(risks) == 1:
-        level = 'medium'
-        summary = 'test.patch 存在一项噪声风险，建议在正式评测前复核。'
-    else:
+    elif force_high or len(risks) > 1:
         level = 'high'
         summary = 'test.patch 存在多项噪声风险，建议优先人工复核。'
+    else:
+        level = 'medium'
+        summary = 'test.patch 存在一项噪声风险，建议在正式评测前复核。'
 
     return {
         'level': level,
@@ -1313,6 +1349,8 @@ def assess_test_patch(test_patch: str, test_files: list[str]) -> dict:
             'skip_lines': skip_lines,
             'structural_lines': structural_lines,
             'version_literals': added_versions,
+            'external_resource_signals': external_signals,
+            'non_test_patch_paths': non_test_patch_paths,
         },
         'requires_manual_review': level == 'high' or not changed,
     }
@@ -1332,6 +1370,213 @@ def assess_oracle_alignment(row: dict, test_patch: str, assessment: dict) -> dic
         'blocking_reasons': [],
         'risks': risks,
     }
+
+
+def env_bool(name: str) -> bool:
+    return str(os.environ.get(name) or '').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def truncate_text(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    head = max_chars // 2
+    tail = max_chars - head
+    return text[:head] + '\n\n[... truncated for oracle review ...]\n\n' + text[-tail:]
+
+
+def extract_json_object(text: str) -> dict:
+    cleaned = text.strip()
+    if cleaned.startswith('```'):
+        cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
+        cleaned = re.sub(r'\s*```$', '', cleaned)
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        start = cleaned.find('{')
+        end = cleaned.rfind('}')
+        if start < 0 or end <= start:
+            raise
+        parsed = json.loads(cleaned[start:end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError('oracle review response is not a JSON object')
+    return parsed
+
+
+def build_oracle_review_prompt(
+    row: dict,
+    test_files: list[str],
+    source_files: list[str],
+    gold_patch: str,
+    test_patch: str,
+) -> str:
+    issue_text = (row.get('problem_statement') or '').strip()
+    return f'''You are reviewing a SWE-bench style task oracle for a multi-language benchmark.
+
+Goal:
+- Decide whether test.patch is a fair hidden oracle for the problem statement.
+- A fair oracle tests the user-visible/public behavior, not the reference implementation.
+- gold.patch is only evidence of one valid fix. Do not require candidates to match it.
+
+Return JSON only, with this schema:
+{{
+  "verdict": "accept" | "rewrite" | "reject" | "needs_manual_review",
+  "confidence": 0.0,
+  "behavior_contract": "One or two sentences describing the minimal behavior test.patch should verify.",
+  "fairness_summary": "Short explanation.",
+  "gold_leakage_risks": [
+    {{
+      "evidence": "Specific test assertion/import/symbol/path that depends on gold implementation.",
+      "why_overconstrained": "Why another valid implementation could fail it.",
+      "rewrite_guidance": "How to test the behavior instead."
+    }}
+  ],
+  "missing_oracle_risks": [
+    {{
+      "behavior": "Issue behavior not covered by test.patch.",
+      "suggested_assertion": "A black-box assertion that would cover it."
+    }}
+  ],
+  "stability_risks": [
+    {{
+      "evidence": "Network/time/randomness/concurrency/environment dependency, if any.",
+      "fix": "How to make it deterministic."
+    }}
+  ],
+  "rewrite_plan": [
+    "Concrete, language-agnostic or project-specific steps to make test.patch minimal and fair."
+  ]
+}}
+
+Decision rules:
+- accept: test.patch is minimal, behavior-focused, and should accept alternative valid fixes.
+- rewrite: test.patch is useful but includes over-specific implementation assertions.
+- reject: test.patch is mostly unrelated, untestable, or requires hidden requirements absent from the issue.
+- needs_manual_review: evidence is ambiguous or the patch is too large/truncated to judge.
+
+Problem statement:
+{truncate_text(issue_text, 12000)}
+
+Changed source files in gold.patch:
+{json.dumps(source_files[:80], ensure_ascii=False)}
+
+Changed test files in test.patch:
+{json.dumps(test_files[:80], ensure_ascii=False)}
+
+gold.patch:
+```diff
+{truncate_text(gold_patch, 28000)}
+```
+
+test.patch:
+```diff
+{truncate_text(test_patch, 28000)}
+```
+'''
+
+
+def call_openai_compatible_chat(
+    base_url: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+    timeout_seconds: int,
+) -> str:
+    url = base_url.rstrip('/') + '/chat/completions'
+    payload = {
+        'model': model,
+        'temperature': 0,
+        'messages': [
+            {
+                'role': 'system',
+                'content': 'You are a rigorous benchmark-oracle reviewer. Return only valid JSON.',
+            },
+            {'role': 'user', 'content': prompt},
+        ],
+        'response_format': {'type': 'json_object'},
+    }
+    body = json.dumps(payload).encode('utf-8')
+    req = urlrequest.Request(
+        url,
+        data=body,
+        headers={
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+    with urlrequest.urlopen(req, timeout=timeout_seconds) as resp:
+        data = json.loads(resp.read().decode('utf-8'))
+    return data['choices'][0]['message']['content']
+
+
+def run_llm_oracle_review(
+    pkg: Path,
+    row: dict,
+    test_files: list[str],
+    source_files: list[str],
+    args: argparse.Namespace,
+) -> dict:
+    enabled = bool(getattr(args, 'llm_oracle_review', False) or env_bool('SWE_LLM_ORACLE_REVIEW'))
+    model = getattr(args, 'llm_oracle_review_model', '') or os.environ.get('SWE_LLM_ORACLE_REVIEW_MODEL', '')
+    if not enabled:
+        return {'enabled': False, 'status': 'disabled'}
+    if not model:
+        return {'enabled': True, 'status': 'skipped', 'error': 'missing model; set --llm-oracle-review-model or SWE_LLM_ORACLE_REVIEW_MODEL'}
+    api_key_env = getattr(args, 'llm_oracle_review_api_key_env', '') or os.environ.get('SWE_LLM_ORACLE_REVIEW_API_KEY_ENV', 'OPENAI_API_KEY')
+    api_key = os.environ.get(api_key_env, '')
+    if not api_key:
+        return {'enabled': True, 'status': 'skipped', 'model': model, 'error': f'missing API key env {api_key_env}'}
+
+    base_url = getattr(args, 'llm_oracle_review_base_url', '') or os.environ.get('SWE_LLM_ORACLE_REVIEW_BASE_URL', 'https://api.openai.com/v1')
+    timeout_seconds = int(getattr(args, 'llm_oracle_review_timeout', 120) or os.environ.get('SWE_LLM_ORACLE_REVIEW_TIMEOUT', '120'))
+    gold_patch = (pkg / 'patches/gold.patch').read_text(encoding='utf-8') if (pkg / 'patches/gold.patch').is_file() else ''
+    test_patch = (pkg / 'patches/test.patch').read_text(encoding='utf-8') if (pkg / 'patches/test.patch').is_file() else ''
+    prompt = build_oracle_review_prompt(row, test_files, source_files, gold_patch, test_patch)
+
+    try:
+        content = call_openai_compatible_chat(base_url, api_key, model, prompt, timeout_seconds)
+        parsed = extract_json_object(content)
+        parsed['enabled'] = True
+        parsed['status'] = 'ok'
+        parsed['model'] = model
+        return parsed
+    except (urlerror.URLError, urlerror.HTTPError, TimeoutError, KeyError, json.JSONDecodeError, ValueError) as exc:
+        return {'enabled': True, 'status': 'error', 'model': model, 'error': str(exc)}
+
+
+def merge_llm_oracle_review(assessment: dict, review: dict) -> dict:
+    assessment = dict(assessment)
+    risks = list(assessment.get('risks') or [])
+    strengths = list(assessment.get('strengths') or [])
+    metrics = dict(assessment.get('metrics') or {})
+    metrics['llm_oracle_review_status'] = review.get('status')
+    assessment['llm_oracle_review'] = review
+    assessment['metrics'] = metrics
+
+    if review.get('status') != 'ok':
+        if review.get('enabled') and review.get('status') != 'disabled':
+            risks.append('GPT oracle review 未完成: ' + str(review.get('error') or review.get('status')))
+            assessment['requires_manual_review'] = True
+            assessment['level'] = 'high'
+        assessment['risks'] = risks
+        assessment['strengths'] = strengths
+        return assessment
+
+    verdict = str(review.get('verdict') or '').lower()
+    if verdict == 'accept':
+        strengths.append('GPT oracle review 判定 test.patch 基本行为聚焦。')
+    elif verdict in {'rewrite', 'reject', 'needs_manual_review'}:
+        risks.append('GPT oracle review 判定为 ' + verdict + ': ' + str(review.get('fairness_summary') or '需复核隐藏测试是否过约束。'))
+        assessment['requires_manual_review'] = True
+        assessment['level'] = 'high'
+    else:
+        risks.append('GPT oracle review 返回未知 verdict，需人工复核。')
+        assessment['requires_manual_review'] = True
+        assessment['level'] = 'high'
+
+    assessment['risks'] = risks
+    assessment['strengths'] = strengths
+    return assessment
 
 
 def model_visible_problem_title(row: dict) -> str:
@@ -1741,6 +1986,43 @@ def changed_paths_from_patch(patch: str) -> list[str]:
     return paths
 
 
+def added_lines_from_patch(patch: str) -> list[str]:
+    return [
+        line[1:]
+        for line in patch.splitlines()
+        if line.startswith('+') and not line.startswith('+++')
+    ]
+
+
+def removed_lines_from_patch(patch: str) -> list[str]:
+    return [
+        line[1:]
+        for line in patch.splitlines()
+        if line.startswith('-') and not line.startswith('---')
+    ]
+
+
+def changed_lines_from_patch(patch: str) -> list[str]:
+    return added_lines_from_patch(patch) + removed_lines_from_patch(patch)
+
+
+def is_test_support_file(path: str) -> bool:
+    lower = path.lower()
+    parts = lower.split('/')
+    name = parts[-1]
+    return (
+        is_test_file(path)
+        or any(part in {
+            'testdata', 'fixtures', 'fixture', 'snapshots', '__snapshots__',
+            'golden', 'goldens', 'mocks', 'mock', 'stubs', 'stub',
+        } for part in parts)
+        or '/src/test/resources/' in lower
+        or '/src/androidtest/assets/' in lower
+        or '/src/androidtest/res/' in lower
+        or name.endswith(('.snap', '.snapshot', '.golden'))
+    )
+
+
 def infer_issue_tags(row: dict, data: dict, test_files: list[str] | None) -> tuple[list[str], list[str]]:
     metadata = data.get('metadata') if isinstance(data.get('metadata'), dict) else {}
     specificity = first_nonempty_list(
@@ -1822,7 +2104,12 @@ def hydrate_from_reference_package(pkg: Path, reference: Path) -> dict:
     verification = (task.get('metadata') or {}).get('verification') or {}
     assessment = verification.get('test_patch_denoise_assessment')
     if not isinstance(assessment, dict):
-        assessment = assess_test_patch((pkg / 'patches/test.patch').read_text(encoding='utf-8'), test_files)
+        assessment = assess_test_patch(
+            (pkg / 'patches/test.patch').read_text(encoding='utf-8'),
+            test_files,
+            (pkg / 'patches/gold.patch').read_text(encoding='utf-8') if (pkg / 'patches/gold.patch').is_file() else '',
+            str(task.get('problem_statement') or ''),
+        )
     return {
         'test_files': test_files,
         'fail_to_pass': fail_to_pass,
@@ -1993,6 +2280,11 @@ def main() -> int:
     ap.add_argument('--no-clone', action='store_true', help='Only scaffold package dirs; do not clone repo or generate gold.patch')
     ap.add_argument('--continue-on-error', action='store_true', help='Continue preparing later candidates when one candidate fails')
     ap.add_argument('--only', action='append', default=[], help='Only prepare rows matching this candidate_id or pr_url; repeatable')
+    ap.add_argument('--llm-oracle-review', action='store_true', help='Use an OpenAI-compatible GPT reviewer to assess test.patch fairness and rewrite risk')
+    ap.add_argument('--llm-oracle-review-model', default=os.environ.get('SWE_LLM_ORACLE_REVIEW_MODEL', ''))
+    ap.add_argument('--llm-oracle-review-base-url', default=os.environ.get('SWE_LLM_ORACLE_REVIEW_BASE_URL', 'https://api.openai.com/v1'))
+    ap.add_argument('--llm-oracle-review-api-key-env', default=os.environ.get('SWE_LLM_ORACLE_REVIEW_API_KEY_ENV', 'OPENAI_API_KEY'))
+    ap.add_argument('--llm-oracle-review-timeout', type=int, default=int(os.environ.get('SWE_LLM_ORACLE_REVIEW_TIMEOUT', '120')))
     args=ap.parse_args()
     rows=read_candidates(Path(args.candidates))
     statuses={x.strip() for x in args.statuses.split(',') if x.strip()}
@@ -2020,7 +2312,12 @@ def main() -> int:
                 test_files, source_files = generate_patches(pkg, row['base_commit'], row['fix_commit'])
                 test_patch_text = (pkg/'patches/test.patch').read_text(encoding='utf-8')
                 test_ids = extract_test_ids_from_patch(test_patch_text)
-                assessment = assess_test_patch(test_patch_text, test_files)
+                assessment = assess_test_patch(
+                    test_patch_text,
+                    test_files,
+                    (pkg / 'patches/gold.patch').read_text(encoding='utf-8') if (pkg / 'patches/gold.patch').is_file() else '',
+                    row.get('problem_statement') or '',
+                )
                 if test_patch_text.strip() == '':
                     reference = find_reference_package(row)
                     if reference is not None:
@@ -2035,6 +2332,9 @@ def main() -> int:
                             'LLM-generated gold/test patch fallback is disabled'
                         )
             if test_files is not None:
+                if assessment is not None:
+                    review = run_llm_oracle_review(pkg, row, test_files, source_files, args)
+                    assessment = merge_llm_oracle_review(assessment, review)
                 write_problem_statement(pkg, row, test_files, source_files)
             else:
                 write_problem_stub(pkg, row)

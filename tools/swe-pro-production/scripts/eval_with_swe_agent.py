@@ -458,8 +458,8 @@ def ensure_dockerignore(package: Path) -> None:
         path.write_text(DOCKERIGNORE_TEXT, encoding='utf-8')
 
 
-def ensure_swe_agent_docker_image(package: Path) -> str | None:
-    task = read_task(package)
+def ensure_swe_agent_docker_image(package: Path, task: dict | None = None) -> str | None:
+    task = task or read_task(package)
     image = task.get('docker_image') or task.get('dockerhub_tag')
     if not image:
         return None
@@ -584,8 +584,8 @@ def sanitize_model_input_text(text: str) -> str:
     return '\n'.join(cleaned).strip()
 
 
-def write_swe_agent_problem_statement(package: Path, max_steps: int = 20) -> str:
-    task = read_task(package)
+def write_swe_agent_problem_statement(package: Path, max_steps: int = 20, task: dict | None = None) -> str:
+    task = task or read_task(package)
     source = ''
     problem_file = package / 'problem_statement.md'
     if problem_file.is_file():
@@ -806,8 +806,8 @@ def test_output_for_result(result: dict, status: str) -> dict:
     }
 
 
-def safe_task_metadata(package: Path) -> dict:
-    task = read_task(package)
+def safe_task_metadata(package: Path, task: dict | None = None) -> dict:
+    task = task or read_task(package)
     metadata = task.get('metadata') if isinstance(task.get('metadata'), dict) else {}
     evidence_links = task.get('evidence_links') if isinstance(task.get('evidence_links'), list) else []
     return {
@@ -820,7 +820,13 @@ def safe_task_metadata(package: Path) -> dict:
     }
 
 
-def write_evaluation_artifacts(package: Path, run_dir: Path, result: dict, model: str) -> dict:
+def write_evaluation_artifacts(
+    package: Path,
+    run_dir: Path,
+    result: dict,
+    model: str,
+    task: dict | None = None,
+) -> dict:
     eval_log = run_dir / 'eval.log'
     log_text = eval_log.read_text(encoding='utf-8', errors='replace') if eval_log.is_file() else ''
     status = standard_status(result, log_text)
@@ -828,7 +834,7 @@ def write_evaluation_artifacts(package: Path, run_dir: Path, result: dict, model
     test_output = test_output_for_result(result, status)
     (run_dir / 'test_output.json').write_text(json.dumps(test_output, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
-    metadata = safe_task_metadata(package)
+    metadata = safe_task_metadata(package, task)
     report = [
         '# PR-Based Model Evaluation Report',
         '',
@@ -962,8 +968,14 @@ def run_docker_eval_phase(package: Path, run_dir: Path, image: str, task: dict, 
     return docker_eval_rcs(output), output
 
 
-def evaluate_model_patch(package: Path, run_dir: Path, files_changed: list[str], validation_image: str) -> dict:
-    task = read_task(package)
+def evaluate_model_patch(
+    package: Path,
+    run_dir: Path,
+    files_changed: list[str],
+    validation_image: str,
+    task: dict | None = None,
+) -> dict:
+    task = task or read_task(package)
     result = {
         'model_patch_applied': False,
         'test_patch_applied': False,
@@ -1209,8 +1221,9 @@ def run_swe_agent_attempt(
         args: argparse.Namespace,
         problem_path: Path,
         safe_image: str | None,
-        validation_image: str) -> dict:
-    task = read_task(package)
+        validation_image: str,
+        task: dict | None = None) -> dict:
+    task = task or read_task(package)
     sweagent_bin = resolve_sweagent_bin(args.swe_agent_root)
     output_dir = run_dir / 'swe_agent'
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1252,15 +1265,15 @@ def run_swe_agent_attempt(
         files_changed = materialize_current_repo_diff(package, run_dir)
         if not files_changed:
             raise RuntimeError(f'SWE-agent reached max_steps={args.agent_max_steps} without producing a patch')
-        result = evaluate_model_patch(package, run_dir, files_changed, validation_image)
+        result = evaluate_model_patch(package, run_dir, files_changed, validation_image, task)
         result['partial_no_submit'] = True
         if result.get('error'):
             result['error'] = f"partial_no_submit: {result['error']}"
-        write_evaluation_artifacts(package, run_dir, result, args.model)
+        write_evaluation_artifacts(package, run_dir, result, args.model, task)
         return result
     files_changed = materialize_patch_from_swe_agent(package, run_dir, patch)
-    result = evaluate_model_patch(package, run_dir, files_changed, validation_image)
-    write_evaluation_artifacts(package, run_dir, result, args.model)
+    result = evaluate_model_patch(package, run_dir, files_changed, validation_image, task)
+    write_evaluation_artifacts(package, run_dir, result, args.model, task)
     return result
 
 
@@ -1335,11 +1348,12 @@ def main() -> int:
 
     out = unique_output_dir(package / 'model_evaluation' / args.out_name)
     out.mkdir(parents=True, exist_ok=True)
+    task_snapshot = read_task(package)
     safe_image = None
     validation_image = None
     preflight_summary: dict | None = None
     try:
-        safe_image = ensure_swe_agent_docker_image(package)
+        safe_image = ensure_swe_agent_docker_image(package, task_snapshot)
         validation_image = ensure_validation_docker_image(package)
         preflight_summary = preflight_model_safe_image(package, safe_image)
     except Exception as exc:
@@ -1348,7 +1362,7 @@ def main() -> int:
     max_steps_schedule = parse_max_steps_schedule(args.agent_max_steps_schedule, args.agent_max_steps)
     first_max_steps = max_steps_for_attempt(max_steps_schedule, 1)
     args.agent_max_steps = first_max_steps
-    write_swe_agent_problem_statement(package, first_max_steps)
+    write_swe_agent_problem_statement(package, first_max_steps, task_snapshot)
     write_swe_agent_guard_config(package, args)
     problem_path = package / 'model_evaluation' / '_swe_agent_problem_statement.md'
     if args.preflight_only:
@@ -1361,7 +1375,7 @@ def main() -> int:
     for attempt in range(1, args.attempts + 1):
         attempt_max_steps = max_steps_for_attempt(max_steps_schedule, attempt)
         args.agent_max_steps = attempt_max_steps
-        write_swe_agent_problem_statement(package, attempt_max_steps)
+        write_swe_agent_problem_statement(package, attempt_max_steps, task_snapshot)
         run_dir = out / f'run_{attempt:02d}'
         run_dir.mkdir(parents=True, exist_ok=True)
         result = {
@@ -1372,7 +1386,15 @@ def main() -> int:
             'preflight': preflight_summary,
         }
         try:
-            result.update(run_swe_agent_attempt(package, run_dir, args, problem_path, safe_image, validation_image))
+            result.update(run_swe_agent_attempt(
+                package,
+                run_dir,
+                args,
+                problem_path,
+                safe_image,
+                validation_image,
+                task_snapshot,
+            ))
         except Exception as exc:
             result.update({'passed': False, 'error': str(exc)})
             output_log = run_dir / 'swe_agent_output.log'
@@ -1382,7 +1404,7 @@ def main() -> int:
                 output_tail = '\n\nSWE-agent output tail:\n' + text[-8000:]
             (run_dir / 'eval.log').write_text('ERROR: ' + str(exc) + output_tail + '\n', encoding='utf-8')
             reset_repo(package)
-            write_evaluation_artifacts(package, run_dir, result, args.model)
+            write_evaluation_artifacts(package, run_dir, result, args.model, task_snapshot)
         result.update(model_api_artifact_info(package, run_dir))
         results.append(result)
         write_summary(package, out, args.out_name, args.model, args.base_url, results)

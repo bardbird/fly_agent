@@ -9,9 +9,9 @@ import tomllib
 from pathlib import Path
 
 
-NODE_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git bash build-essential && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y --no-install-recommends nodejs && rm -rf /var/lib/apt/lists/* && node --version && npm --version && git --version'
+NODE_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git bash build-essential && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y --no-install-recommends nodejs && npm cache clean --force && rm -rf /root/.npm /var/lib/apt/lists/* && node --version && npm --version && git --version'
 PYTHON_BASE_IMAGE = 'python:3.11-slim-bookworm'
-PYTHON_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates git bash python3-dev build-essential && rm -rf /var/lib/apt/lists/* && python3 --version && python3 -m pip --version && PIP_NO_CACHE_DIR=1 python3 -m pip install --upgrade pip setuptools wheel'
+PYTHON_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates git bash python3-dev build-essential && rm -rf /var/lib/apt/lists/* && python3 --version && python3 -m pip --version && PIP_NO_CACHE_DIR=1 python3 -m pip install --upgrade pip setuptools wheel pytest && rm -rf /root/.cache/pip'
 JAVA_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates git bash openjdk-17-jdk-headless maven gradle && rm -rf /var/lib/apt/lists/* && java -version && mvn -version && gradle --version'
 GO_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git bash build-essential unzip && ARCH="$(dpkg --print-architecture)" && case "$ARCH" in amd64) GOARCH=amd64 ;; arm64) GOARCH=arm64 ;; *) echo "unsupported Go architecture: $ARCH" >&2; exit 1 ;; esac && curl -fsSL "https://go.dev/dl/go1.25.1.linux-${GOARCH}.tar.gz" -o /tmp/go.tgz && tar -C /usr/local -xzf /tmp/go.tgz && ln -s /usr/local/go/bin/go /usr/local/bin/go && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt && rm -f /tmp/go.tgz && rm -rf /var/lib/apt/lists/* && go env -w GOPROXY=https://goproxy.cn,direct GOSUMDB=sum.golang.google.cn && go version'
 RUST_DEPENDENCIES_CMD = 'apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git bash build-essential pkg-config libssl-dev libxtst-dev libx11-dev libwayland-dev libxkbcommon-dev && curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal && ln -s /root/.cargo/bin/cargo /usr/local/bin/cargo && ln -s /root/.cargo/bin/rustc /usr/local/bin/rustc && rm -rf /var/lib/apt/lists/* && rustc --version && cargo --version'
@@ -303,7 +303,11 @@ def resolve_runtime_env(root: Path) -> dict:
         add_unique(setup_commands, 'cargo fetch')
 
     existing_before = str(task.get('before_repo_set_cmd') or '').strip()
-    if existing_before and existing_before not in setup_commands:
+    if (
+        existing_before
+        and existing_before not in setup_commands
+        and not generated_setup_command_already_covers(existing_before, setup_commands)
+    ):
         setup_commands.insert(0, existing_before)
 
     dependency_commands: list[str] = []
@@ -331,6 +335,12 @@ def resolve_runtime_env(root: Path) -> dict:
 
 def compose_setup_command(commands: list[str]) -> str:
     return ' && '.join(f'({command})' for command in commands if command.strip())
+
+
+def generated_setup_command_already_covers(existing_before: str, setup_commands: list[str]) -> bool:
+    if not existing_before.strip() or not setup_commands:
+        return False
+    return all(command.strip() and command.strip() in existing_before for command in setup_commands)
 
 
 def docker_base_image(languages: list[str]) -> str:
@@ -375,10 +385,11 @@ def update_dockerfile_runtime(root: Path, runtime_env: dict, before_cmd: str) ->
             if line.startswith('FROM ') and ' AS ' not in line:
                 lines[index] = f'FROM {base_image}'
                 break
-    if len(dependency_commands) == 1:
+    if dependency_commands:
+        dependency_command = ' && '.join(command for command in dependency_commands if str(command).strip())
         for index, line in enumerate(lines):
             if line.startswith('RUN apt-get update'):
-                lines[index] = f'RUN {dependency_commands[0]}'
+                lines[index] = f'RUN {dependency_command}'
                 break
     replacement = f'    && {before_cmd or "true"} \\'
     for index, line in enumerate(lines[:-1]):

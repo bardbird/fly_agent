@@ -5,8 +5,11 @@ import com.fly.agent.dao.entity.swe.SweRepoScaReportEntity;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Mapper for SWE-Pro repository SCA/license reports.
@@ -81,6 +84,39 @@ public interface SweRepoScaReportMapper extends BaseMapper<SweRepoScaReportEntit
             @Param("maxStars") Integer maxStars);
 
     @Select("""
+            SELECT COUNT(1)
+            FROM swe_repo_sca_report s
+            WHERE s.primary_language = #{language}
+              AND s.search_keyword <=> #{keyword}
+              AND (#{minStars} IS NULL OR s.github_stars >= #{minStars})
+              AND (#{maxStars} IS NULL OR s.github_stars <= #{maxStars})
+              AND DATE(s.checked_at) = #{scanDate}
+            """)
+    int countReposCheckedOnDateInScanScope(
+            @Param("language") String language,
+            @Param("keyword") String keyword,
+            @Param("minStars") Integer minStars,
+            @Param("maxStars") Integer maxStars,
+            @Param("scanDate") LocalDate scanDate);
+
+    @Select("""
+            SELECT COUNT(1)
+            FROM swe_repo_sca_report s
+            WHERE s.compatibility_status = 'ALLOW'
+              AND s.primary_language = #{language}
+              AND s.search_keyword <=> #{keyword}
+              AND (#{minStars} IS NULL OR s.github_stars >= #{minStars})
+              AND (#{maxStars} IS NULL OR s.github_stars <= #{maxStars})
+              AND DATE(s.candidate_last_scanned_at) = #{scanDate}
+            """)
+    int countCandidateScannedOnDateInScanScope(
+            @Param("language") String language,
+            @Param("keyword") String keyword,
+            @Param("minStars") Integer minStars,
+            @Param("maxStars") Integer maxStars,
+            @Param("scanDate") LocalDate scanDate);
+
+    @Select("""
             SELECT s.repo
             FROM swe_repo_sca_report s
             LEFT JOIN swe_repo_blacklist b ON b.repo = s.repo
@@ -106,6 +142,7 @@ public interface SweRepoScaReportMapper extends BaseMapper<SweRepoScaReportEntit
               AND s.search_keyword <=> #{keyword}
               AND (#{minStars} IS NULL OR s.github_stars >= #{minStars})
               AND (#{maxStars} IS NULL OR s.github_stars <= #{maxStars})
+              AND (s.candidate_last_scanned_at IS NULL OR DATE(s.candidate_last_scanned_at) <> #{scanDate})
             ORDER BY s.github_stars DESC, s.checked_at DESC, s.id DESC
             LIMIT #{limit} OFFSET #{offset}
             """)
@@ -114,6 +151,125 @@ public interface SweRepoScaReportMapper extends BaseMapper<SweRepoScaReportEntit
             @Param("keyword") String keyword,
             @Param("minStars") Integer minStars,
             @Param("maxStars") Integer maxStars,
+            @Param("scanDate") LocalDate scanDate,
             @Param("limit") int limit,
             @Param("offset") int offset);
+
+    @Update("""
+            UPDATE swe_repo_sca_report
+            SET candidate_last_scanned_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE repo = #{repo}
+            """)
+    int markCandidateScanAttempt(@Param("repo") String repo);
+
+    @Select("""
+            <script>
+            SELECT COUNT(1)
+            FROM swe_repo_sca_report s
+            WHERE s.compatibility_status = 'ALLOW'
+            <if test="language != null and language != ''">
+              <choose>
+                <when test="language == 'unknown'">
+                  AND s.primary_language IS NULL
+                </when>
+                <otherwise>
+                  AND s.primary_language = #{language}
+                </otherwise>
+              </choose>
+            </if>
+            <if test="inCandidate != null">
+              AND <choose>
+                    <when test="inCandidate">
+                      EXISTS (SELECT 1 FROM swe_candidate c WHERE c.repo = s.repo)
+                    </when>
+                    <otherwise>
+                      NOT EXISTS (SELECT 1 FROM swe_candidate c WHERE c.repo = s.repo)
+                    </otherwise>
+                  </choose>
+            </if>
+            </script>
+            """)
+    long countAllowedRepoReports(
+            @Param("language") String language,
+            @Param("inCandidate") Boolean inCandidate);
+
+    @Select("""
+            <script>
+            SELECT
+                s.id AS id,
+                s.repo AS repo,
+                s.primary_language AS primaryLanguage,
+                s.github_stars AS githubStars,
+                s.license_spdx_id AS licenseSpdxId,
+                s.license_name AS licenseName,
+                s.compatibility_reason AS compatibilityReason,
+                s.checked_at AS checkedAt,
+                s.candidate_last_scanned_at AS candidateLastScannedAt,
+                CASE WHEN EXISTS (SELECT 1 FROM swe_candidate c WHERE c.repo = s.repo) THEN 1 ELSE 0 END AS inCandidate
+            FROM swe_repo_sca_report s
+            WHERE s.compatibility_status = 'ALLOW'
+            <if test="language != null and language != ''">
+              <choose>
+                <when test="language == 'unknown'">
+                  AND s.primary_language IS NULL
+                </when>
+                <otherwise>
+                  AND s.primary_language = #{language}
+                </otherwise>
+              </choose>
+            </if>
+            <if test="inCandidate != null">
+              AND <choose>
+                    <when test="inCandidate">
+                      EXISTS (SELECT 1 FROM swe_candidate c WHERE c.repo = s.repo)
+                    </when>
+                    <otherwise>
+                      NOT EXISTS (SELECT 1 FROM swe_candidate c WHERE c.repo = s.repo)
+                    </otherwise>
+                  </choose>
+            </if>
+            ORDER BY s.github_stars DESC, s.checked_at DESC, s.id DESC
+            LIMIT #{limit} OFFSET #{offset}
+            </script>
+            """)
+    List<Map<String, Object>> selectAllowedRepoReports(
+            @Param("language") String language,
+            @Param("inCandidate") Boolean inCandidate,
+            @Param("limit") int limit,
+            @Param("offset") int offset);
+
+    @Select("""
+            <script>
+            SELECT
+                s.repo AS repo,
+                CASE WHEN EXISTS (SELECT 1 FROM swe_candidate c WHERE c.repo = s.repo) THEN 1 ELSE 0 END AS inCandidate
+            FROM swe_repo_sca_report s
+            WHERE s.compatibility_status = 'ALLOW'
+            <if test="language != null and language != ''">
+              <choose>
+                <when test="language == 'unknown'">
+                  AND s.primary_language IS NULL
+                </when>
+                <otherwise>
+                  AND s.primary_language = #{language}
+                </otherwise>
+              </choose>
+            </if>
+            <if test="inCandidate != null">
+              AND <choose>
+                    <when test="inCandidate">
+                      EXISTS (SELECT 1 FROM swe_candidate c WHERE c.repo = s.repo)
+                    </when>
+                    <otherwise>
+                      NOT EXISTS (SELECT 1 FROM swe_candidate c WHERE c.repo = s.repo)
+                    </otherwise>
+                  </choose>
+            </if>
+            ORDER BY s.github_stars DESC, s.checked_at DESC, s.id DESC
+            </script>
+            """)
+    List<Map<String, Object>> selectAllowedRepoExportRows(
+            @Param("language") String language,
+            @Param("inCandidate") Boolean inCandidate);
 }

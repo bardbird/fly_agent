@@ -15,8 +15,8 @@ public enum SwePipelineStage {
     PATCH_VERIFY(40, "PATCH_VERIFY", "Patch verification"),
     HARNESS_BUILD(50, "HARNESS_BUILD", "Harness build"),
     LOCAL_VERIFY(60, "LOCAL_VERIFY", "Local verification"),
-    MODEL_QWEN_EVAL(70, "MODEL_QWEN_EVAL", "Qwen model evaluation"),
-    MODEL_OPUS_EVAL(80, "MODEL_OPUS_EVAL", "Opus model evaluation"),
+    MODEL_OPUS_EVAL(70, "MODEL_OPUS_EVAL", "Opus model evaluation"),
+    MODEL_QWEN_EVAL(80, "MODEL_QWEN_EVAL", "Qwen model evaluation"),
     DOCKER_PACKAGE(90, "DOCKER_PACKAGE", "Docker package"),
     QC_REVIEW(100, "QC_REVIEW", "Quality review"),
     PACKAGE_EXPORT(110, "PACKAGE_EXPORT", "Package export");

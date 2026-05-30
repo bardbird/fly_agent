@@ -116,8 +116,27 @@ class SwePipelineServiceTest {
         assertTrue(source.contains("\"opus4.7_pass8_swebench_agentic\", runtimeSettingsService.resolveOpusModel(),\n"
                 + "                positiveAttempts(properties.getOpusAttempts(), 1), \"OPUS_API_KEY\", true, true"));
         assertTrue(devConfig.contains("qwen-attempts: ${SWE_QWEN_ATTEMPTS:4}"));
-        assertTrue(devConfig.contains("opus-attempts: ${SWE_OPUS_ATTEMPTS:1}"));
-        assertTrue(devConfig.contains("opus-max-steps-schedule: ${SWE_OPUS_MAX_STEPS_SCHEDULE:180}"));
+        assertTrue(devConfig.contains("opus-attempts: ${SWE_OPUS_ATTEMPTS:8}"));
+        assertTrue(devConfig.contains("opus-max-steps-schedule: ${SWE_OPUS_MAX_STEPS_SCHEDULE:180,50,10}"));
+    }
+
+    @Test
+    void opusEvaluationRunsBeforeQwenInPipelineOrder() throws Exception {
+        String source = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/java/com/fly/agent/service/swe/SwePipelineService.java"));
+        String stageEnum = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "../fly-agent-common/src/main/java/com/fly/agent/common/enums/swe/SwePipelineStage.java"));
+
+        int productionOpus = source.indexOf("SwePipelineStage.MODEL_OPUS_EVAL, () -> runOpusEvaluation");
+        int productionQwen = source.indexOf("SwePipelineStage.MODEL_QWEN_EVAL, () -> runQwenEvaluation");
+        int inspectionOpus = source.indexOf("SwePipelineStage.MODEL_OPUS_EVAL, () -> inspectModelSummary(runId, samplePath, \"opus\")");
+        int inspectionQwen = source.indexOf("SwePipelineStage.MODEL_QWEN_EVAL, () -> inspectModelSummary(runId, samplePath, \"qwen\")");
+
+        assertTrue(productionOpus >= 0 && productionQwen > productionOpus);
+        assertTrue(inspectionOpus >= 0 && inspectionQwen > inspectionOpus);
+        assertTrue(stageEnum.contains("MODEL_OPUS_EVAL(70"));
+        assertTrue(stageEnum.contains("MODEL_QWEN_EVAL(80"));
+        assertTrue(source.contains("syncStageSortOrders(run.getId())"));
     }
 
     @Test
@@ -133,7 +152,7 @@ class SwePipelineServiceTest {
         assertFalse(source.contains("runRuntimeSetupCommands(runId, packagePath)"));
         assertFalse(source.contains("prepareLocalDependencies(runId, packagePath)"));
         assertTrue(config.contains("runtime_env.json"));
-        assertTrue(config.contains("该环境依赖修复路径不接入额外大模型，后续 Qwen/Opus 模型评测仍按流水线执行"));
+        assertTrue(config.contains("该环境依赖修复路径不接入额外大模型，后续 Opus/Qwen 模型评测仍按流水线执行"));
     }
 
     @Test

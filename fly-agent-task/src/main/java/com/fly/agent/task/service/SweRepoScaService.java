@@ -19,6 +19,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -136,11 +137,40 @@ public class SweRepoScaService {
                 maxStars);
     }
 
+    public int countReposCheckedOnDateInScanScope(
+            String language,
+            String keyword,
+            Integer minStars,
+            Integer maxStars,
+            LocalDate scanDate) {
+        return scaReportMapper.countReposCheckedOnDateInScanScope(
+                normalizeLanguage(language),
+                normalizeKeyword(keyword),
+                minStars,
+                maxStars,
+                scanDate);
+    }
+
+    public int countCandidateScannedOnDateInScanScope(
+            String language,
+            String keyword,
+            Integer minStars,
+            Integer maxStars,
+            LocalDate scanDate) {
+        return scaReportMapper.countCandidateScannedOnDateInScanScope(
+                normalizeLanguage(language),
+                normalizeKeyword(keyword),
+                minStars,
+                maxStars,
+                scanDate);
+    }
+
     public List<String> listAllowedReposForCandidateScan(
             String language,
             String keyword,
             Integer minStars,
             Integer maxStars,
+            LocalDate scanDate,
             int limit,
             int offset) {
         return scaReportMapper.selectAllowedReposInScanScope(
@@ -148,8 +178,16 @@ public class SweRepoScaService {
                 normalizeKeyword(keyword),
                 minStars,
                 maxStars,
+                scanDate,
                 Math.max(limit, 1),
                 Math.max(offset, 0));
+    }
+
+    public void markCandidateScanAttempt(String repo) {
+        String normalizedRepo = SweRepoBlacklistService.normalizeRepo(repo);
+        if (StringUtils.hasText(normalizedRepo)) {
+            scaReportMapper.markCandidateScanAttempt(normalizedRepo);
+        }
     }
 
     public static LicensePrecheckDecision precheckLicense(String spdxId, String licenseName) {

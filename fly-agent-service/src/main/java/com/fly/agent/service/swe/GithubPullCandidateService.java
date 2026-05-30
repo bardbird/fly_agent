@@ -74,8 +74,38 @@ public class GithubPullCandidateService {
     private static final int MIN_TEST_PATCH_FILES = 1;
     private static final int PREFERRED_GOLD_LINES = 200;
     private static final int STRONG_GOLD_LINES = 300;
+    private static final int PR_COMMENTS_PER_PAGE = 100;
+    private static final int MAX_REPO_SIZE_KB = 200_000;
+    private static final int MAX_DEPENDENCY_FILES = 1;
+    private static final int MAX_DEPENDENCY_CHANGED_LINES = 20;
     private static final List<String> NON_SOURCE_SUFFIXES = List.of(".md", ".txt", ".json", ".yaml", ".yml", ".lock", ".sum");
     private static final List<String> GENERATED_NEEDLES = List.of("lock", "vendor/", "generated", "dist/", "locale", "i18n", "snapshot");
+    private static final List<String> UPLOAD_TERMS = List.of(
+            "upload", "uploader", "multipart", "form-data", "presigned", "attachment", "blob", "bucket", "上传", "附件");
+    private static final List<String> AUTH_TERMS = List.of(
+            "auth", "authentication", "authorization", "oauth", "oidc", "jwt", "login", "logout", "sign-in", "signin",
+            "sign-up", "signup", "password", "credential", "credentials", "token", "session", "cookie", "sso", "saml",
+            "mfa", "2fa", "csrf", "鉴权", "认证", "授权", "登录", "密码", "凭证");
+    private static final List<String> CLOUD_TERMS = List.of(
+            "cloud", "aws", "amazon s3", "s3", "gcp", "google cloud", "azure", "lambda", "kubernetes", "k8s",
+            "terraform", "cloudformation", "iam", "sts", "firebase", "supabase", "vercel", "netlify", "云服务", "对象存储");
+    private static final List<String> DEPENDENCY_TEXT_TERMS = List.of(
+            "dependency", "dependencies", "dependabot", "renovate", "bump", "upgrade deps", "update deps", "依赖");
+    private static final List<String> DEPENDENCY_FILE_NAMES = List.of(
+            "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "npm-shrinkwrap.json",
+            "requirements.txt", "requirements-dev.txt", "pyproject.toml", "poetry.lock", "pipfile", "pipfile.lock",
+            "setup.py", "setup.cfg", "pom.xml", "build.gradle", "build.gradle.kts", "gradle.lockfile",
+            "go.mod", "go.sum", "cargo.toml", "cargo.lock", "gemfile", "gemfile.lock",
+            "composer.json", "composer.lock", "mix.exs", "mix.lock", "pubspec.yaml", "pubspec.lock",
+            "packages.config");
+    private static final List<String> DEPENDENCY_FILE_SUFFIXES = List.of(
+            ".csproj", ".fsproj", ".vbproj");
+    private static final Set<String> HARD_FILTER_RISKS = Set.of(
+            "sensitive_upload_surface",
+            "sensitive_auth_surface",
+            "cloud_service_surface",
+            "dependency_heavy_change",
+            "repo_too_large");
     private static final Pattern RESOLVED_ISSUE_PATTERN = Pattern.compile(
             "(?i)\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#(\\d+)");
     private static final Pattern GITHUB_ISSUE_URL_PATTERN = Pattern.compile(
@@ -223,7 +253,9 @@ public class GithubPullCandidateService {
             }
             IssueContext issueContext = fetchIssueContext(normalizedRepo, issueNumbers, parseDate(pull.getString("created_at")));
             List<JSONObject> files = getPullFiles(normalizedRepo, number);
-            GithubPullCandidateDTO candidate = toCandidate(normalizedRepo, pull, files, issueNumbers, issueContext, response.getCandidates().size() + 1);
+            List<String> pullComments = getPullDiscussionComments(normalizedRepo, number);
+            PullEvidence evidence = buildPullEvidence(pull, issueContext, pullComments, files);
+            GithubPullCandidateDTO candidate = toCandidate(normalizedRepo, pull, files, issueNumbers, issueContext, evidence, response.getCandidates().size() + 1);
             if (!matchesFilters(
                     candidate,
                     resolvedMinGoldSourceFiles,
@@ -315,7 +347,9 @@ public class GithubPullCandidateService {
         List<Integer> issueNumbers = List.of(issueRef.number());
         IssueContext issueContext = fetchIssueContext(issueRef.repo(), issueNumbers, parseDate(pull.getString("created_at")));
         List<JSONObject> files = getPullFiles(issueRef.repo(), pullNumber);
-        GithubPullCandidateDTO candidate = toCandidate(issueRef.repo(), pull, files, issueNumbers, issueContext, 1);
+        List<String> pullComments = getPullDiscussionComments(issueRef.repo(), pullNumber);
+        PullEvidence evidence = buildPullEvidence(pull, issueContext, pullComments, files);
+        GithubPullCandidateDTO candidate = toCandidate(issueRef.repo(), pull, files, issueNumbers, issueContext, evidence, 1);
         if (!matchesFilters(
                 candidate,
                 resolvedMinGoldSourceFiles,
@@ -619,7 +653,8 @@ public class GithubPullCandidateService {
                 && goldSourceFiles <= maxGoldSourceFiles
                 && goldLines >= minGoldLines
                 && goldLines <= maxGoldLines
-                && testPatchFiles >= MIN_TEST_PATCH_FILES;
+                && testPatchFiles >= MIN_TEST_PATCH_FILES
+                && candidate.getRisks().stream().noneMatch(HARD_FILTER_RISKS::contains);
     }
 
     private List<JSONObject> getPullFiles(String repo, Integer number) {
@@ -640,16 +675,58 @@ public class GithubPullCandidateService {
         return files;
     }
 
+    private List<String> getPullDiscussionComments(String repo, Integer number) {
+        List<String> comments = new ArrayList<>();
+        comments.addAll(getCommentBodies(uri("/repos/" + repo + "/issues/" + number + "/comments")
+                + "?per_page=" + PR_COMMENTS_PER_PAGE));
+        comments.addAll(getCommentBodies(uri("/repos/" + repo + "/pulls/" + number + "/comments")
+                + "?per_page=" + PR_COMMENTS_PER_PAGE));
+        return comments;
+    }
+
+    private List<String> getCommentBodies(String url) {
+        JSONArray comments;
+        try {
+            comments = getArray(url);
+        } catch (BusinessException ignored) {
+            return List.of();
+        }
+        if (comments == null || comments.isEmpty()) {
+            return List.of();
+        }
+        return comments.stream()
+                .map(this::toJsonObject)
+                .map(comment -> comment.getString("body"))
+                .filter(StringUtils::hasText)
+                .toList();
+    }
+
     private GithubPullCandidateDTO toCandidate(
             String repo,
             JSONObject pull,
             List<JSONObject> files,
             List<Integer> issueNumbers,
             IssueContext issueContext,
+            PullEvidence evidence,
             int index) {
         PullStats stats = calculateStats(files);
         ScoreResult score = score(stats);
-        GradeResult grade = grade(score.score(), stats, score.risks());
+        PullRiskSignals riskSignals = detectRiskSignals(
+                evidence.searchableText(),
+                evidence.changedFiles(),
+                evidence.dependencyFiles(),
+                evidence.dependencyChangedLines(),
+                evidence.repoSizeKb());
+        List<String> strengths = new ArrayList<>(score.strengths());
+        List<String> risks = new ArrayList<>(score.risks());
+        risks.addAll(riskSignals.risks());
+        int candidateScore = riskSignals.risks().stream().anyMatch(HARD_FILTER_RISKS::contains)
+                ? Math.min(score.score(), 45)
+                : score.score();
+        GradeResult grade = riskSignals.risks().stream().anyMatch(HARD_FILTER_RISKS::contains)
+                ? new GradeResult("C", "淘汰：命中 PR 元数据/描述/评论/变更文件硬过滤 - "
+                + String.join(", ", riskSignals.reasons()))
+                : grade(candidateScore, stats, risks);
 
         GithubPullCandidateDTO dto = new GithubPullCandidateDTO();
         dto.setCandidateId(String.format("CAND-%04d", index));
@@ -690,12 +767,12 @@ public class GithubPullCandidateService {
         dto.setBenchmarkStatus("UNKNOWN");
         dto.setFailedHistoryStatus("UNKNOWN");
         dto.setGeneratedOrI18nRatio(stats.generatedOrI18nRatio());
-        dto.setScore(score.score());
-        dto.setStrengths(score.strengths());
-        dto.setRisks(score.risks());
+        dto.setScore(candidateScore);
+        dto.setStrengths(strengths);
+        dto.setRisks(risks);
         dto.setCandidateGrade(grade.grade());
         dto.setGradeReason(grade.reason());
-        dto.setCandidateStatus(score.score() >= 70 ? "scored" : "new");
+        dto.setCandidateStatus(candidateScore >= 70 ? "scored" : "new");
         dto.setPrecheckPlan(switch (grade.grade()) {
             case "A" -> "优先进入任务制作：拉取 PR refs，拆分 gold/test patch，并补齐验证脚本";
             case "B" -> "进入预检队列：确认测试可写性、环境依赖和模型难度后再制作";
@@ -707,6 +784,73 @@ public class GithubPullCandidateService {
                 .limit(12)
                 .toList());
         return dto;
+    }
+
+    private PullEvidence buildPullEvidence(
+            JSONObject pull,
+            IssueContext issueContext,
+            List<String> pullComments,
+            List<JSONObject> files) {
+        List<String> changedFiles = files.stream()
+                .map(file -> file.getString("filename"))
+                .filter(StringUtils::hasText)
+                .toList();
+        int dependencyFiles = 0;
+        int dependencyChangedLines = 0;
+        for (JSONObject file : files) {
+            String filename = file.getString("filename");
+            if (isDependencyFile(filename)) {
+                dependencyFiles++;
+                dependencyChangedLines += safeInt(file.getInteger("additions")) + safeInt(file.getInteger("deletions"));
+            }
+        }
+
+        StringBuilder text = new StringBuilder();
+        appendText(text, pull.getString("title"));
+        appendText(text, pull.getString("body"));
+        appendText(text, pull.getString("state"));
+        appendText(text, pull.getString("mergeable_state"));
+        JSONObject user = pull.getJSONObject("user");
+        if (user != null) {
+            appendText(text, user.getString("login"));
+        }
+        JSONArray labels = pull.getJSONArray("labels");
+        if (labels != null) {
+            labels.stream()
+                    .map(this::toJsonObject)
+                    .map(label -> label.getString("name"))
+                    .forEach(value -> appendText(text, value));
+        }
+        JSONObject base = pull.getJSONObject("base");
+        JSONObject head = pull.getJSONObject("head");
+        appendRefText(text, base);
+        appendRefText(text, head);
+        appendText(text, issueContext.problemStatement());
+        appendText(text, issueContext.hintsText());
+        pullComments.forEach(value -> appendText(text, value));
+        changedFiles.forEach(value -> appendText(text, value));
+
+        int repoSizeKb = 0;
+        JSONObject baseRepo = base == null ? null : base.getJSONObject("repo");
+        if (baseRepo != null) {
+            repoSizeKb = safeInt(baseRepo.getInteger("size"));
+        }
+        return new PullEvidence(text.toString(), changedFiles, dependencyFiles, dependencyChangedLines, repoSizeKb);
+    }
+
+    private void appendRefText(StringBuilder text, JSONObject ref) {
+        if (ref == null) {
+            return;
+        }
+        appendText(text, ref.getString("label"));
+        appendText(text, ref.getString("ref"));
+    }
+
+    private void appendText(StringBuilder text, String value) {
+        if (!StringUtils.hasText(value)) {
+            return;
+        }
+        text.append(value).append('\n');
     }
 
     static List<Integer> extractResolvedIssueNumbers(String title, String body) {
@@ -1106,6 +1250,17 @@ public class GithubPullCandidateService {
         return GENERATED_NEEDLES.stream().anyMatch(lower::contains);
     }
 
+    private boolean isDependencyFile(String path) {
+        if (!StringUtils.hasText(path)) {
+            return false;
+        }
+        String lower = path.toLowerCase(Locale.ROOT);
+        String[] parts = lower.split("/");
+        String name = parts.length == 0 ? lower : parts[parts.length - 1];
+        return DEPENDENCY_FILE_NAMES.contains(name)
+                || DEPENDENCY_FILE_SUFFIXES.stream().anyMatch(name::endsWith);
+    }
+
     private void classifyLanguage(String filename, Map<String, Integer> languages) {
         String lower = filename == null ? "" : filename.toLowerCase(Locale.ROOT);
         for (Map.Entry<String, List<String>> entry : LANGUAGE_EXTENSIONS.entrySet()) {
@@ -1118,6 +1273,73 @@ public class GithubPullCandidateService {
 
     private int safeInt(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    static PullRiskSignals detectRiskSignals(
+            String searchableText,
+            List<String> changedFiles,
+            int dependencyFiles,
+            int dependencyChangedLines,
+            int repoSizeKb) {
+        String text = searchableText == null ? "" : searchableText.toLowerCase(Locale.ROOT);
+        String filesText = changedFiles == null ? "" : String.join("\n", changedFiles).toLowerCase(Locale.ROOT);
+        Set<String> categories = new LinkedHashSet<>();
+        if (containsAnyTerm(text, UPLOAD_TERMS) || containsAnyTerm(filesText, UPLOAD_TERMS)) {
+            categories.add("upload");
+        }
+        if (containsAnyTerm(text, AUTH_TERMS) || containsAnyTerm(filesText, AUTH_TERMS)) {
+            categories.add("auth");
+        }
+        if (containsAnyTerm(text, CLOUD_TERMS) || containsAnyTerm(filesText, CLOUD_TERMS)) {
+            categories.add("cloud");
+        }
+
+        List<String> risks = new ArrayList<>();
+        List<String> reasons = new ArrayList<>();
+        if (categories.contains("upload")) {
+            risks.add("sensitive_upload_surface");
+            reasons.add("涉及上传/附件/对象存储");
+        }
+        if (categories.contains("auth")) {
+            risks.add("sensitive_auth_surface");
+            reasons.add("涉及认证/鉴权/凭证");
+        }
+        if (categories.contains("cloud")) {
+            risks.add("cloud_service_surface");
+            reasons.add("涉及云服务/云基础设施");
+        }
+        boolean dependencyTextSignal = containsAnyTerm(text, DEPENDENCY_TEXT_TERMS);
+        if (dependencyFiles > MAX_DEPENDENCY_FILES
+                || dependencyChangedLines > MAX_DEPENDENCY_CHANGED_LINES
+                || dependencyTextSignal) {
+            risks.add("dependency_heavy_change");
+            reasons.add("依赖变更多: files=" + dependencyFiles + ", lines=" + dependencyChangedLines);
+        }
+        if (repoSizeKb > MAX_REPO_SIZE_KB) {
+            risks.add("repo_too_large");
+            reasons.add("仓库过重: " + repoSizeKb + "KB");
+        }
+        return new PullRiskSignals(risks, reasons);
+    }
+
+    private static boolean containsAnyTerm(String text, List<String> terms) {
+        if (!StringUtils.hasText(text)) {
+            return false;
+        }
+        return terms.stream().anyMatch(term -> containsTerm(text, term));
+    }
+
+    private static boolean containsTerm(String text, String term) {
+        if (!StringUtils.hasText(term)) {
+            return false;
+        }
+        String normalizedTerm = term.toLowerCase(Locale.ROOT);
+        if (normalizedTerm.matches("[a-z0-9]+")) {
+            return Pattern.compile("(?<![a-z0-9])" + Pattern.quote(normalizedTerm) + "(?![a-z0-9])")
+                    .matcher(text)
+                    .find();
+        }
+        return text.contains(normalizedTerm);
     }
 
     private void applyProxyIfAvailable(WebClient.Builder builder) {
@@ -1169,6 +1391,17 @@ public class GithubPullCandidateService {
     }
 
     private record IssueContext(String primaryIssueUrl, String problemStatement, String hintsText) {
+    }
+
+    private record PullEvidence(
+            String searchableText,
+            List<String> changedFiles,
+            int dependencyFiles,
+            int dependencyChangedLines,
+            int repoSizeKb) {
+    }
+
+    record PullRiskSignals(List<String> risks, List<String> reasons) {
     }
 
     record IssueRef(String repo, int number) {

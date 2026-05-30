@@ -177,6 +177,85 @@ class ReferencePackageHydrationTest(unittest.TestCase):
         self.assertEqual([], alignment["blocking_reasons"])
         self.assertTrue(any("version/release" in reason for reason in alignment["risks"]))
 
+    def test_test_patch_assessment_flags_external_resource_dependencies(self) -> None:
+        test_patch = (
+            "diff --git a/test/sdk/test_elasticsearch_core.py b/test/sdk/test_elasticsearch_core.py\n"
+            "--- /dev/null\n"
+            "+++ b/test/sdk/test_elasticsearch_core.py\n"
+            "@@ -0,0 +1,8 @@\n"
+            "+from urllib.request import urlopen\n"
+            "+from nexent.core.models.embedding_model import JinaEmbedding\n"
+            "+def test_create_test_knowledge_base():\n"
+            "+    es_client = ElasticSearchCore(host=\"http://localhost:9200\", api_key=None, embedding_model=JinaEmbedding())\n"
+            "+    response = urlopen(\"https://example.com/articles.json\")\n"
+            "+    assert response is not None\n"
+        )
+
+        assessment = prepare.assess_test_patch(test_patch, ["test/sdk/test_elasticsearch_core.py"])
+
+        self.assertEqual("high", assessment["level"])
+        self.assertTrue(assessment["requires_manual_review"])
+        signals = assessment["metrics"]["external_resource_signals"]
+        self.assertIn("network fetch", signals)
+        self.assertIn("literal remote URL", signals)
+        self.assertIn("local service endpoint", signals)
+        self.assertIn("runtime API key", signals)
+
+    def test_test_patch_assessment_flags_production_files_in_test_patch(self) -> None:
+        test_patch = (
+            "diff --git a/src/main/java/com/acme/Widget.java b/src/main/java/com/acme/Widget.java\n"
+            "--- a/src/main/java/com/acme/Widget.java\n"
+            "+++ b/src/main/java/com/acme/Widget.java\n"
+            "@@ -1 +1 @@\n"
+            "-class Widget {}\n"
+            "+class Widget { boolean fixed() { return true; } }\n"
+        )
+
+        assessment = prepare.assess_test_patch(test_patch, ["src/main/java/com/acme/Widget.java"])
+
+        self.assertEqual("high", assessment["level"])
+        self.assertIn("src/main/java/com/acme/Widget.java", assessment["metrics"]["non_test_patch_paths"])
+
+    def test_android_instrumentation_test_file_stays_in_test_patch(self) -> None:
+        self.assertTrue(prepare.is_test_file("app/src/androidTest/java/de/test/antennapod/ui/DownloadLogTest.java"))
+        self.assertTrue(prepare.is_test_file("src/test/kotlin/com/acme/ParserTest.kt"))
+
+    def test_llm_oracle_review_rewrite_verdict_marks_assessment_high(self) -> None:
+        assessment = {
+            "level": "low",
+            "risks": [],
+            "strengths": [],
+            "metrics": {},
+            "requires_manual_review": False,
+        }
+        review = {
+            "enabled": True,
+            "status": "ok",
+            "verdict": "rewrite",
+            "fairness_summary": "test requires a gold-only UI button instead of the visible podcast title.",
+            "rewrite_plan": ["Assert that the details dialog contains the podcast title."],
+        }
+
+        merged = prepare.merge_llm_oracle_review(assessment, review)
+
+        self.assertEqual("high", merged["level"])
+        self.assertTrue(merged["requires_manual_review"])
+        self.assertEqual("ok", merged["metrics"]["llm_oracle_review_status"])
+        self.assertTrue(any("rewrite" in risk for risk in merged["risks"]))
+
+    def test_oracle_review_prompt_frames_gold_as_evidence_not_target(self) -> None:
+        prompt = prepare.build_oracle_review_prompt(
+            {"problem_statement": "Show the podcast name in download log details."},
+            ["app/src/androidTest/java/de/test/antennapod/ui/DownloadLogTest.java"],
+            ["app/src/main/java/de/danoeh/antennapod/ui/screen/download/DownloadLogDetailsDialog.java"],
+            "diff --git a/src/Fix.java b/src/Fix.java\n+class Fix {}\n",
+            "diff --git a/src/test/FixTest.java b/src/test/FixTest.java\n+assertVisible(\"Open\")\n",
+        )
+
+        self.assertIn("gold.patch is only evidence of one valid fix", prompt)
+        self.assertIn("Return JSON only", prompt)
+        self.assertIn("Show the podcast name", prompt)
+
     def test_pass_to_pass_uses_selected_go_package_for_mixed_language_repo(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             package = Path(tmp) / "production-task-demo-7"

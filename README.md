@@ -63,7 +63,7 @@ Fly Agent 是一个功能完备的企业级 AI 智能体平台，基于阿里巴
 ### SWE-Pro 数据采集
 - **真实 issue 约束** - GitHub PR 候选必须是已合并 PR，并且标题或正文包含 `closes/fixes/resolves #issue` 等关闭关键词；没有 resolved issue 的 PR 会被跳过并计数。
 - **SWE-bench 对齐字段** - 候选登记保留 `issue_url`、`issue_numbers`、`problem_statement`、`hints_text`、`test_patch_present`、`fail_to_pass`、`pass_to_pass`、`benchmark_status`、`failed_history_status`。
-- **模型难度门控** - Qwen 3.6 Plus 和 Opus 4.7 使用同一 `json-edits-context` 任务 prompt 与同一 patch 物化/验证路径；Qwen 保持 thinking 开启并按 pass rate@4 过滤过易任务，Opus 按直接 pass@8 非零判定，不再通过 GPT 生成失败审查或重试提示词。
+- **模型难度门控** - Opus 4.7 和 Qwen 3.6 Plus 使用同一 `json-edits-context` 任务 prompt 与同一 patch 物化/验证路径；流水线先跑 Opus pass@8，再跑 Qwen pass rate@4 过滤过易任务，不再通过 GPT 生成失败审查或重试提示词。
 - **SWE-bench 兼容导出** - 任务包可导出 `dataset.jsonl` 与 `predictions.jsonl`：instance 保留 `repo/base_commit/problem_statement/patch/test_patch/FAIL_TO_PASS/PASS_TO_PASS`，模型预测统一记录为 `instance_id/model_name_or_path/model_patch`，用于接入官方或兼容 harness 做公平复验。
 - **自检报告** - QC 阶段会生成 `乙方质检-SWE-Pro数据验收标准对照表.xlsx`，包含 `34条验收结果` 和 `汇总` 两个 sheet，对齐成功样例结构。
 - **GitHub 代理** - GitHub 搜索和 PR 扫描在 `127.0.0.1:7897` 可连通时自动使用该 HTTP 代理；代理不可用时保持直连行为。

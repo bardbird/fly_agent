@@ -101,4 +101,43 @@ class GithubPullCandidateServiceTest {
         assertEquals("issue 4809\n\n---\n\nissue 4704", merged);
         assertEquals(merged, repeated);
     }
+
+    @Test
+    void detectsUploadAuthAndCloudRiskSignalsFromTextAndFiles() {
+        GithubPullCandidateService.PullRiskSignals signals = GithubPullCandidateService.detectRiskSignals(
+                "Fix login token refresh for file upload to AWS",
+                List.of("src/auth/session.ts", "pkg/cloud/s3_client.go"),
+                0,
+                0,
+                5000);
+
+        assertTrue(signals.risks().contains("sensitive_upload_surface"));
+        assertTrue(signals.risks().contains("sensitive_auth_surface"));
+        assertTrue(signals.risks().contains("cloud_service_surface"));
+    }
+
+    @Test
+    void detectsDependencyHeavyAndLargeRepositorySignals() {
+        GithubPullCandidateService.PullRiskSignals signals = GithubPullCandidateService.detectRiskSignals(
+                "Regular parser fix",
+                List.of("package.json", "package-lock.json"),
+                2,
+                24,
+                250_000);
+
+        assertTrue(signals.risks().contains("dependency_heavy_change"));
+        assertTrue(signals.risks().contains("repo_too_large"));
+    }
+
+    @Test
+    void keywordMatchingDoesNotTreatAuthorAsAuth() {
+        GithubPullCandidateService.PullRiskSignals signals = GithubPullCandidateService.detectRiskSignals(
+                "Update parser author metadata",
+                List.of("src/metadata_parser.py"),
+                0,
+                0,
+                1000);
+
+        assertFalse(signals.risks().contains("sensitive_auth_surface"));
+    }
 }

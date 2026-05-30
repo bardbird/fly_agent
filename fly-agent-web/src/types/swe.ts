@@ -273,3 +273,25 @@ export interface GithubPullCandidateListResponse {
   totalPages: number
   candidates: GithubPullCandidate[]
 }
+
+export interface SweAllowedRepo {
+  id: number
+  repo: string
+  githubUrl: string
+  primaryLanguage?: string
+  githubStars?: number
+  licenseSpdxId?: string
+  licenseName?: string
+  compatibilityReason?: string
+  inCandidate?: boolean
+  checkedAt?: string
+  candidateLastScannedAt?: string
+}
+
+export interface SweAllowedRepoListResponse {
+  page: number
+  perPage: number
+  total: number
+  totalPages: number
+  repositories: SweAllowedRepo[]
+}

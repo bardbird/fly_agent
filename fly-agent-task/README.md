@@ -126,6 +126,31 @@ fly-agent-task/
 - **去重方式**: `useStarCursor=true` 时任务会记录每个语言/关键词/star区间的扫描游标；下一次从上轮最低已见 star 往下扫，避免反复扫描同一批高 star repo。
 - **SCA硬门槛**: 扫描 PR 前会生成 `swe_repo_sca_report` 软件成分分析报告，列明 repo 源码组件及 SPDX 许可证；只有 `MIT`、`Apache-2.0`、`BSD-2-Clause`、`BSD-3-Clause`、`ISC`、`0BSD`、`Unlicense`、`CC0-1.0`、`Zlib` 进入候选扫描，未知许可证、无许可证和 copyleft/reciprocal 许可证按商业 AI 训练兼容性风险拒绝。
 
+#### sweRepoScaDiscoveryJob
+- **功能**: 按语言和 star 游标发现 GitHub repo，只落 SCA/license 报告，不做 PR 扫描
+- **JobHandler**: `sweRepoScaDiscoveryJob`
+- **默认语言**: `c,c++,ruby,rust,go,javascript,php,typescript,python,java`
+- **必填参数**:
+  ```json
+  {
+    "githubToken": "ghp_xxx"
+  }
+  ```
+- **默认行为**: 每种语言每天最多新增处理 `repoLimit=10` 个 repo；同一自然日重复触发会扣减当天已写入的 SCA 报告数，确保后续触发继续拿新仓库。
+
+#### sweRepoCandidateBackfillJob
+- **功能**: 从 SCA 允许的 repo 池中回填 issue-grounded merged PR 候选
+- **JobHandler**: `sweRepoCandidateBackfillJob`
+- **必填参数**:
+  ```json
+  {
+    "githubToken": "ghp_xxx"
+  }
+  ```
+- **默认行为**: 默认扫描全部支持语言，每种语言每天最多尝试 `repoLimit=10` 个 SCA allow repo；当天已经尝试过 candidate backfill 的 repo 会跳过，第二天重新计数。
+- **候选硬门槛**: 回填调用 `GithubPullCandidateService.scanMergedPulls`，会执行 PR 元数据、变更文件、PR/issue 描述和评论中的上传、认证、云服务、依赖变更多、仓库过重等过滤逻辑。
+- **批量补齐任务**: 可使用 `scripts/upsert-swe-xxl-language-jobs.sql` 在 XXL-Job 数据库中补齐 10 种语言的 SCA discovery 和 candidate backfill 任务；执行前替换脚本里的 `REPLACE_WITH_GITHUB_TOKEN`。
+
 ## 配置说明
 
 ### application.yml 配置示例

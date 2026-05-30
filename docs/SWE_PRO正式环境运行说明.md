@@ -51,14 +51,15 @@ Opus 使用分段策略：
 swe:
   swe-agent:
     maxSteps: 20
-  opus-max-steps-schedule: 180,10
+  opus-max-steps-schedule: 180,50,10
   model-timeout-seconds: ${SWE_MODEL_TIMEOUT_SECONDS:3600}
 ```
 
 含义：
 
 - 测试阶段第一次尝试给 180 steps，允许充分探索和修复。
-- 后续尝试全部降到 10 steps，控制成本。
+- 第二次尝试给 50 steps。
+- 第三次及后续尝试全部降到 10 steps，控制成本。
 - schedule 超过长度后复用最后一个值。
 
 ## 正式服务管理
@@ -106,12 +107,12 @@ runId=38
 package=/home/ubuntu/gitee/fly_agent/swe-output/production-task-windows-rs-3942
 ```
 
-从 Qwen 模型评测阶段续跑：
+从 Opus 模型评测阶段续跑：
 
 ```bash
 curl -sS -X POST 'http://127.0.0.1:8080/api/v1/swe/runs/start' \
   -H 'Content-Type: application/json' \
-  --data '{"taskId":18,"resumeRunId":38,"resumeFromStage":"MODEL_QWEN_EVAL"}'
+  --data '{"taskId":18,"resumeRunId":38,"resumeFromStage":"MODEL_OPUS_EVAL"}'
 ```
 
 查询状态：

@@ -99,7 +99,7 @@ spring:
 
 ### SWE-Pro 流水线配置
 
-`swe` 配置用于 GitHub 候选采集、项目内 SWE-Pro toolkit 调用、Qwen/Opus 模型评估和任务包输出。当前流程不再读取 `swe.gpt`，也不会生成 GPT 辅助 Opus 重试提示词。
+`swe` 配置用于 GitHub 候选采集、项目内 SWE-Pro toolkit 调用、Opus/Qwen 模型评估和任务包输出。当前流程不再读取 `swe.gpt`，也不会生成 GPT 辅助 Opus 重试提示词。
 
 **关键配置**：
 ```yaml
@@ -112,6 +112,7 @@ swe:
     max-steps: ${SWE_AGENT_MAX_STEPS:20}
   qwen-attempts: 4
   opus-attempts: 8
+  opus-max-steps-schedule: 180,50,10
   model-timeout-seconds: ${SWE_MODEL_TIMEOUT_SECONDS:3600}
   github:
     token: ${GITHUB_TOKEN:}
@@ -129,7 +130,7 @@ swe:
 - 默认 `toolkit-root` 使用项目内 `tools/swe-pro-production`；如需覆盖，可设置 `SWE_TOOLKIT_ROOT`。
 - 默认 `production-root` 使用项目根目录下的 `swe-output`；如需隔离试跑结果，可设置 `SWE_PRODUCTION_ROOT`，避免覆盖已有送检样例。
 - `toolkit-root` 下必须存在 `scripts/prepare_tasks_from_candidates.py`、`scripts/resolve_runtime_env.py`、`scripts/eval_with_swe_agent.py`、`scripts/package_task.py`；`swe-agent.root` 必须指向已安装 SWE-agent 且能找到 `sweagent` CLI 的目录。
-- Harness build 阶段会基于 `base_commit` 下的仓库文件、`task.json` 和测试脚本生成 `runtime_env.json`；Local verification、SWE-agent safe image 和 Docker package 优先消费该确定性环境契约。该环境依赖修复路径不接入额外大模型，后续 Qwen/Opus 模型评测仍按流水线执行。
+- Harness build 阶段会基于 `base_commit` 下的仓库文件、`task.json` 和测试脚本生成 `runtime_env.json`；Local verification、SWE-agent safe image 和 Docker package 优先消费该确定性环境契约。该环境依赖修复路径不接入额外大模型，后续 Opus/Qwen 模型评测仍按流水线执行。
 - GitHub PR 候选必须是 merged PR，并且 PR 标题或正文包含 `closes/fixes/resolves #issue` 等关闭关键词。
 - GitHub 搜索和 PR 扫描会在 `127.0.0.1:7897` 可连通时自动走该 HTTP 代理；代理不可用时直连。
 - QC 阶段会生成 `乙方质检-SWE-Pro数据验收标准对照表.xlsx`，主表为 34 条验收结果，汇总表包含 patch 规模和模型采样结果；review 文件中仍含 `PENDING_*`、`待审校`、`待补充`、`待评测`、`待验证` 等占位内容时会失败。

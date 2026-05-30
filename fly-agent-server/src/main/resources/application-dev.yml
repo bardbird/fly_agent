@@ -23,8 +23,8 @@ logging:
 
 swe:
   qwen-attempts: ${SWE_QWEN_ATTEMPTS:4}
-  opus-attempts: ${SWE_OPUS_ATTEMPTS:1}
-  opus-max-steps-schedule: ${SWE_OPUS_MAX_STEPS_SCHEDULE:180}
+  opus-attempts: ${SWE_OPUS_ATTEMPTS:8}
+  opus-max-steps-schedule: ${SWE_OPUS_MAX_STEPS_SCHEDULE:180,50,10}
   swe-agent:
     maxSteps: 20
 

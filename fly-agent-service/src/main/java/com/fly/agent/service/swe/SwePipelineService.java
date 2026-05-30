@@ -260,6 +260,7 @@ public class SwePipelineService {
         }
         SwePipelineStage resumeFromStage = resolveResumeFromStage(request.getResumeFromStage());
         attachCandidate(task);
+        syncStageSortOrders(run.getId());
         if (run.getCandidateId() == null && task.getCandidateId() != null) {
             run.setCandidateId(task.getCandidateId());
         }
@@ -304,6 +305,17 @@ public class SwePipelineService {
                 .set(SwePipelineStageEntity::getUpdatedAt, LocalDateTime.now())
                 .eq(SwePipelineStageEntity::getRunId, runId)
                 .ge(SwePipelineStageEntity::getSortOrder, fromStage.getSortOrder()));
+    }
+
+    private void syncStageSortOrders(Long runId) {
+        for (SwePipelineStage stage : SwePipelineStage.values()) {
+            stageMapper.update(null, new LambdaUpdateWrapper<SwePipelineStageEntity>()
+                    .set(SwePipelineStageEntity::getSortOrder, stage.getSortOrder())
+                    .set(SwePipelineStageEntity::getStageName, stage.getDescription())
+                    .set(SwePipelineStageEntity::getUpdatedAt, LocalDateTime.now())
+                    .eq(SwePipelineStageEntity::getRunId, runId)
+                    .eq(SwePipelineStageEntity::getStageCode, stage.getCode()));
+        }
     }
 
     private void launchAfterCommit(SweTaskEntity task, Long runId, String samplePath, boolean resumeMode) {
@@ -406,8 +418,8 @@ public class SwePipelineService {
         runStageUnchecked(runId, SwePipelineStage.PATCH_VERIFY, () -> inspectPatches(runId, samplePath), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.HARNESS_BUILD, () -> inspectHarness(runId, samplePath), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.LOCAL_VERIFY, () -> inspectVerificationLogs(runId, samplePath), resumeMode);
-        runStageUnchecked(runId, SwePipelineStage.MODEL_QWEN_EVAL, () -> inspectModelSummary(runId, samplePath, "qwen"), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.MODEL_OPUS_EVAL, () -> inspectModelSummary(runId, samplePath, "opus"), resumeMode);
+        runStageUnchecked(runId, SwePipelineStage.MODEL_QWEN_EVAL, () -> inspectModelSummary(runId, samplePath, "qwen"), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.DOCKER_PACKAGE, () -> inspectDockerEvidence(runId, samplePath), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.QC_REVIEW, () -> inspectQualityEvidence(runId, samplePath), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.PACKAGE_EXPORT, () -> inspectPackageExport(runId, samplePath), resumeMode);
@@ -429,8 +441,8 @@ public class SwePipelineService {
         runStageUnchecked(runId, SwePipelineStage.PATCH_VERIFY, () -> verifyPatchApplication(runId, requireInitializedPackage(packagePath)), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.HARNESS_BUILD, () -> inspectHarness(runId, requireInitializedPackage(packagePath)), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.LOCAL_VERIFY, () -> runLocalVerification(runId, requireInitializedPackage(packagePath)), resumeMode);
-        runStageUnchecked(runId, SwePipelineStage.MODEL_QWEN_EVAL, () -> runQwenEvaluation(runId, requireInitializedPackage(packagePath)), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.MODEL_OPUS_EVAL, () -> runOpusEvaluation(runId, requireInitializedPackage(packagePath)), resumeMode);
+        runStageUnchecked(runId, SwePipelineStage.MODEL_QWEN_EVAL, () -> runQwenEvaluation(runId, requireInitializedPackage(packagePath)), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.DOCKER_PACKAGE, () -> runDockerPackage(runId, requireInitializedPackage(packagePath)), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.QC_REVIEW, () -> inspectQualityEvidence(runId, requireInitializedPackage(packagePath)), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.PACKAGE_EXPORT, () -> runPackageExport(runId, requireInitializedPackage(packagePath)), resumeMode);
@@ -854,7 +866,7 @@ public class SwePipelineService {
             JSONObject summary = readJson(reusableSummary);
             double passRate = summary.getDoubleValue("pass_rate");
             if (passRate > 0.5d) {
-                throw new BusinessException("Qwen pass rate@4 超过 50%，任务过简单，停止进入 Opus 阶段");
+                throw new BusinessException("Qwen pass rate@4 超过 50%，任务过简单，停止进入后续交付阶段");
             }
             return "Qwen evaluation reused existing gate evidence: passes="
                     + summary.getIntValue("passes")
@@ -867,7 +879,7 @@ public class SwePipelineService {
         ensureModelEvaluationInfrastructureReady("Qwen", summary);
         double passRate = summary.getDoubleValue("pass_rate");
         if (passRate > 0.5d) {
-            throw new BusinessException("Qwen pass rate@4 超过 50%，任务过简单，停止进入 Opus 阶段");
+            throw new BusinessException("Qwen pass rate@4 超过 50%，任务过简单，停止进入后续交付阶段");
         }
         return "Qwen evaluation passed gate: passes=" + summary.getIntValue("passes")
                 + "/" + summary.getIntValue("attempts")
@@ -1112,7 +1124,7 @@ public class SwePipelineService {
         String lower = key == null ? "" : key.toLowerCase();
         ensureModelEvaluationInfrastructureReady(lower.contains("opus") ? "Opus" : "Qwen", summary);
         if (lower.contains("qwen") && summary.getDoubleValue("pass_rate") > 0.5d) {
-            throw new BusinessException("Qwen pass rate@4 超过 50%，任务过简单，停止进入 Opus 阶段");
+            throw new BusinessException("Qwen pass rate@4 超过 50%，任务过简单，停止进入后续交付阶段");
         }
         if (lower.contains("opus") && summary.getIntValue("passes") <= 0) {
             throw new BusinessException("Opus pass@8 为 0，任务不满足验收难度");

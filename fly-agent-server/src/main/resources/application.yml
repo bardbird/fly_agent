@@ -78,8 +78,8 @@ swe:
     root: ${SWE_AGENT_ROOT:tools/SWE-agent}
     max-steps: ${SWE_AGENT_MAX_STEPS:20}
   qwen-attempts: ${SWE_QWEN_ATTEMPTS:4}
-  opus-attempts: ${SWE_OPUS_ATTEMPTS:1}
-  opus-max-steps-schedule: ${SWE_OPUS_MAX_STEPS_SCHEDULE:180}
+  opus-attempts: ${SWE_OPUS_ATTEMPTS:8}
+  opus-max-steps-schedule: ${SWE_OPUS_MAX_STEPS_SCHEDULE:180,50,10}
   model-timeout-seconds: ${SWE_MODEL_TIMEOUT_SECONDS:3600}
   github:
     token: ${GITHUB_TOKEN:}

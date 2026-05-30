@@ -1,9 +1,12 @@
 package com.fly.agent.service.swe;
 
+import com.fly.agent.common.dto.swe.SweAllowedRepoDTO;
+import com.fly.agent.common.dto.swe.SweAllowedRepoListResponse;
 import com.fly.agent.common.dto.swe.SweScaReportGenerateRequest;
 import com.fly.agent.common.dto.swe.SweScaReportGenerateResponse;
 import com.fly.agent.common.exception.BusinessException;
-import lombok.RequiredArgsConstructor;
+import com.fly.agent.dao.mapper.swe.SweRepoScaReportMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -11,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -21,13 +25,29 @@ import java.util.stream.Stream;
  * Generates task-level SCA delivery materials for an existing SWE-Pro package.
  */
 @Service
-@RequiredArgsConstructor
 public class SweScaReportService {
 
     private static final String DELIVERY_DIR_NAME = "SCA_交付材料";
+    private static final int DEFAULT_REPO_PAGE_SIZE = 20;
+    private static final int MAX_REPO_PAGE_SIZE = 100;
 
     private final SweProperties properties;
     private final SweCommandRunner commandRunner;
+    private final SweRepoScaReportMapper scaReportMapper;
+
+    @Autowired
+    public SweScaReportService(
+            SweProperties properties,
+            SweCommandRunner commandRunner,
+            SweRepoScaReportMapper scaReportMapper) {
+        this.properties = properties;
+        this.commandRunner = commandRunner;
+        this.scaReportMapper = scaReportMapper;
+    }
+
+    public SweScaReportService(SweProperties properties, SweCommandRunner commandRunner) {
+        this(properties, commandRunner, null);
+    }
 
     public SweScaReportGenerateResponse generate(SweScaReportGenerateRequest request) {
         Path packagePath = requirePackagePath(request);
@@ -75,6 +95,49 @@ public class SweScaReportService {
         return response;
     }
 
+    public SweAllowedRepoListResponse listAllowedRepos(
+            Integer page,
+            Integer perPage,
+            String language,
+            Boolean inCandidate) {
+        requireScaReportMapper();
+        int resolvedPage = page == null ? 1 : Math.max(page, 1);
+        int resolvedPerPage = perPage == null
+                ? DEFAULT_REPO_PAGE_SIZE
+                : Math.min(Math.max(perPage, 1), MAX_REPO_PAGE_SIZE);
+        String normalizedLanguage = normalizeLanguage(language);
+        long total = scaReportMapper.countAllowedRepoReports(normalizedLanguage, inCandidate);
+        int totalPages = total == 0 ? 1 : (int) Math.ceil(total / (double) resolvedPerPage);
+        int offset = (resolvedPage - 1) * resolvedPerPage;
+
+        SweAllowedRepoListResponse response = new SweAllowedRepoListResponse();
+        response.setPage(resolvedPage);
+        response.setPerPage(resolvedPerPage);
+        response.setTotal(total);
+        response.setTotalPages(totalPages);
+        response.setRepositories(scaReportMapper
+                .selectAllowedRepoReports(normalizedLanguage, inCandidate, resolvedPerPage, offset)
+                .stream()
+                .map(this::toAllowedRepoDTO)
+                .toList());
+        return response;
+    }
+
+    public String exportAllowedRepoCsv(String language, Boolean inCandidate) {
+        requireScaReportMapper();
+        StringBuilder csv = new StringBuilder("repo,github_url\n");
+        for (Map<String, Object> row : scaReportMapper.selectAllowedRepoExportRows(
+                normalizeLanguage(language),
+                inCandidate)) {
+            String repo = stringValue(row.get("repo"));
+            csv.append(csv(repo))
+                    .append(',')
+                    .append(csv(githubUrl(repo)))
+                    .append('\n');
+        }
+        return csv.toString();
+    }
+
     private Path requirePackagePath(SweScaReportGenerateRequest request) {
         if (request == null || !StringUtils.hasText(request.getPackagePath())) {
             throw new BusinessException("packagePath不能为空");
@@ -85,6 +148,93 @@ public class SweScaReportService {
         requireFile(packagePath.resolve("task.json"), "task.json is required");
         requireDirectory(packagePath.resolve("repo"), "repo directory is required");
         return packagePath;
+    }
+
+    private void requireScaReportMapper() {
+        if (scaReportMapper == null) {
+            throw new BusinessException("swe_repo_sca_report mapper is not available");
+        }
+    }
+
+    private SweAllowedRepoDTO toAllowedRepoDTO(Map<String, Object> row) {
+        String repo = stringValue(row.get("repo"));
+        SweAllowedRepoDTO dto = new SweAllowedRepoDTO();
+        dto.setId(longValue(row.get("id")));
+        dto.setRepo(repo);
+        dto.setGithubUrl(githubUrl(repo));
+        dto.setPrimaryLanguage(stringValue(row.get("primaryLanguage")));
+        dto.setGithubStars(intValue(row.get("githubStars")));
+        dto.setLicenseSpdxId(stringValue(row.get("licenseSpdxId")));
+        dto.setLicenseName(stringValue(row.get("licenseName")));
+        dto.setCompatibilityReason(stringValue(row.get("compatibilityReason")));
+        dto.setInCandidate(booleanValue(row.get("inCandidate")));
+        dto.setCheckedAt(dateTimeValue(row.get("checkedAt")));
+        dto.setCandidateLastScannedAt(dateTimeValue(row.get("candidateLastScannedAt")));
+        return dto;
+    }
+
+    private String normalizeLanguage(String language) {
+        if (!StringUtils.hasText(language) || "all".equalsIgnoreCase(language.trim())) {
+            return null;
+        }
+        String normalized = language.trim().toLowerCase();
+        return switch (normalized) {
+            case "ts" -> "typescript";
+            case "js" -> "javascript";
+            default -> normalized;
+        };
+    }
+
+    private String githubUrl(String repo) {
+        return StringUtils.hasText(repo) ? "https://github.com/" + repo : "";
+    }
+
+    private String csv(String value) {
+        if (value == null) {
+            return "";
+        }
+        return "\"" + value.replace("\"", "\"\"") + "\"";
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private Long longValue(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value != null) {
+            return Long.parseLong(String.valueOf(value));
+        }
+        return null;
+    }
+
+    private Integer intValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value != null) {
+            return Integer.parseInt(String.valueOf(value));
+        }
+        return null;
+    }
+
+    private Boolean booleanValue(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.intValue() != 0;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private String dateTimeValue(Object value) {
+        if (value instanceof LocalDateTime dateTime) {
+            return dateTime.toString();
+        }
+        return value == null ? null : String.valueOf(value);
     }
 
     private Path requireGeneratedScaDirectory(Path outputPath) {
