@@ -18,6 +18,7 @@ Expected backend calls, excluding status polling: `1-3`.
    - Needed only if no task exists yet.
 2. Start or resume pipeline: `POST /api/v1/swe/runs/start`
    - Use `resumeRunId` and `resumeFromStage` when a run record already exists.
+   - When resuming from a locally verified package, include `samplePath` even for GitHub PR tasks. Otherwise the backend may run the original candidate path instead of the corrected package.
    - Preferred resume stage after local verification is `MODEL_OPUS_EVAL`.
 3. Optional status read: `GET /api/v1/swe/runs/detail?runId=<id>`
    - Use once to verify the backend accepted the handoff.
@@ -80,6 +81,7 @@ Resume after local verification:
 {
   "taskId": 18,
   "resumeRunId": 38,
-  "resumeFromStage": "MODEL_OPUS_EVAL"
+  "resumeFromStage": "MODEL_OPUS_EVAL",
+  "samplePath": "/abs/path/to/verified/package"
 }
 ```

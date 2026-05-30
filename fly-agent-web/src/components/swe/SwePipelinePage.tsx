@@ -151,7 +151,8 @@ export function SwePipelinePage() {
   const [modelIo, setModelIo] = useState<SweModelIoConsole | null>(null)
   const [modelIoLoading, setModelIoLoading] = useState(false)
   const [modelIoError, setModelIoError] = useState<string | null>(null)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [secretSettingsOpen, setSecretSettingsOpen] = useState(false)
+  const [evaluationSettingsOpen, setEvaluationSettingsOpen] = useState(false)
   const [runtimeSettings, setRuntimeSettings] = useState<SweRuntimeSetting[]>([])
   const [settingsForm, setSettingsForm] = useState<Record<string, string>>({})
   const [settingsLoading, setSettingsLoading] = useState(false)
@@ -183,7 +184,7 @@ export function SwePipelinePage() {
   }, [githubPerPage, githubTotal])
 
   const configuredSettingCount = useMemo(
-    () => runtimeSettings.filter((setting) => setting.configured).length,
+    () => runtimeSettings.filter((setting) => setting.secret && setting.configured).length,
     [runtimeSettings]
   )
 
@@ -506,13 +507,17 @@ export function SwePipelinePage() {
     setActiveStep('tasks')
   }
 
-  async function handleSaveSettings(event: FormEvent<HTMLFormElement>) {
+  async function handleSaveSettings(event: FormEvent<HTMLFormElement>, settings: SweRuntimeSetting[]) {
     event.preventDefault()
     setSettingsError(null)
     setSettingsMessage(null)
     setSettingsSaving(true)
     try {
-      const response = await saveSweRuntimeSettings({ values: settingsForm })
+      const values = settings.reduce<Record<string, string>>((payload, setting) => {
+        payload[setting.key] = settingsForm[setting.key] ?? ''
+        return payload
+      }, {})
+      const response = await saveSweRuntimeSettings({ values })
       setRuntimeSettings(response.settings)
       setSettingsForm(buildSettingsForm(response.settings))
       setSettingsMessage('已保存到 Redis')
@@ -541,7 +546,8 @@ export function SwePipelinePage() {
               type="button"
               className="inline-flex h-9 items-center gap-2 rounded-lg border border-terminal bg-white px-3 text-sm font-bold text-text-primary transition-colors hover:bg-tertiary/50"
               onClick={() => {
-                setSettingsOpen((value) => !value)
+                setSecretSettingsOpen((value) => !value)
+                setEvaluationSettingsOpen(false)
                 if (runtimeSettings.length === 0) {
                   refreshRuntimeSettings()
                 }
@@ -551,9 +557,23 @@ export function SwePipelinePage() {
               密钥设置
               {runtimeSettings.length > 0 && (
                 <span className="rounded-full bg-tertiary px-1.5 py-0.5 text-[10px] text-text-secondary">
-                  {configuredSettingCount}/{runtimeSettings.length}
+                  {configuredSettingCount}/{runtimeSettings.filter((setting) => setting.secret).length}
                 </span>
               )}
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-terminal bg-white px-3 text-sm font-bold text-text-primary transition-colors hover:bg-tertiary/50"
+              onClick={() => {
+                setEvaluationSettingsOpen((value) => !value)
+                setSecretSettingsOpen(false)
+                if (runtimeSettings.length === 0) {
+                  refreshRuntimeSettings()
+                }
+              }}
+            >
+              <Icon icon="mdi:tune-variant" className="h-4 w-4 text-cyan" />
+              评测配置
             </button>
             <Link
               to="/"
@@ -587,9 +607,30 @@ export function SwePipelinePage() {
           </div>
         )}
 
-        {settingsOpen && (
+        {secretSettingsOpen && (
           <RuntimeSettingsPanel
-            settings={runtimeSettings}
+            title="SWE-Pro 密钥设置"
+            icon="mdi:key-chain"
+            settings={runtimeSettings.filter((setting) => setting.secret)}
+            values={settingsForm}
+            loading={settingsLoading}
+            saving={settingsSaving}
+            error={settingsError}
+            message={settingsMessage}
+            onChange={(key, value) => {
+              setSettingsMessage(null)
+              setSettingsForm((current) => ({ ...current, [key]: value }))
+            }}
+            onRefresh={() => refreshRuntimeSettings()}
+            onSubmit={handleSaveSettings}
+          />
+        )}
+
+        {evaluationSettingsOpen && (
+          <RuntimeSettingsPanel
+            title="SWE-Pro 评测配置"
+            icon="mdi:tune-variant"
+            settings={runtimeSettings.filter((setting) => !setting.secret)}
             values={settingsForm}
             loading={settingsLoading}
             saving={settingsSaving}
@@ -766,6 +807,8 @@ function buildSettingsForm(settings: SweRuntimeSetting[]): Record<string, string
 }
 
 function RuntimeSettingsPanel({
+  title,
+  icon,
   settings,
   values,
   loading,
@@ -776,6 +819,8 @@ function RuntimeSettingsPanel({
   onRefresh,
   onSubmit,
 }: {
+  title: string
+  icon: string
   settings: SweRuntimeSetting[]
   values: Record<string, string>
   loading: boolean
@@ -784,20 +829,17 @@ function RuntimeSettingsPanel({
   message: string | null
   onChange: (key: string, value: string) => void
   onRefresh: () => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: (event: FormEvent<HTMLFormElement>, settings: SweRuntimeSetting[]) => void
 }) {
-  const secretSettings = settings.filter((setting) => setting.secret)
-  const modelSettings = settings.filter((setting) => !setting.secret)
-
   return (
     <form
-      onSubmit={onSubmit}
+      onSubmit={(event) => onSubmit(event, settings)}
       className="mb-4 rounded-lg border border-terminal bg-white p-4 shadow-sm"
     >
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-2">
-          <Icon icon="mdi:key-chain" className="h-5 w-5 text-cyan" />
-          <h3 className="text-sm font-bold text-text-primary">SWE-Pro 密钥设置</h3>
+          <Icon icon={icon} className="h-5 w-5 text-cyan" />
+          <h3 className="text-sm font-bold text-text-primary">{title}</h3>
         </div>
         <div className="flex gap-2">
           <Button type="button" size="sm" variant="outline" disabled={loading} onClick={onRefresh}>
@@ -823,33 +865,24 @@ function RuntimeSettingsPanel({
       {loading && settings.length === 0 ? (
         <EmptyState icon="mdi:loading" text="加载中" />
       ) : (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <section>
-            <h4 className="mb-2 text-xs font-bold uppercase text-text-muted">Tokens</h4>
-            <div className="grid gap-3 md:grid-cols-2">
-              {secretSettings.map((setting) => (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {settings.map((setting) =>
+            setting.secret ? (
                 <SecretSettingField
                   key={setting.key}
                   setting={setting}
                   value={values[setting.key] ?? ''}
                   onChange={(value) => onChange(setting.key, value)}
                 />
-              ))}
-            </div>
-          </section>
-          <section>
-            <h4 className="mb-2 text-xs font-bold uppercase text-text-muted">Models</h4>
-            <div className="grid gap-3 md:grid-cols-2">
-              {modelSettings.map((setting) => (
+            ) : (
                 <SettingField
                   key={setting.key}
                   setting={setting}
                   value={values[setting.key] ?? ''}
                   onChange={(value) => onChange(setting.key, value)}
                 />
-              ))}
-            </div>
-          </section>
+            )
+          )}
         </div>
       )}
     </form>

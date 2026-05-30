@@ -48,6 +48,10 @@ def main() -> int:
 
     calls: list[dict] = []
     task_id = args.task_id
+    package_path = str(Path(args.package_dir).resolve()) if args.package_dir else ""
+
+    if args.create_task and args.run_id:
+        raise SystemExit("--create-task cannot be combined with --run-id; resumeRunId must belong to an existing task")
 
     if args.create_task:
         if args.from_candidate:
@@ -60,10 +64,9 @@ def main() -> int:
         else:
             if not args.package_dir:
                 raise SystemExit("--package-dir is required when creating a task from a package")
-            package = Path(args.package_dir).resolve()
             payload = {
-                "taskName": args.task_name or package.name,
-                "samplePath": str(package),
+                "taskName": args.task_name or Path(package_path).name,
+                "samplePath": package_path,
             }
             calls.append({"method": "POST", "path": "/api/v1/swe/tasks", "payload": payload})
 
@@ -75,11 +78,13 @@ def main() -> int:
             "resumeRunId": args.run_id,
             "resumeFromStage": args.resume_from_stage,
         }
+        if package_path:
+            payload["samplePath"] = package_path
         calls.append({"method": "POST", "path": "/api/v1/swe/runs/start", "payload": payload})
     elif task_id or args.create_task:
         payload = {"taskId": task_id or "<created-task-id>"}
-        if args.package_dir:
-            payload["samplePath"] = str(Path(args.package_dir).resolve())
+        if package_path:
+            payload["samplePath"] = package_path
         calls.append({"method": "POST", "path": "/api/v1/swe/runs/start", "payload": payload})
 
     if args.dry_run:

@@ -17,6 +17,7 @@ Setup:
 
 - `PIP_NO_CACHE_DIR=1 python3 -m pip install -e .`
 - install test extras only when present and needed
+- eval-shell parity: `bash -lc 'command -v python3 && python3 --version'`
 
 ## JavaScript / TypeScript
 
@@ -35,6 +36,7 @@ Setup:
 - run install in the nearest package root
 - use `npm ci` with `package-lock.json`
 - use `corepack enable` for pnpm/yarn projects
+- eval-shell parity: check the selected runner with `bash -lc 'command -v node && command -v npm'`, or `pnpm`/`yarn` when selected
 
 ## Java / Kotlin
 
@@ -51,6 +53,7 @@ Setup:
 
 - prefer wrappers when available
 - install JDK required by the build file
+- eval-shell parity: `bash -lc 'command -v java && java -version'`, plus `mvn` or `./gradlew` when selected
 
 ## Go
 
@@ -66,6 +69,8 @@ Setup:
 
 - run from module root
 - set `GOPROXY` only if network access needs it
+- eval-shell parity: `bash -lc 'command -v go && go version'`
+- if login-shell PATH drops Go, prefix task commands with `export PATH=/usr/local/go/bin:/go/bin:$PATH &&`
 
 ## Rust
 
@@ -82,3 +87,4 @@ Setup:
 
 - install system libraries used by linked crates
 - keep selected pass-to-pass tests outside PR-modified tests
+- eval-shell parity: `bash -lc 'command -v cargo && cargo --version'`

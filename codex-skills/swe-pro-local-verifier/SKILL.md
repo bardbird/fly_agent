@@ -54,6 +54,8 @@ python3 tools/swe-pro-production/scripts/package_task.py <package_dir> --docker
 3. Review oracle quality before chasing environment failures.
    - Read `problem_statement.md`, PR evidence, `gold.patch`, and `test.patch`.
    - Reject or rewrite `test.patch` if it tests private implementation details, unrelated behavior, new helper names from gold, snapshots unrelated to the issue, time/network/randomness, or brittle formatting absent from the issue.
+   - Run an alternate-implementation probe: ask whether a semantically correct solution with different helper names, config field names, file layout, or validation order would fail to compile or fail for reasons not stated in the issue. If yes, rewrite toward public behavior.
+   - For new integrations/providers, prefer testing the behavior visible at the provider/factory boundary. Do not require gold-only struct fields such as `Domain` when names like `Hostname` or `CustomDomain` would also satisfy the issue.
    - Read `references/oracle.md` when deciding whether to rewrite tests.
 
 4. Verify patch mechanics.
@@ -77,12 +79,18 @@ python3 tools/swe-pro-production/scripts/package_task.py <package_dir> --docker
    - Inspect `logs/docker_build.log`, `logs/docker/baseline.log`, `logs/docker/fixed.log`, `logs/docker/pass_to_pass.log`, and `logs/docker/validation.json`.
    - A passing `logs/docker/validation.json` with `"ok": true` is the local verification gate.
 
-8. Write handoff evidence.
+8. Run eval-shell parity checks before handoff.
+   - Model evaluation executes task commands through `bash -lc` in a validation image. Re-run at least `before_repo_set_cmd` and command-tool discovery with the same shell form.
+   - For each selected command, verify the language tool resolves under login-shell semantics, for example `bash -lc 'command -v go && go version'`.
+   - If a command needs a toolchain path, encode it in `task.json` commands and `scripts/run_selected_tests.sh`, for example `export PATH=/usr/local/go/bin:/go/bin:$PATH && go test ...`.
+   - Treat `command not found` here as infrastructure failure even if Docker baseline/fixed/pass-to-pass already passed.
+
+9. Write handoff evidence.
    - Update `verification.md` with the final commands and results.
    - Write `.swe-ai/handoff.json` using `references/handoff.md`.
    - Run `scripts/docker_budget.py <package_dir>` and include the result.
 
-9. Resume fly-agent only after local verification passes.
+10. Resume fly-agent only after local verification passes.
    - Read `references/api-calls.md` before calling backend APIs.
    - The local loop should use zero backend calls after task claim.
    - The normal handoff uses one to three backend calls per package, excluding polling.

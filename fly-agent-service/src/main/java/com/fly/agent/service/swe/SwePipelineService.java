@@ -277,9 +277,9 @@ public class SwePipelineService {
             resetStagesFrom(run.getId(), resumeFromStage);
         }
 
-        String samplePath = isGithubPullTask(task)
-                ? null
-                : (StringUtils.hasText(request.getSamplePath()) ? request.getSamplePath() : task.getSamplePath());
+        String samplePath = StringUtils.hasText(request.getSamplePath())
+                ? request.getSamplePath()
+                : (isGithubPullTask(task) ? null : task.getSamplePath());
         launchAfterCommit(task, run.getId(), samplePath, true);
         return getRun(run.getId());
     }
@@ -418,11 +418,11 @@ public class SwePipelineService {
         runStageUnchecked(runId, SwePipelineStage.PATCH_VERIFY, () -> inspectPatches(runId, samplePath), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.HARNESS_BUILD, () -> inspectHarness(runId, samplePath), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.LOCAL_VERIFY, () -> inspectVerificationLogs(runId, samplePath), resumeMode);
-        runStageUnchecked(runId, SwePipelineStage.MODEL_OPUS_EVAL, () -> inspectModelSummary(runId, samplePath, "opus"), resumeMode);
-        runStageUnchecked(runId, SwePipelineStage.MODEL_QWEN_EVAL, () -> inspectModelSummary(runId, samplePath, "qwen"), resumeMode);
-        runStageUnchecked(runId, SwePipelineStage.DOCKER_PACKAGE, () -> inspectDockerEvidence(runId, samplePath), resumeMode);
+        runStageUnchecked(runId, SwePipelineStage.MODEL_OPUS_EVAL, () -> runOpusEvaluation(runId, samplePath), resumeMode);
+        runStageUnchecked(runId, SwePipelineStage.MODEL_QWEN_EVAL, () -> runQwenEvaluation(runId, samplePath), resumeMode);
+        runStageUnchecked(runId, SwePipelineStage.DOCKER_PACKAGE, () -> runDockerPackage(runId, samplePath), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.QC_REVIEW, () -> inspectQualityEvidence(runId, samplePath), resumeMode);
-        runStageUnchecked(runId, SwePipelineStage.PACKAGE_EXPORT, () -> inspectPackageExport(runId, samplePath), resumeMode);
+        runStageUnchecked(runId, SwePipelineStage.PACKAGE_EXPORT, () -> runPackageExport(runId, samplePath), resumeMode);
     }
 
     private Path executeCandidateProductionRun(SweTaskEntity task, Long runId, boolean resumeMode) {
@@ -860,22 +860,8 @@ public class SwePipelineService {
     }
 
     private String runQwenEvaluation(Long runId, Path packagePath) {
-        Path reusableSummary = findLatestReusableModelSummary(packagePath, "qwen");
-        if (reusableSummary != null) {
-            recordArtifact(runId, "MODEL_SUMMARY", reusableSummary);
-            JSONObject summary = readJson(reusableSummary);
-            double passRate = summary.getDoubleValue("pass_rate");
-            if (passRate > 0.5d) {
-                throw new BusinessException("Qwen pass rate@4 超过 50%，任务过简单，停止进入后续交付阶段");
-            }
-            return "Qwen evaluation reused existing gate evidence: passes="
-                    + summary.getIntValue("passes")
-                    + "/" + summary.getIntValue("attempts")
-                    + ", passRate=" + passRate
-                    + modelStatusCountsSuffix(summary);
-        }
         JSONObject summary = runModelEvaluation(runId, packagePath, "qwen3.6_flash_pass4_swebench_agentic", runtimeSettingsService.resolveQwenModel(),
-                properties.getQwenAttempts(), "QWEN_API_KEY", false, true);
+                runtimeSettingsService.resolveQwenAttempts(), "QWEN_API_KEY", false, true);
         ensureModelEvaluationInfrastructureReady("Qwen", summary);
         double passRate = summary.getDoubleValue("pass_rate");
         if (passRate > 0.5d) {
@@ -888,16 +874,8 @@ public class SwePipelineService {
     }
 
     private String runOpusEvaluation(Long runId, Path packagePath) {
-        Path reusableSummary = findLatestReusableModelSummary(packagePath, "opus");
-        if (reusableSummary != null) {
-            recordArtifact(runId, "MODEL_SUMMARY", reusableSummary);
-            JSONObject summary = readJson(reusableSummary);
-            return "Opus evaluation reused existing passing evidence: passes="
-                    + summary.getIntValue("passes")
-                    + "/" + summary.getIntValue("attempts");
-        }
         JSONObject summary = runModelEvaluation(runId, packagePath, "opus4.7_pass8_swebench_agentic", runtimeSettingsService.resolveOpusModel(),
-                positiveAttempts(properties.getOpusAttempts(), 1), "OPUS_API_KEY", true, true);
+                positiveAttempts(runtimeSettingsService.resolveOpusAttempts(), 1), "OPUS_API_KEY", true, true);
         ensureModelEvaluationInfrastructureReady("Opus", summary);
         if (summary.getIntValue("passes") <= 0) {
             throw new BusinessException("Opus pass@8 为 0，任务不满足验收难度" + modelStatusCountsSuffix(summary));
@@ -943,7 +921,7 @@ public class SwePipelineService {
         command.add("--out-name");
         command.add(outName);
         command.add("--timeout");
-        command.add(String.valueOf(properties.getModelTimeoutSeconds()));
+        command.add(String.valueOf(runtimeSettingsService.resolveModelTimeoutSeconds()));
         command.add("--max-tokens");
         command.add(String.valueOf(positiveInteger(model.getMaxTokens(), 4096)));
         command.add("--max-input-tokens");
@@ -954,9 +932,10 @@ public class SwePipelineService {
         command.add(StringUtils.hasText(model.getProvider()) ? model.getProvider() : "openai");
         command.add("--agent-max-steps");
         command.add(String.valueOf(resolveSweAgentMaxSteps()));
-        if (outName.toLowerCase().contains("opus") && StringUtils.hasText(properties.getOpusMaxStepsSchedule())) {
+        String opusMaxStepsSchedule = runtimeSettingsService.resolveOpusMaxStepsSchedule();
+        if (outName.toLowerCase().contains("opus") && StringUtils.hasText(opusMaxStepsSchedule)) {
             command.add("--agent-max-steps-schedule");
-            command.add(properties.getOpusMaxStepsSchedule());
+            command.add(opusMaxStepsSchedule);
         }
         command.add("--enable-thinking");
         command.add(outName.toLowerCase().contains("qwen") ? "false" : "omit");
@@ -997,10 +976,7 @@ public class SwePipelineService {
     }
 
     private int resolveSweAgentMaxSteps() {
-        if (properties.getSweAgent() == null) {
-            return SWE_BENCH_PRO_AGENT_MAX_STEPS;
-        }
-        return positiveInteger(properties.getSweAgent().getMaxSteps(), SWE_BENCH_PRO_AGENT_MAX_STEPS);
+        return positiveInteger(runtimeSettingsService.resolveSweAgentMaxSteps(), SWE_BENCH_PRO_AGENT_MAX_STEPS);
     }
 
     private String runDockerPackage(Long runId, Path packagePath) {
@@ -1860,46 +1836,6 @@ public class SwePipelineService {
                     .filter(path -> "summary.json".equals(path.getFileName().toString()))
                     .filter(path -> path.getParent() != null
                             && path.getParent().getFileName().toString().toLowerCase().contains(lower))
-                    .max((a, b) -> {
-                        try {
-                            return Files.getLastModifiedTime(a).compareTo(Files.getLastModifiedTime(b));
-                        } catch (IOException e) {
-                            return 0;
-                        }
-                    })
-                    .orElse(null);
-        } catch (IOException e) {
-            return null;
-        }
-    }
-
-    private Path findLatestReusableModelSummary(Path packagePath, String key) {
-        Path root = packagePath.resolve("model_evaluation");
-        if (!Files.isDirectory(root)) {
-            return null;
-        }
-        try (Stream<Path> stream = Files.walk(root, 2)) {
-            String lower = key.toLowerCase();
-            return stream
-                    .filter(Files::isRegularFile)
-                    .filter(path -> "summary.json".equals(path.getFileName().toString()))
-                    .filter(path -> path.getParent() != null
-                            && path.getParent().getFileName().toString().toLowerCase().contains(lower))
-                    .filter(path -> {
-                        try {
-                            JSONObject summary = readJson(path);
-                            validateInspectedModelSummaryGate(key, summary);
-                            if (modelStatusCount(summary, "invalid") > 0) {
-                                return false;
-                            }
-                            if (modelStatusCount(summary, "model_failed") > 0) {
-                                return false;
-                            }
-                            return true;
-                        } catch (Exception e) {
-                            return false;
-                        }
-                    })
                     .max((a, b) -> {
                         try {
                             return Files.getLastModifiedTime(a).compareTo(Files.getLastModifiedTime(b));

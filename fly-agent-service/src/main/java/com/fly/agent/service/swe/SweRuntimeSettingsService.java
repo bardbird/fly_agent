@@ -31,6 +31,11 @@ public class SweRuntimeSettingsService {
     public static final String KEY_OPUS_BASE_URL = "opusBaseUrl";
     public static final String KEY_OPUS_TOKEN = "opusToken";
     public static final String KEY_OPUS_MODEL = "opusModel";
+    public static final String KEY_QWEN_ATTEMPTS = "qwenAttempts";
+    public static final String KEY_OPUS_ATTEMPTS = "opusAttempts";
+    public static final String KEY_SWE_AGENT_MAX_STEPS = "sweAgentMaxSteps";
+    public static final String KEY_OPUS_MAX_STEPS_SCHEDULE = "opusMaxStepsSchedule";
+    public static final String KEY_MODEL_TIMEOUT_SECONDS = "modelTimeoutSeconds";
 
     private static final String REDIS_KEY = "fly-agent:swe:runtime-settings";
     private static final String UPDATED_AT_FIELD = "_updatedAt";
@@ -107,6 +112,31 @@ public class SweRuntimeSettingsService {
                 KEY_OPUS_MODEL);
     }
 
+    public int resolveQwenAttempts() {
+        return resolvePositiveInteger(KEY_QWEN_ATTEMPTS, sweProperties.getQwenAttempts(), 4);
+    }
+
+    public int resolveOpusAttempts() {
+        return resolvePositiveInteger(KEY_OPUS_ATTEMPTS, sweProperties.getOpusAttempts(), 8);
+    }
+
+    public int resolveSweAgentMaxSteps() {
+        Integer fallback = sweProperties.getSweAgent() == null ? null : sweProperties.getSweAgent().getMaxSteps();
+        return resolvePositiveInteger(KEY_SWE_AGENT_MAX_STEPS, fallback, 20);
+    }
+
+    public String resolveOpusMaxStepsSchedule() {
+        String value = getStoredValue(KEY_OPUS_MAX_STEPS_SCHEDULE);
+        if (StringUtils.hasText(value) && isValidPositiveIntegerList(value)) {
+            return value.trim();
+        }
+        return sweProperties.getOpusMaxStepsSchedule();
+    }
+
+    public int resolveModelTimeoutSeconds() {
+        return resolvePositiveInteger(KEY_MODEL_TIMEOUT_SECONDS, sweProperties.getModelTimeoutSeconds(), 3600);
+    }
+
     private SweProperties.Model resolveModel(
             SweProperties.Model fallback,
             String baseUrlKey,
@@ -129,6 +159,21 @@ public class SweRuntimeSettingsService {
         return StringUtils.hasText(value) ? value : fallback;
     }
 
+    private int resolvePositiveInteger(String key, Integer fallback, int defaultValue) {
+        String value = getStoredValue(key);
+        if (StringUtils.hasText(value)) {
+            try {
+                int parsed = Integer.parseInt(value.trim());
+                if (parsed > 0) {
+                    return parsed;
+                }
+            } catch (NumberFormatException ignored) {
+                // Fall through to property/default fallback.
+            }
+        }
+        return fallback == null || fallback <= 0 ? defaultValue : fallback;
+    }
+
     private String resolveValue(String key) {
         String stored = getStoredValue(key);
         if (StringUtils.hasText(stored)) {
@@ -143,6 +188,11 @@ public class SweRuntimeSettingsService {
             case KEY_OPUS_BASE_URL -> sweProperties.getOpus() == null ? null : sweProperties.getOpus().getBaseUrl();
             case KEY_OPUS_TOKEN -> sweProperties.getOpus() == null ? null : sweProperties.getOpus().getToken();
             case KEY_OPUS_MODEL -> sweProperties.getOpus() == null ? null : sweProperties.getOpus().getModel();
+            case KEY_QWEN_ATTEMPTS -> Objects.toString(resolveQwenAttempts(), null);
+            case KEY_OPUS_ATTEMPTS -> Objects.toString(resolveOpusAttempts(), null);
+            case KEY_SWE_AGENT_MAX_STEPS -> Objects.toString(resolveSweAgentMaxSteps(), null);
+            case KEY_OPUS_MAX_STEPS_SCHEDULE -> resolveOpusMaxStepsSchedule();
+            case KEY_MODEL_TIMEOUT_SECONDS -> Objects.toString(resolveModelTimeoutSeconds(), null);
             default -> null;
         };
     }
@@ -175,6 +225,26 @@ public class SweRuntimeSettingsService {
         return value.contains("...") || value.matches("\\*+");
     }
 
+    private static boolean isValidPositiveIntegerList(String value) {
+        String[] parts = value.split(",");
+        boolean found = false;
+        for (String part : parts) {
+            String normalized = part.trim();
+            if (!StringUtils.hasText(normalized)) {
+                continue;
+            }
+            try {
+                if (Integer.parseInt(normalized) <= 0) {
+                    return false;
+                }
+            } catch (NumberFormatException ignored) {
+                return false;
+            }
+            found = true;
+        }
+        return found;
+    }
+
     private static Map<String, SettingDefinition> buildDefinitions() {
         Map<String, SettingDefinition> definitions = new LinkedHashMap<>();
         definitions.put(KEY_GITHUB_TOKEN, new SettingDefinition(KEY_GITHUB_TOKEN, "GitHub Token", true,
@@ -193,6 +263,16 @@ public class SweRuntimeSettingsService {
                 "SWE-Pro Opus pass gate"));
         definitions.put(KEY_OPUS_MODEL, new SettingDefinition(KEY_OPUS_MODEL, "Opus Model", false,
                 "SWE-Pro Opus model name"));
+        definitions.put(KEY_QWEN_ATTEMPTS, new SettingDefinition(KEY_QWEN_ATTEMPTS, "Qwen Attempts", false,
+                "Qwen evaluation attempt count, default 4"));
+        definitions.put(KEY_OPUS_ATTEMPTS, new SettingDefinition(KEY_OPUS_ATTEMPTS, "Opus Attempts", false,
+                "Opus evaluation attempt count, default 8"));
+        definitions.put(KEY_SWE_AGENT_MAX_STEPS, new SettingDefinition(KEY_SWE_AGENT_MAX_STEPS, "SWE-agent Max Steps", false,
+                "Base per-attempt step limit for model evaluation"));
+        definitions.put(KEY_OPUS_MAX_STEPS_SCHEDULE, new SettingDefinition(KEY_OPUS_MAX_STEPS_SCHEDULE, "Opus Max Steps Schedule", false,
+                "Comma-separated Opus step gradient, e.g. 180,50,10; last value repeats"));
+        definitions.put(KEY_MODEL_TIMEOUT_SECONDS, new SettingDefinition(KEY_MODEL_TIMEOUT_SECONDS, "Model Timeout Seconds", false,
+                "Model evaluation timeout per command"));
         return definitions;
     }
 

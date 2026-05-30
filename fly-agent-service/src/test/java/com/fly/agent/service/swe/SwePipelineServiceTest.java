@@ -105,16 +105,18 @@ class SwePipelineServiceTest {
     }
 
     @Test
-    void qwenAndOpusUseSameSWEBenchAgenticEvaluatorForFairModelGate() throws Exception {
+    void qwenAndOpusUseSameSWEBenchAgenticEvaluatorAndRuntimeSettingsForFairModelGate() throws Exception {
         String source = java.nio.file.Files.readString(java.nio.file.Path.of(
                 "src/main/java/com/fly/agent/service/swe/SwePipelineService.java"));
         String devConfig = java.nio.file.Files.readString(java.nio.file.Path.of(
                 "../fly-agent-server/src/main/resources/application-dev.yml"));
 
         assertTrue(source.contains("\"qwen3.6_flash_pass4_swebench_agentic\", runtimeSettingsService.resolveQwenModel(),\n"
-                + "                properties.getQwenAttempts(), \"QWEN_API_KEY\", false, true"));
+                + "                runtimeSettingsService.resolveQwenAttempts(), \"QWEN_API_KEY\", false, true"));
         assertTrue(source.contains("\"opus4.7_pass8_swebench_agentic\", runtimeSettingsService.resolveOpusModel(),\n"
-                + "                positiveAttempts(properties.getOpusAttempts(), 1), \"OPUS_API_KEY\", true, true"));
+                + "                positiveAttempts(runtimeSettingsService.resolveOpusAttempts(), 1), \"OPUS_API_KEY\", true, true"));
+        assertTrue(source.contains("runtimeSettingsService.resolveOpusMaxStepsSchedule()"));
+        assertTrue(source.contains("runtimeSettingsService.resolveSweAgentMaxSteps()"));
         assertTrue(devConfig.contains("qwen-attempts: ${SWE_QWEN_ATTEMPTS:4}"));
         assertTrue(devConfig.contains("opus-attempts: ${SWE_OPUS_ATTEMPTS:8}"));
         assertTrue(devConfig.contains("opus-max-steps-schedule: ${SWE_OPUS_MAX_STEPS_SCHEDULE:180,50,10}"));
@@ -129,11 +131,14 @@ class SwePipelineServiceTest {
 
         int productionOpus = source.indexOf("SwePipelineStage.MODEL_OPUS_EVAL, () -> runOpusEvaluation");
         int productionQwen = source.indexOf("SwePipelineStage.MODEL_QWEN_EVAL, () -> runQwenEvaluation");
-        int inspectionOpus = source.indexOf("SwePipelineStage.MODEL_OPUS_EVAL, () -> inspectModelSummary(runId, samplePath, \"opus\")");
-        int inspectionQwen = source.indexOf("SwePipelineStage.MODEL_QWEN_EVAL, () -> inspectModelSummary(runId, samplePath, \"qwen\")");
+        int existingPackageStart = source.indexOf("private void executeExistingPackageRun");
+        int candidatePackageStart = source.indexOf("private Path executeCandidateProductionRun");
+        String existingPackageBlock = source.substring(existingPackageStart, candidatePackageStart);
 
         assertTrue(productionOpus >= 0 && productionQwen > productionOpus);
-        assertTrue(inspectionOpus >= 0 && inspectionQwen > inspectionOpus);
+        assertTrue(existingPackageBlock.contains("SwePipelineStage.MODEL_OPUS_EVAL, () -> runOpusEvaluation(runId, samplePath)"));
+        assertTrue(existingPackageBlock.contains("SwePipelineStage.MODEL_QWEN_EVAL, () -> runQwenEvaluation(runId, samplePath)"));
+        assertFalse(existingPackageBlock.contains("inspectModelSummary"));
         assertTrue(stageEnum.contains("MODEL_OPUS_EVAL(70"));
         assertTrue(stageEnum.contains("MODEL_QWEN_EVAL(80"));
         assertTrue(source.contains("syncStageSortOrders(run.getId())"));
@@ -179,16 +184,16 @@ class SwePipelineServiceTest {
     }
 
     @Test
-    void resumeRunKeepsGithubPullTasksInProductionMode() throws Exception {
+    void resumeRunHonorsExplicitPackagePathBeforeGithubPullFallback() throws Exception {
         String source = java.nio.file.Files.readString(java.nio.file.Path.of(
                 "src/main/java/com/fly/agent/service/swe/SwePipelineService.java"));
         int resumeStart = source.indexOf("public SwePipelineRunDTO resumeRun");
         int launchStart = source.indexOf("launchAfterCommit(task, run.getId(), samplePath, true)", resumeStart);
         String resumeBlock = source.substring(resumeStart, launchStart);
 
-        assertTrue(resumeBlock.contains("String samplePath = isGithubPullTask(task)"));
-        assertTrue(resumeBlock.contains("? null"));
-        assertTrue(resumeBlock.contains("StringUtils.hasText(request.getSamplePath()) ? request.getSamplePath() : task.getSamplePath()"));
+        assertTrue(resumeBlock.contains("String samplePath = StringUtils.hasText(request.getSamplePath())"));
+        assertTrue(resumeBlock.contains("? request.getSamplePath()"));
+        assertTrue(resumeBlock.contains(": (isGithubPullTask(task) ? null : task.getSamplePath())"));
     }
 
     @Test
@@ -219,8 +224,8 @@ class SwePipelineServiceTest {
         assertTrue(source.contains("lower.contains(\"opus\") && summary.getIntValue(\"passes\") <= 0"));
         assertTrue(source.contains("modelStatusCountsSuffix(json)"));
         assertTrue(source.contains("statusCounts="));
-        assertTrue(source.contains("modelStatusCount(summary, \"invalid\") > 0"));
-        assertTrue(source.contains("modelStatusCount(summary, \"model_failed\") > 0"));
+        assertFalse(source.contains("findLatestReusableModelSummary"));
+        assertFalse(source.contains("reused existing gate evidence"));
     }
 
     @Test
@@ -338,6 +343,54 @@ class SwePipelineServiceTest {
         assertTrue("secret-token".equals(env.get("QWEN_API_KEY")));
         assertTrue(env.get("GOPROXY").contains("goproxy.cn"));
         assertTrue(env.containsKey("GOSUMDB"));
+    }
+
+    @Test
+    void opusModelEvaluationUsesRuntimeStepGradient() throws Exception {
+        Path packagePath = tempDir.resolve("production-task-demo-1");
+        Files.createDirectories(packagePath);
+        Path logPath = tempDir.resolve("model_eval.log");
+        Files.writeString(logPath, "model eval log");
+        SweProperties.Model model = new SweProperties.Model();
+        model.setModel("claude-opus-4-7");
+        model.setBaseUrl("https://opus.example/v1");
+        model.setToken("secret-token");
+
+        SweCommandRunner commandRunner = mock(SweCommandRunner.class);
+        SweCommandRunner.CommandResult commandResult = new SweCommandRunner.CommandResult();
+        commandResult.setExitCode(0);
+        commandResult.setLogPath(logPath);
+        when(commandRunner.run(any(), any(), any(), any(), any(), any(), eq(true))).thenReturn(commandResult);
+        SwePipelineService service = newService(mock(SweCandidateMapper.class), commandRunner);
+
+        Method method = SwePipelineService.class.getDeclaredMethod(
+                "runModelEvaluation",
+                Long.class,
+                Path.class,
+                String.class,
+                SweProperties.Model.class,
+                Integer.class,
+                String.class,
+                boolean.class,
+                boolean.class);
+        method.setAccessible(true);
+        method.invoke(service, 1L, packagePath, "opus_demo", model, 8, "OPUS_API_KEY", true, false);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
+        verify(commandRunner).run(
+                eq("model_eval_opus_demo"),
+                commandCaptor.capture(),
+                eq(packagePath),
+                any(),
+                any(),
+                any(),
+                eq(true));
+        List<String> command = commandCaptor.getValue();
+        assertTrue(command.contains("--agent-max-steps-schedule"));
+        assertTrue(command.contains("180,50,10"));
+        assertTrue(command.contains("--agent-max-steps"));
+        assertTrue(command.contains("20"));
     }
 
     @Test
@@ -491,6 +544,11 @@ class SwePipelineServiceTest {
         when(runtimeSettingsService.resolveQwenModel()).thenReturn(properties.getQwen());
         when(runtimeSettingsService.resolveOpusModel()).thenReturn(properties.getOpus());
         when(runtimeSettingsService.resolveGithubToken(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(runtimeSettingsService.resolveQwenAttempts()).thenReturn(4);
+        when(runtimeSettingsService.resolveOpusAttempts()).thenReturn(8);
+        when(runtimeSettingsService.resolveSweAgentMaxSteps()).thenReturn(20);
+        when(runtimeSettingsService.resolveOpusMaxStepsSchedule()).thenReturn("180,50,10");
+        when(runtimeSettingsService.resolveModelTimeoutSeconds()).thenReturn(3600);
         return new SwePipelineService(
                 mock(SweTaskMapper.class),
                 mock(SwePipelineRunMapper.class),
