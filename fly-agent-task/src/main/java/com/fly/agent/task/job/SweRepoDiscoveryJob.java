@@ -54,6 +54,8 @@ public class SweRepoDiscoveryJob {
             "typescript",
             "python",
             "java");
+    private static final int SCA_SEARCH_PER_PAGE = 50;
+    private static final int MAX_REPOSITORY_SEARCH_PAGES = 10;
 
     private final GithubRepositorySearchService repositorySearchService;
     private final GithubPullCandidateService pullCandidateService;
@@ -411,14 +413,16 @@ public class SweRepoDiscoveryJob {
 
         Integer minSeenStars = null;
         int processedRepos = 0;
-        for (int pageOffset = 0; pageOffset < request.getRepositoryPages()
+        int repositoryPages = scaRepositoryPages(remainingRepoLimit);
+        for (int pageOffset = 0; pageOffset < repositoryPages
                 && processedRepos < remainingRepoLimit; pageOffset++) {
             int page = (request.isUseStarCursor() ? 1 : request.getPage()) + pageOffset;
             GithubRepositorySearchResponse response = repositorySearchService.search(searchRequest(
                     language,
                     request,
                     searchMaxStars,
-                    page));
+                    page,
+                    SCA_SEARCH_PER_PAGE));
             List<GithubRepositoryDTO> repositories = response.getRepositories() == null
                     ? List.of()
                     : response.getRepositories();
@@ -840,17 +844,31 @@ public class SweRepoDiscoveryJob {
             ScanRequest request,
             Integer searchMaxStars,
             int page) {
+        return searchRequest(language, request, searchMaxStars, page, request.getRepositoryPerPage());
+    }
+
+    private GithubRepositorySearchRequest searchRequest(
+            String language,
+            ScanRequest request,
+            Integer searchMaxStars,
+            int page,
+            int perPage) {
         GithubRepositorySearchRequest searchRequest = new GithubRepositorySearchRequest();
         searchRequest.setLanguage(language);
         searchRequest.setKeyword(request.getKeyword());
         searchRequest.setMinStars(request.getMinStars());
         searchRequest.setMaxStars(searchMaxStars);
         searchRequest.setPage(page);
-        searchRequest.setPerPage(request.getRepositoryPerPage());
+        searchRequest.setPerPage(perPage);
         searchRequest.setSort("stars");
         searchRequest.setOrder("desc");
         searchRequest.setPrecheckFilter(false);
         return searchRequest;
+    }
+
+    private int scaRepositoryPages(int remainingRepoLimit) {
+        int pagesNeededForLimit = (remainingRepoLimit + SCA_SEARCH_PER_PAGE - 1) / SCA_SEARCH_PER_PAGE;
+        return Math.min(Math.max(pagesNeededForLimit, 1), MAX_REPOSITORY_SEARCH_PAGES);
     }
 
     private LanguageScanSummary skippedSummary(
@@ -906,6 +924,7 @@ public class SweRepoDiscoveryJob {
         request.setRepositoryPerPage(intValue(json, "repositoryPerPage", request.getRepositoryPerPage(), 1, 50));
         request.setRepositoryConcurrency(intValue(json, "repositoryConcurrency", request.getRepositoryConcurrency(), 1, 5));
         request.setRepoLimit(intValue(json, "repoLimit", request.getRepoLimit(), 1, 200));
+        request.setRepoLimit(intValue(json, "dailyRepoLimit", request.getRepoLimit(), 1, 200));
         request.setRepoOffset(intValue(json, "repoOffset", request.getRepoOffset(), 0, Integer.MAX_VALUE));
         request.setPullLimit(intValue(json, "pullLimit", request.getPullLimit(), 1, 50));
         request.setDays(intValue(json, "days", request.getDays(), 1, 3650));

@@ -137,6 +137,18 @@ fly-agent-task/
   }
   ```
 - **默认行为**: 每种语言每天最多新增处理 `repoLimit=10` 个 repo；同一自然日重复触发会扣减当天已写入的 SCA 报告数，确保后续触发继续拿新仓库。
+- **生产参数建议**:
+  ```json
+  {
+    "githubToken": "ghp_xxx",
+    "languages": ["python"],
+    "minStars": 3000,
+    "maxStars": 10000,
+    "dailyRepoLimit": 100,
+    "useStarCursor": true
+  }
+  ```
+- **分页说明**: SCA discovery 内部固定按 GitHub search 每页 50 条拉取，并按当天剩余额度自动计算页数；`repoLimit` 仍兼容旧参数，推荐新任务使用语义更明确的 `dailyRepoLimit`。
 
 #### sweRepoCandidateBackfillJob
 - **功能**: 从 SCA 允许的 repo 池中回填 issue-grounded merged PR 候选
