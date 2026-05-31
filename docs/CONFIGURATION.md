@@ -133,7 +133,7 @@ swe:
 - Harness build 阶段会基于 `base_commit` 下的仓库文件、`task.json` 和测试脚本生成 `runtime_env.json`；Local verification、SWE-agent safe image 和 Docker package 优先消费该确定性环境契约。该环境依赖修复路径不接入额外大模型，后续 Opus/Qwen 模型评测仍按流水线执行。
 - GitHub PR 候选必须是 merged PR，并且 PR 标题或正文包含 `closes/fixes/resolves #issue` 等关闭关键词。
 - GitHub 搜索和 PR 扫描会在 `127.0.0.1:7897` 可连通时自动走该 HTTP 代理；代理不可用时直连。
-- QC 阶段会生成 `乙方质检-SWE-Pro数据验收标准对照表.xlsx`，主表为 34 条验收结果，汇总表包含 patch 规模和模型采样结果；review 文件中仍含 `PENDING_*`、`待审校`、`待补充`、`待评测`、`待验证` 等占位内容时会失败。
+- QC 阶段会生成 `乙方质检-SWE-Pro数据验收标准对照表.xlsx`，主表为 34 条验收结果，汇总表包含 patch 规模和模型采样结果；包根目录必须包含 `swe_existing_dataset_blacklist.xlsx`；三份 reviewer 文件必须包含 `## 人员背景`，且仍含 `PENDING_*`、`待审校`、`待补充`、`待评测`、`待验证` 等占位内容时会失败。
 
 ## 启动前检查清单
 

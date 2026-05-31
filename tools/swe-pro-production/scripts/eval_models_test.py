@@ -90,10 +90,10 @@ class EvalModelsPromptTest(unittest.TestCase):
             self.assertEqual("test_infra_failed", output["status"])
             self.assertIn("- conclusion: test_infra_failed", report)
 
-    def test_qwen_flash_metadata_uses_current_model_name(self) -> None:
+    def test_qwen_plus_metadata_uses_current_model_name(self) -> None:
         self.assertEqual(
-            "qwen3_6_flash_pass_at_4",
-            eval_models.model_eval_metadata_key("qwen3.6-flash"),
+            "qwen3_6_plus_pass_at_4",
+            eval_models.model_eval_metadata_key("qwen3.6-plus"),
         )
 
     def test_agentic_prompt_uses_issue_not_test_or_patch_metadata(self) -> None:

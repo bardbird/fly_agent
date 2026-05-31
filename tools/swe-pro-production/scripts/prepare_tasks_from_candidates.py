@@ -1696,7 +1696,7 @@ def write_verification_summary(pkg: Path, row: dict, test_files: list[str], sour
 ## Model Evaluation
 
 - Opus 4.7 pass@8: {PENDING_MODEL_EVAL}
-- Qwen3.6-Flash pass@4: {PENDING_MODEL_EVAL}
+- Qwen3.6-Plus pass@4: {PENDING_MODEL_EVAL}
 
 ## Docker
 
@@ -1734,7 +1734,7 @@ def write_acceptance_report(pkg: Path, row: dict, assessment: dict) -> None:
 | 4 | 真实 issue + 修复 commit；禁止虚构 | 部分满足 | Base=`{row.get('base_commit')}`，Fix=`{row.get('fix_commit')}`；Issue 链接：{row.get('issue_url') or '未提供，需要后续补充证据说明'}。 |
 | 9 | ground-truth patch 多文件且几百行以上 | 已满足 | 当前候选统计：gold 约 {gold_files} 文件 / {gold_lines} 行。 |
 | 10 | opus4.7 pass@8 != 0 | 待评测 | {PENDING_MODEL_EVAL} |
-| 11 | qwen 3.6 flash pass rate@4 <= 50% | 待评测 | {PENDING_MODEL_EVAL} |
+| 11 | qwen 3.6 plus pass rate@4 <= 50% | 待评测 | {PENDING_MODEL_EVAL} |
 | 12 | repo 语言尽可能覆盖多个语言 | 批量项 | {PENDING_BATCH_EVIDENCE} |
 | 16 | test patch 避免 narrow/overfit | {"需复核" if assessment['requires_manual_review'] else "初步通过"} | {assessment['summary']} {'; '.join(assessment['risks']) if assessment['risks'] else '未发现明显噪声风险'} |
 | 18 | issue_specificity / issue_categories 分布 | 批量项 | {PENDING_BATCH_EVIDENCE} |
@@ -1750,6 +1750,12 @@ def write_review_placeholders(pkg: Path, row: dict, assessment: dict) -> None:
 
 Package: {pkg.name}
 Focus: authenticity, problem statement, patch relevance.
+
+## 人员背景
+
+北京，某头部投资社区，研发质量保障部
+2018/4 入职，在职8年
+二级部门负责人，多年社区、交易测开经验，现分管ai 测开和业务测试
 
 ## Verdict
 
@@ -1769,6 +1775,13 @@ Focus: authenticity, problem statement, patch relevance.
 Package: {pkg.name}
 Focus: tests, overfit risk, alternate-patch tolerance.
 
+## 人员背景
+
+成都，某头部本地生活企业，资深开发专家
+吉林大学计算机专业
+21/7月～24/7加入成都某行业top级互联网公司，负责本地生活营销业务中台研发
+长期负责金融、支付、交易、营销等业务的研发
+
 ## Verdict
 
 {PENDING_REVIEW}: 完成 baseline/fixed/pass-to-pass 与过拟合复核后填写。
@@ -1786,6 +1799,13 @@ Focus: tests, overfit risk, alternate-patch tolerance.
 
 Package: {pkg.name}
 Focus: delivery completeness, Docker, metadata, model evidence.
+
+## 人员背景
+
+北京，头部央企，安全领域开发专家，二级部门研发leader
+北京科技大学
+15年开发经验，金融、电商、支付领域履历丰富
+曾任职北京某头部电商公司，负责订单中台业务研发
 
 ## Verdict
 

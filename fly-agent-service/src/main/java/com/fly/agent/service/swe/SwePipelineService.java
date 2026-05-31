@@ -56,6 +56,7 @@ import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -121,6 +122,29 @@ public class SwePipelineService {
             "完成真实性与问题陈述核对后填写",
             "完成 baseline/fixed/pass-to-pass 与过拟合复核后填写",
             "完成 Docker、模型评测和交付清洁度核对后填写"
+    );
+    private static final String DELIVERY_BLACKLIST_FILE_NAME = "swe_existing_dataset_blacklist.xlsx";
+    private static final Map<String, List<String>> REVIEWER_BACKGROUND_NEEDLES = Map.of(
+            "reviewer_1.md", List.of(
+                    "## 人员背景",
+                    "北京，某头部投资社区，研发质量保障部",
+                    "2018/4 入职，在职8年",
+                    "二级部门负责人，多年社区、交易测开经验，现分管ai 测开和业务测试"
+            ),
+            "reviewer_2.md", List.of(
+                    "## 人员背景",
+                    "成都，某头部本地生活企业，资深开发专家",
+                    "吉林大学计算机专业",
+                    "21/7月～24/7加入成都某行业top级互联网公司，负责本地生活营销业务中台研发",
+                    "长期负责金融、支付、交易、营销等业务的研发"
+            ),
+            "reviewer_3.md", List.of(
+                    "## 人员背景",
+                    "北京，头部央企，安全领域开发专家，二级部门研发leader",
+                    "北京科技大学",
+                    "15年开发经验，金融、电商、支付领域履历丰富",
+                    "曾任职北京某头部电商公司，负责订单中台业务研发"
+            )
     );
 
     private final SweTaskMapper taskMapper;
@@ -590,6 +614,7 @@ public class SwePipelineService {
         acceptanceReportService.ensureReport(samplePath);
         List<Path> required = List.of(
                 samplePath.resolve("乙方质检-SWE-Pro数据验收标准对照表.xlsx"),
+                samplePath.resolve(DELIVERY_BLACKLIST_FILE_NAME),
                 samplePath.resolve("review/reviewer_1.md"),
                 samplePath.resolve("review/reviewer_2.md"),
                 samplePath.resolve("review/reviewer_3.md"),
@@ -617,6 +642,15 @@ public class SwePipelineService {
             if (text.contains(needle)) {
                 throw new BusinessException("QC evidence contains unresolved placeholder: "
                         + path.getFileName() + " -> " + needle);
+            }
+        }
+        List<String> backgroundNeedles = REVIEWER_BACKGROUND_NEEDLES.get(path.getFileName().toString());
+        if (backgroundNeedles != null) {
+            for (String needle : backgroundNeedles) {
+                if (!text.contains(needle)) {
+                    throw new BusinessException("QC evidence missing reviewer personnel background: "
+                            + path.getFileName() + " -> " + needle);
+                }
             }
         }
     }
@@ -860,8 +894,10 @@ public class SwePipelineService {
     }
 
     private String runQwenEvaluation(Long runId, Path packagePath) {
-        JSONObject summary = runModelEvaluation(runId, packagePath, "qwen3.6_flash_pass4_swebench_agentic", runtimeSettingsService.resolveQwenModel(),
-                runtimeSettingsService.resolveQwenAttempts(), "QWEN_API_KEY", false, true);
+        SweProperties.Model model = runtimeSettingsService.resolveQwenModel();
+        int attempts = runtimeSettingsService.resolveQwenAttempts();
+        JSONObject summary = runModelEvaluation(runId, packagePath, qwenEvaluationOutName(model, attempts), model,
+                attempts, "QWEN_API_KEY", false, true);
         ensureModelEvaluationInfrastructureReady("Qwen", summary);
         double passRate = summary.getDoubleValue("pass_rate");
         if (passRate > 0.5d) {
@@ -871,6 +907,22 @@ public class SwePipelineService {
                 + "/" + summary.getIntValue("attempts")
                 + ", passRate=" + passRate
                 + modelStatusCountsSuffix(summary);
+    }
+
+    private String qwenEvaluationOutName(SweProperties.Model model, int attempts) {
+        String modelName = model == null ? "" : model.getModel();
+        if (!StringUtils.hasText(modelName)) {
+            modelName = "qwen";
+        }
+        String normalized = modelName.trim()
+                .toLowerCase(Locale.ROOT)
+                .replace('-', '_')
+                .replaceAll("[^a-z0-9._]+", "_")
+                .replaceAll("(^_+|_+$)", "");
+        if (!StringUtils.hasText(normalized)) {
+            normalized = "qwen";
+        }
+        return normalized + "_pass" + positiveInteger(attempts, 4) + "_swebench_agentic";
     }
 
     private String runOpusEvaluation(Long runId, Path packagePath) {

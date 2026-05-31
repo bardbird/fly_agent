@@ -6,6 +6,7 @@ from pathlib import Path
 MIN_GOLD_FILES = 5
 MIN_GOLD_LINES = 108
 PREFERRED_GOLD_LINES = 200
+BLACKLIST_FILE_NAME = 'swe_existing_dataset_blacklist.xlsx'
 
 
 def run(cmd: list[str], cwd: Path, allow_fail: bool = False) -> tuple[int, str]:
@@ -70,7 +71,7 @@ def model_eval_summaries(root: Path, model_key: str) -> list[dict]:
 def check_model_evaluation(root: Path, data: dict, errors: list[str], warnings: list[str]) -> None:
     metadata = data.get('metadata', {}).get('model_evaluation', {}) if data else {}
     opus_metadata = metadata.get('opus4_7_pass_at_8', '')
-    qwen_metadata = metadata.get('qwen3_6_flash_pass_at_4', '')
+    qwen_metadata = metadata.get('qwen3_6_plus_pass_at_4', '') or metadata.get('qwen3_6_flash_pass_at_4', '')
     opus_summaries = model_eval_summaries(root, 'opus')
     qwen_summaries = model_eval_summaries(root, 'qwen')
 
@@ -80,9 +81,18 @@ def check_model_evaluation(root: Path, data: dict, errors: list[str], warnings: 
         warnings.append('missing opus4.7 pass@8 metadata in task.json; using model_evaluation/*opus*/summary.json evidence')
 
     if not qwen_metadata and not qwen_summaries:
-        errors.append('缺少 Qwen 评测证据：需要保留 model_evaluation/*qwen*/summary.json，或同步到 task.json 的 metadata.model_evaluation.qwen3_6_flash_pass_at_4。')
+        errors.append('缺少 Qwen 评测证据：需要保留 model_evaluation/*qwen*/summary.json，或同步到 task.json 的 metadata.model_evaluation.qwen3_6_plus_pass_at_4。')
     elif not qwen_metadata:
         warnings.append('Qwen 评测证据已找到，但 task.json 还没有同步 metadata；当前先使用 model_evaluation/*qwen*/summary.json 作为证据。')
+
+
+def check_delivery_blacklist(root: Path, errors: list[str]) -> None:
+    path = root / BLACKLIST_FILE_NAME
+    if not path.is_file():
+        errors.append(f'missing delivery blacklist file next to task.json: {BLACKLIST_FILE_NAME}')
+        return
+    if path.stat().st_size == 0:
+        errors.append(f'delivery blacklist file is empty: {BLACKLIST_FILE_NAME}')
 
 
 def check_docker_validation(root: Path, errors: list[str]) -> None:
@@ -135,6 +145,7 @@ def main() -> int:
         )
     check_docker_validation(root, errors)
     check_model_evaluation(root, data, errors, warnings)
+    check_delivery_blacklist(root, errors)
     for rel in ['review/reviewer_1.md','review/reviewer_2.md','review/reviewer_3.md','review/adjudication_and_calibration.md']:
         if not (root / rel).exists():
             errors.append(f'missing review file: {rel}')

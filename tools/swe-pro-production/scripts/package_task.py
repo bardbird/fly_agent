@@ -9,11 +9,14 @@ import socket
 import subprocess
 import sys
 import tarfile
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+BLACKLIST_FILE_NAME = 'swe_existing_dataset_blacklist.xlsx'
+BLACKLIST_REFERENCE_RELATIVE = Path('codex-skills/swe-pro-local-verifier/references') / BLACKLIST_FILE_NAME
 
 DELIVERY_EXCLUDE_DIRS = {
     '.git',
@@ -169,6 +172,32 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def blacklist_reference_candidates() -> list[Path]:
+    candidates: list[Path] = []
+    env_path = os.environ.get('SWE_EXISTING_DATASET_BLACKLIST_XLSX', '').strip()
+    if env_path:
+        candidates.append(Path(env_path).expanduser())
+    candidates.append(SCRIPT_DIR.parents[2] / BLACKLIST_REFERENCE_RELATIVE)
+    candidates.append(SCRIPT_DIR.parent / 'references' / BLACKLIST_FILE_NAME)
+    return candidates
+
+
+def find_blacklist_reference() -> Path:
+    for candidate in blacklist_reference_candidates():
+        if candidate.is_file():
+            return candidate.resolve()
+    searched = ', '.join(str(path) for path in blacklist_reference_candidates())
+    raise RuntimeError(f'missing delivery blacklist reference {BLACKLIST_FILE_NAME}; searched: {searched}')
+
+
+def ensure_delivery_static_files(root: Path) -> None:
+    source = find_blacklist_reference()
+    target = root / BLACKLIST_FILE_NAME
+    if target.is_file() and sha256_file(target) == sha256_file(source):
+        return
+    shutil.copyfile(source, target)
+
+
 def ensure_dockerignore(root: Path) -> None:
     path = root / '.dockerignore'
     existing = path.read_text(encoding='utf-8') if path.exists() else ''
@@ -300,6 +329,7 @@ def main() -> int:
     args = ap.parse_args()
 
     root = Path(args.package_dir).resolve()
+    ensure_delivery_static_files(root)
     task = load_task(root)
     image_tag = args.image_tag or default_image_tag(root, task)
     ensure_dockerignore(root)

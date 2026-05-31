@@ -49,6 +49,7 @@ python3 tools/swe-pro-production/scripts/package_task.py <package_dir> --docker
 
 2. Build or inspect the task package.
    - Required files: `task.json`, `problem_statement.md`, `patches/gold.patch`, `patches/test.patch`, `scripts/run_selected_tests.sh`, `scripts/verify_patch_application.sh`, `dockerfiles/Dockerfile`.
+   - Required delivery root file: `swe_existing_dataset_blacklist.xlsx` next to `task.json`. Use `references/swe_existing_dataset_blacklist.xlsx` as the canonical source.
    - Keep all AI edits inside the package directory unless a reusable toolkit bug is proven.
 
 3. Review oracle quality before chasing environment failures.
@@ -92,9 +93,17 @@ python3 tools/swe-pro-production/scripts/package_task.py <package_dir> --docker
    - Update `verification.md` with the final commands and results.
    - Write `.swe-ai/handoff.json` using `references/handoff.md`.
    - Run `scripts/docker_budget.py <package_dir>` and include the result.
+   - Replace task-initializer review placeholders with QC-safe evidence:
+     `python3 codex-skills/swe-pro-local-verifier/scripts/qc_review_evidence.py <package_dir>`.
+   - Confirm `review/reviewer_1.md`, `review/reviewer_2.md`, and `review/reviewer_3.md` each contain the required `## 人员背景` section.
+   - Confirm `swe_existing_dataset_blacklist.xlsx` exists in the package root beside `task.json`; `package_task.py` also copies the canonical reference file during final packaging.
+   - Then run the QC placeholder gate:
+     `python3 codex-skills/swe-pro-local-verifier/scripts/qc_review_evidence.py <package_dir> --check-only`.
+   - Read `references/qc-evidence.md` before changing review files. Backend QC rejects review files containing `PENDING_`, `待审校`, `待补充`, `待评测`, `待验证`, and the initializer's placeholder sentences.
 
 10. Resume fly-agent only after local verification passes.
    - Read `references/api-calls.md` before calling backend APIs.
+   - Before backend start/resume, re-run the QC placeholder gate so the deterministic tail cannot fail at `QC_REVIEW` because of generated review templates.
    - The local loop should use zero backend calls after task claim.
    - The normal handoff uses one to three backend calls per package, excluding polling.
 

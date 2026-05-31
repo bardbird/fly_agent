@@ -46,6 +46,7 @@ class SweAcceptanceReportServiceTest {
         Files.writeString(packagePath.resolve("problem_statement.md"), "Parser crashes on empty input.");
         Files.writeString(packagePath.resolve("requirements.md"), "pytest");
         Files.writeString(packagePath.resolve("interface.md"), "CLI");
+        Files.writeString(packagePath.resolve("swe_existing_dataset_blacklist.xlsx"), "blacklist");
         Files.writeString(packagePath.resolve("patches/gold.patch"), """
                 diff --git a/src/parser.py b/src/parser.py
                 +fixed

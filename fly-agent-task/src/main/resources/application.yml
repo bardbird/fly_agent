@@ -27,8 +27,34 @@ mybatis-plus:
   mapper-locations: classpath:mapper/*.xml
 
 swe:
+  toolkit-root: ${SWE_TOOLKIT_ROOT:tools/swe-pro-production}
+  production-root: ${SWE_PRODUCTION_ROOT:swe-output}
+  qwen-attempts: ${SWE_QWEN_ATTEMPTS:4}
+  opus-attempts: ${SWE_OPUS_ATTEMPTS:8}
+  qwen-max-steps-schedule: ${SWE_QWEN_MAX_STEPS_SCHEDULE:100,80,10,10}
+  opus-max-steps-schedule: ${SWE_OPUS_MAX_STEPS_SCHEDULE:180,50,10}
+  model-timeout-seconds: ${SWE_MODEL_TIMEOUT_SECONDS:3600}
+  swe-agent:
+    root: ${SWE_AGENT_ROOT:tools/SWE-agent}
+    maxSteps: ${SWE_AGENT_MAX_STEPS:20}
   github:
     token: ${GITHUB_TOKEN:}
+  qwen:
+    base-url: ${SWE_QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    token: ${SWE_QWEN_TOKEN:}
+    model: ${SWE_QWEN_MODEL:qwen3.6-plus}
+    provider: openai
+    max-tokens: ${SWE_QWEN_MAX_TOKENS:8192}
+    max-input-tokens: ${SWE_QWEN_MAX_INPUT_TOKENS:22000}
+    temperature: ${SWE_QWEN_TEMPERATURE:0.7}
+  opus:
+    base-url: ${SWE_OPUS_BASE_URL:https://ai.yiqiu.dev/v1}
+    token: ${SWE_OPUS_TOKEN:}
+    model: ${SWE_OPUS_MODEL:claude-opus-4-7}
+    provider: openai
+    max-tokens: ${SWE_OPUS_MAX_TOKENS:8192}
+    max-input-tokens: ${SWE_OPUS_MAX_INPUT_TOKENS:22000}
+    temperature: ${SWE_OPUS_TEMPERATURE:0.7}
 
 agent:
   zhipu:

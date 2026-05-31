@@ -26,6 +26,7 @@ import java.util.zip.ZipOutputStream;
 public class SweAcceptanceReportService {
 
     static final String REPORT_NAME = "乙方质检-SWE-Pro数据验收标准对照表.xlsx";
+    static final String BLACKLIST_FILE_NAME = "swe_existing_dataset_blacklist.xlsx";
 
     private static final List<Rule> RULES = List.of(
             new Rule(1, "一、基础环境与有效性要求", "确定环境可以跑通完成测试，并且提供具体的 docker image"),
@@ -38,7 +39,7 @@ public class SweAcceptanceReportService {
             new Rule(8, "二、任务真实性要求", "禁止项：题目只是算法题包装成工程题"),
             new Rule(9, "三、数据难度要求", "每个task需要修改的代码量（比如ground-truth patch）需要涉及多个文件，且代码行数在几百行以上"),
             new Rule(10, "三、数据难度要求", "opus4.7 pass@8 != 0（八次至少能做对一次）"),
-            new Rule(11, "三、数据难度要求", "qwen 3.6 flash pass rate@4 <= 50%；75%数据 pass rate >=25%，其中25%数据 pass rate=0%"),
+            new Rule(11, "三、数据难度要求", "qwen 3.6 plus pass rate@4 <= 50%；75%数据 pass rate >=25%，其中25%数据 pass rate=0%"),
             new Rule(12, "四、repo语言要求", "应尽可能覆盖多个语言，例如 python/go/js/ts/c/c++/java/html/css/swift/kotlin/rust 等"),
             new Rule(13, "四、repo语言要求", "一个repo可以包含多个语言例如既包含前端也包含后端"),
             new Rule(14, "五、repo来源合规要求", "应避免选取与 swe-gym、swe-rebench、swe-bench-verified、swe-smith、swe-bench-pro 相同的repo"),
@@ -158,9 +159,11 @@ public class SweAcceptanceReportService {
                     "需要在批量维度判断。", "批量交付时输出语言和分类透视表。");
             case 13 -> fileResult(hasText(c.task(), "repo_language") || metadataHasText(c.task(), "repo_language"),
                     "满足", "task metadata 标注 repo language。", "缺少语言标注。", "补齐 metadata.repo_language。");
-            case 14 -> new Result("部分满足/需外部查重",
-                    "Java pipeline 记录 benchmark_status；公开 benchmark 黑名单需外部数据源持续更新。",
-                    "包内未包含完整外部 benchmark 查重证据。", "补充 swe-gym/swe-rebench/swe-bench 系列黑名单查重清单。");
+            case 14 -> fileResult(Files.isRegularFile(c.packagePath().resolve(BLACKLIST_FILE_NAME)),
+                    "满足",
+                    "包根目录包含已有 SWE 数据集黑名单库查重清单：" + BLACKLIST_FILE_NAME + "。",
+                    "包内未包含完整外部 benchmark 查重证据。",
+                    "补充 swe-gym/swe-rebench/swe-bench 系列黑名单查重清单。");
             case 15, 17 -> fileResult(Files.isRegularFile(c.packagePath().resolve("patches/test.patch"))
                             && Files.isRegularFile(c.packagePath().resolve("problem_statement.md")),
                     "满足", "test.patch 与 problem_statement.md 均存在，可对照 issue 修复点。",

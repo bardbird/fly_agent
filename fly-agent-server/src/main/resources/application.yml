@@ -87,7 +87,7 @@ swe:
   qwen:
     base-url: ${SWE_QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
     token: ${SWE_QWEN_TOKEN:}
-    model: ${SWE_QWEN_MODEL:qwen3.6-flash}
+    model: ${SWE_QWEN_MODEL:qwen3.6-plus}
     provider: openai
     max-tokens: ${SWE_QWEN_MAX_TOKENS:8192}
     max-input-tokens: ${SWE_QWEN_MAX_INPUT_TOKENS:22000}

@@ -24,7 +24,7 @@ def model_eval_metadata_key(model: str) -> str:
     if 'opus' in lower:
         return 'opus4_7_pass_at_8'
     if 'qwen' in lower:
-        return 'qwen3_6_flash_pass_at_4'
+        return 'qwen3_6_plus_pass_at_4'
     safe = re.sub(r'[^a-z0-9]+', '_', lower).strip('_')
     return f'{safe}_evaluation'
 

@@ -111,8 +111,10 @@ class SwePipelineServiceTest {
         String devConfig = java.nio.file.Files.readString(java.nio.file.Path.of(
                 "../fly-agent-server/src/main/resources/application-dev.yml"));
 
-        assertTrue(source.contains("\"qwen3.6_flash_pass4_swebench_agentic\", runtimeSettingsService.resolveQwenModel(),\n"
-                + "                runtimeSettingsService.resolveQwenAttempts(), \"QWEN_API_KEY\", false, true"));
+        assertTrue(source.contains("SweProperties.Model model = runtimeSettingsService.resolveQwenModel();"));
+        assertTrue(source.contains("int attempts = runtimeSettingsService.resolveQwenAttempts();"));
+        assertTrue(source.contains("qwenEvaluationOutName(model, attempts), model,"));
+        assertTrue(source.contains("return normalized + \"_pass\" + positiveInteger(attempts, 4) + \"_swebench_agentic\";"));
         assertTrue(source.contains("\"opus4.7_pass8_swebench_agentic\", runtimeSettingsService.resolveOpusModel(),\n"
                 + "                positiveAttempts(runtimeSettingsService.resolveOpusAttempts(), 1), \"OPUS_API_KEY\", true, true"));
         assertTrue(source.contains("runtimeSettingsService.resolveQwenMaxStepsSchedule()"));
@@ -247,6 +249,7 @@ class SwePipelineServiceTest {
         Path packagePath = tempDir.resolve("production-task-demo-1");
         Files.createDirectories(packagePath.resolve("review"));
         Files.writeString(packagePath.resolve("乙方质检-SWE-Pro数据验收标准对照表.xlsx"), "report");
+        Files.writeString(packagePath.resolve("swe_existing_dataset_blacklist.xlsx"), "blacklist");
         Files.writeString(packagePath.resolve("review/reviewer_1.md"),
                 "PENDING_REVIEW: 完成真实性与问题陈述核对后填写。");
         Files.writeString(packagePath.resolve("review/reviewer_2.md"), "approved");
@@ -267,6 +270,41 @@ class SwePipelineServiceTest {
                 throw e;
             }
         });
+    }
+
+    @Test
+    void qualityReviewRejectsReviewersWithoutPersonnelBackground() throws Exception {
+        Path packagePath = tempDir.resolve("production-task-demo-1");
+        Files.createDirectories(packagePath.resolve("review"));
+        Files.writeString(packagePath.resolve("乙方质检-SWE-Pro数据验收标准对照表.xlsx"), "report");
+        Files.writeString(packagePath.resolve("swe_existing_dataset_blacklist.xlsx"), "blacklist");
+        Files.writeString(packagePath.resolve("review/reviewer_1.md"), "approved");
+        Files.writeString(packagePath.resolve("review/reviewer_2.md"), """
+                ## 人员背景
+
+                成都，某头部本地生活企业，资深开发专家
+                吉林大学计算机专业
+                21/7月～24/7加入成都某行业top级互联网公司，负责本地生活营销业务中台研发
+                长期负责金融、支付、交易、营销等业务的研发
+                """);
+        Files.writeString(packagePath.resolve("review/reviewer_3.md"), """
+                ## 人员背景
+
+                北京，头部央企，安全领域开发专家，二级部门研发leader
+                北京科技大学
+                15年开发经验，金融、电商、支付领域履历丰富
+                曾任职北京某头部电商公司，负责订单中台业务研发
+                """);
+        Files.writeString(packagePath.resolve("review/adjudication_and_calibration.md"), "approved");
+
+        SwePipelineService service = newService(mock(SweCandidateMapper.class));
+        Method method = SwePipelineService.class.getDeclaredMethod("inspectQualityEvidence", Long.class, Path.class);
+        method.setAccessible(true);
+
+        InvocationTargetException error = assertThrows(InvocationTargetException.class,
+                () -> method.invoke(service, 1L, packagePath));
+        assertTrue(error.getCause() instanceof BusinessException);
+        assertTrue(error.getCause().getMessage().contains("personnel background"));
     }
 
     @Test
@@ -298,7 +336,7 @@ class SwePipelineServiceTest {
         Path logPath = tempDir.resolve("model_eval.log");
         Files.writeString(logPath, "model eval log");
         SweProperties.Model model = new SweProperties.Model();
-        model.setModel("qwen3.6-flash");
+        model.setModel("qwen3.6-plus");
         model.setBaseUrl("https://dashscope.example/v1");
         model.setToken("secret-token");
 
