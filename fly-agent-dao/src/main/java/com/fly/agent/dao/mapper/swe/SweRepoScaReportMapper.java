@@ -174,6 +174,30 @@ public interface SweRepoScaReportMapper extends BaseMapper<SweRepoScaReportEntit
     int markCandidateScanAttempt(@Param("repo") String repo);
 
     @Select("""
+            SELECT COALESCE(candidate_next_pull_page, 1)
+            FROM swe_repo_sca_report
+            WHERE repo = #{repo}
+            LIMIT 1
+            """)
+    Integer selectCandidateNextPullPage(@Param("repo") String repo);
+
+    @Update("""
+            UPDATE swe_repo_sca_report
+            SET candidate_last_scanned_at = CURRENT_TIMESTAMP,
+                candidate_next_pull_page = GREATEST(#{nextPullPage}, 1),
+                candidate_pull_exhausted_at = CASE
+                    WHEN #{exhausted} THEN CURRENT_TIMESTAMP
+                    ELSE NULL
+                END,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE repo = #{repo}
+            """)
+    int markCandidateScanCursor(
+            @Param("repo") String repo,
+            @Param("nextPullPage") int nextPullPage,
+            @Param("exhausted") boolean exhausted);
+
+    @Select("""
             <script>
             SELECT COUNT(1)
             FROM swe_repo_sca_report s

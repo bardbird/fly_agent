@@ -220,6 +220,22 @@ public class SweRepoScaService {
         }
     }
 
+    public int candidateNextPullPage(String repo, int defaultPage) {
+        String normalizedRepo = SweRepoBlacklistService.normalizeRepo(repo);
+        if (!StringUtils.hasText(normalizedRepo)) {
+            return Math.max(defaultPage, 1);
+        }
+        Integer nextPage = scaReportMapper.selectCandidateNextPullPage(normalizedRepo);
+        return nextPage == null || nextPage <= 0 ? Math.max(defaultPage, 1) : nextPage;
+    }
+
+    public void markCandidateScanCursor(String repo, int nextPullPage, boolean exhausted) {
+        String normalizedRepo = SweRepoBlacklistService.normalizeRepo(repo);
+        if (StringUtils.hasText(normalizedRepo)) {
+            scaReportMapper.markCandidateScanCursor(normalizedRepo, Math.max(nextPullPage, 1), exhausted);
+        }
+    }
+
     public static LicensePrecheckDecision precheckLicense(String spdxId, String licenseName) {
         if (!StringUtils.hasText(spdxId) || "NOASSERTION".equalsIgnoreCase(spdxId)) {
             return LicensePrecheckDecision.reject(spdxId, licenseName, "未识别到明确 SPDX 许可证，按硬性SCA规则拒绝");

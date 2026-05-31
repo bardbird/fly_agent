@@ -651,8 +651,15 @@ public class SweRepoDiscoveryJob {
             return outcome;
         }
         outcome.setAttemptedRepos(1);
-        repoScaService.markCandidateScanAttempt(repo);
-        return scanRepo(repo, request, outcome, request.getPullLimit() - existingCandidates);
+        int startPullPage = repoScaService.candidateNextPullPage(repo, request.getPullPage());
+        RepoScanResult result = scanRepoWithCursor(
+                repo,
+                request,
+                outcome,
+                request.getPullLimit() - existingCandidates,
+                startPullPage);
+        repoScaService.markCandidateScanCursor(repo, result.nextPullPage(), result.exhausted());
+        return result.outcome();
     }
 
     private RepoScanOutcome processScaAllowedRepository(String repo, ScanRequest request, AtomicInteger attemptedRepos) {
@@ -676,8 +683,15 @@ public class SweRepoDiscoveryJob {
             return outcome;
         }
         outcome.setAttemptedRepos(1);
-        repoScaService.markCandidateScanAttempt(repo);
-        return scanRepo(repo, request, outcome);
+        int startPullPage = repoScaService.candidateNextPullPage(repo, request.getPullPage());
+        RepoScanResult result = scanRepoWithCursor(
+                repo,
+                request,
+                outcome,
+                request.getPullLimit(),
+                startPullPage);
+        repoScaService.markCandidateScanCursor(repo, result.nextPullPage(), result.exhausted());
+        return result.outcome();
     }
 
     private RepoScanOutcome processRepositoryToSca(
@@ -839,13 +853,25 @@ public class SweRepoDiscoveryJob {
     }
 
     private RepoScanOutcome scanRepo(String repo, ScanRequest request, RepoScanOutcome outcome, int targetCandidates) {
+        return scanRepoWithCursor(repo, request, outcome, targetCandidates, request.getPullPage()).outcome();
+    }
+
+    private RepoScanResult scanRepoWithCursor(
+            String repo,
+            ScanRequest request,
+            RepoScanOutcome outcome,
+            int targetCandidates,
+            int startPullPage) {
         if (!StringUtils.hasText(repo)) {
-            return outcome;
+            return new RepoScanResult(outcome, Math.max(startPullPage, 1), false);
         }
         int remainingCandidates = Math.max(targetCandidates, 0);
         boolean completedPage = false;
+        boolean exhausted = false;
+        int nextPullPage = Math.max(startPullPage, 1);
         try {
             for (int pageOffset = 0; pageOffset < request.getPullPagesPerRepo() && remainingCandidates > 0; pageOffset++) {
+                int currentPullPage = Math.max(startPullPage, 1) + pageOffset;
                 GithubPullScanResponse scanResponse = pullCandidateService.scanMergedPulls(
                         repo,
                         remainingCandidates,
@@ -854,9 +880,10 @@ public class SweRepoDiscoveryJob {
                         request.getMaxGoldSourceFiles(),
                         request.getMinGoldLines(),
                         request.getMaxGoldLines(),
-                        request.getPullPage() + pageOffset,
+                        currentPullPage,
                         request.getPullPerPage());
                 completedPage = true;
+                nextPullPage = currentPullPage + 1;
                 outcome.setScannedRepos(1);
                 int candidates = scanResponse.getCandidates().size();
                 outcome.setCandidates(outcome.getCandidates() + candidates);
@@ -865,6 +892,8 @@ public class SweRepoDiscoveryJob {
                 outcome.setSkippedDelivered(outcome.getSkippedDelivered() + nullToZero(scanResponse.getSkippedDelivered()));
                 remainingCandidates -= candidates;
                 if (!Boolean.TRUE.equals(scanResponse.getHasMore())) {
+                    exhausted = true;
+                    nextPullPage = 1;
                     break;
                 }
             }
@@ -874,7 +903,7 @@ public class SweRepoDiscoveryJob {
             }
             log.warn("Failed to scan SWE repo candidates, repo={}", repo, e);
         }
-        return outcome;
+        return new RepoScanResult(outcome, nextPullPage, exhausted);
     }
 
     private void shutdownRepositoryExecutor(ExecutorService repositoryExecutor) {
@@ -1361,5 +1390,8 @@ public class SweRepoDiscoveryJob {
         private int skippedEnoughRepos;
 
         private int existingCandidates;
+    }
+
+    private record RepoScanResult(RepoScanOutcome outcome, int nextPullPage, boolean exhausted) {
     }
 }

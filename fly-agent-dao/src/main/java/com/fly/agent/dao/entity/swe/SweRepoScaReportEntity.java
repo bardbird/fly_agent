@@ -49,6 +49,10 @@ public class SweRepoScaReportEntity {
 
     private LocalDateTime candidateLastScannedAt;
 
+    private Integer candidateNextPullPage;
+
+    private LocalDateTime candidatePullExhaustedAt;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
