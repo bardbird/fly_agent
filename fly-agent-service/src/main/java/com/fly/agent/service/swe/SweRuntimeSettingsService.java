@@ -34,6 +34,7 @@ public class SweRuntimeSettingsService {
     public static final String KEY_QWEN_ATTEMPTS = "qwenAttempts";
     public static final String KEY_OPUS_ATTEMPTS = "opusAttempts";
     public static final String KEY_SWE_AGENT_MAX_STEPS = "sweAgentMaxSteps";
+    public static final String KEY_QWEN_MAX_STEPS_SCHEDULE = "qwenMaxStepsSchedule";
     public static final String KEY_OPUS_MAX_STEPS_SCHEDULE = "opusMaxStepsSchedule";
     public static final String KEY_MODEL_TIMEOUT_SECONDS = "modelTimeoutSeconds";
 
@@ -133,6 +134,14 @@ public class SweRuntimeSettingsService {
         return sweProperties.getOpusMaxStepsSchedule();
     }
 
+    public String resolveQwenMaxStepsSchedule() {
+        String value = getStoredValue(KEY_QWEN_MAX_STEPS_SCHEDULE);
+        if (StringUtils.hasText(value) && isValidPositiveIntegerList(value)) {
+            return value.trim();
+        }
+        return sweProperties.getQwenMaxStepsSchedule();
+    }
+
     public int resolveModelTimeoutSeconds() {
         return resolvePositiveInteger(KEY_MODEL_TIMEOUT_SECONDS, sweProperties.getModelTimeoutSeconds(), 3600);
     }
@@ -191,6 +200,7 @@ public class SweRuntimeSettingsService {
             case KEY_QWEN_ATTEMPTS -> Objects.toString(resolveQwenAttempts(), null);
             case KEY_OPUS_ATTEMPTS -> Objects.toString(resolveOpusAttempts(), null);
             case KEY_SWE_AGENT_MAX_STEPS -> Objects.toString(resolveSweAgentMaxSteps(), null);
+            case KEY_QWEN_MAX_STEPS_SCHEDULE -> resolveQwenMaxStepsSchedule();
             case KEY_OPUS_MAX_STEPS_SCHEDULE -> resolveOpusMaxStepsSchedule();
             case KEY_MODEL_TIMEOUT_SECONDS -> Objects.toString(resolveModelTimeoutSeconds(), null);
             default -> null;
@@ -269,6 +279,8 @@ public class SweRuntimeSettingsService {
                 "Opus evaluation attempt count, default 8"));
         definitions.put(KEY_SWE_AGENT_MAX_STEPS, new SettingDefinition(KEY_SWE_AGENT_MAX_STEPS, "SWE-agent Max Steps", false,
                 "Base per-attempt step limit for model evaluation"));
+        definitions.put(KEY_QWEN_MAX_STEPS_SCHEDULE, new SettingDefinition(KEY_QWEN_MAX_STEPS_SCHEDULE, "Qwen Max Steps Schedule", false,
+                "Comma-separated Qwen step gradient, e.g. 100,80,10,10; last value repeats"));
         definitions.put(KEY_OPUS_MAX_STEPS_SCHEDULE, new SettingDefinition(KEY_OPUS_MAX_STEPS_SCHEDULE, "Opus Max Steps Schedule", false,
                 "Comma-separated Opus step gradient, e.g. 180,50,10; last value repeats"));
         definitions.put(KEY_MODEL_TIMEOUT_SECONDS, new SettingDefinition(KEY_MODEL_TIMEOUT_SECONDS, "Model Timeout Seconds", false,

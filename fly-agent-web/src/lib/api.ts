@@ -341,6 +341,8 @@ export async function listSweAllowedRepos(params?: {
   perPage?: number
   language?: string
   inCandidate?: boolean
+  checkedFrom?: string
+  checkedTo?: string
 }): Promise<SweAllowedRepoListResponse> {
   const response = unwrapResult(
     await api.get<ApiResult<SweAllowedRepoListResponse>>('/swe/sca-report/allowed-repos', {
@@ -359,6 +361,8 @@ export async function listSweAllowedRepos(params?: {
 export async function exportSweAllowedRepos(params?: {
   language?: string
   inCandidate?: boolean
+  checkedFrom?: string
+  checkedTo?: string
 }): Promise<Blob> {
   const response = await api.get('/swe/sca-report/allowed-repos/export', {
     params,

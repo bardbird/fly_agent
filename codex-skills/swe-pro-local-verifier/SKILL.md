@@ -61,6 +61,7 @@ python3 tools/swe-pro-production/scripts/package_task.py <package_dir> --docker
 4. Verify patch mechanics.
    - Run `bash scripts/verify_patch_application.sh`.
    - If patch application fails, fix patch paths, repo baseline, line endings, generated files, or patch split.
+   - Check newly authored patch hunk headers after manual edits. For new files, the `+1,N` count must match the number of added lines; a wrong count can truncate the generated file even when the patch appears readable.
    - Do not continue to Docker while patches cannot apply cleanly.
 
 5. Fix selected tests and runtime.
@@ -77,6 +78,8 @@ python3 tools/swe-pro-production/scripts/package_task.py <package_dir> --docker
 7. Run Docker verification until it passes or the candidate is rejected.
    - Use `scripts/local_verify_loop.py` for a deterministic wrapper.
    - Inspect `logs/docker_build.log`, `logs/docker/baseline.log`, `logs/docker/fixed.log`, `logs/docker/pass_to_pass.log`, and `logs/docker/validation.json`.
+   - Treat Docker-only patch failures as first-class patch/runtime issues. The validation image may not contain `.git` metadata or repository attributes, so CRLF-sensitive hunks can apply locally but fail in Docker. See `references/docker.md` before changing tests.
+   - Inspect the generated Docker context exclusions when a package compiles locally but not in Docker. `package_task.py` may rewrite `.dockerignore`; broad patterns can exclude real source directories such as Go packages named `env`.
    - A passing `logs/docker/validation.json` with `"ok": true` is the local verification gate.
 
 8. Run eval-shell parity checks before handoff.

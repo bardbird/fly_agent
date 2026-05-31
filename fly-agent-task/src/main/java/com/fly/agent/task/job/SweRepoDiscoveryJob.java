@@ -12,6 +12,7 @@ import com.fly.agent.service.swe.GithubPullCandidateService;
 import com.fly.agent.service.swe.GithubRepositorySearchService;
 import com.fly.agent.service.swe.GithubTokenContext;
 import com.fly.agent.service.swe.SweRepoPrecheckService;
+import com.fly.agent.task.service.GithubRepoProfileService;
 import com.fly.agent.task.service.SweRepoBlacklistService;
 import com.fly.agent.task.service.SweRepoScanCursorService;
 import com.fly.agent.task.service.SweRepoScaService;
@@ -36,7 +37,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Low-frequency SWE repo discovery and candidate scan jobs.
+ * Scheduled SWE repo discovery and candidate scan jobs.
  */
 @Slf4j
 @Component
@@ -62,6 +63,7 @@ public class SweRepoDiscoveryJob {
     private final SweRepoBlacklistService repoBlacklistService;
     private final SweRepoScanCursorService scanCursorService;
     private final SweRepoScaService repoScaService;
+    private final GithubRepoProfileService repoProfileService;
     private final SweRepoPrecheckService repoPrecheckService;
     private final SweCandidateMapper candidateMapper;
 
@@ -350,6 +352,7 @@ public class SweRepoDiscoveryJob {
                     "found=" + languageSummary.getFoundRepos()
                             + ", attempted=" + languageSummary.getAttemptedRepos()
                             + ", blacklisted=" + languageSummary.getBlacklistedRepos()
+                            + ", profileRejected=" + languageSummary.getProfileRejectedRepos()
                             + ", scaRejected=" + languageSummary.getScaRejectedRepos()
                             + ", scanned=" + languageSummary.getScannedRepos()
                             + ", skippedByFilter=" + languageSummary.getSkippedByFilter()
@@ -375,7 +378,8 @@ public class SweRepoDiscoveryJob {
                 request.getMinStars(),
                 initialMaxStars,
                 request.getScanDate());
-        int remainingRepoLimit = Math.max(request.getRepoLimit() - scaReportsToday, 0);
+        int remainingDailyRepoLimit = Math.max(request.getRepoLimit() - scaReportsToday, 0);
+        int remainingRepoLimit = request.resolvePerRunRepoLimit(remainingDailyRepoLimit);
         if (request.isResetCursor()) {
             scanCursorService.reset(language, request.getKeyword(), request.getMinStars(), initialMaxStars);
         }
@@ -403,6 +407,7 @@ public class SweRepoDiscoveryJob {
         languageSummary.setCursorKey(cursor.getCursorKey());
         languageSummary.setExistingScaReports(existingScaReports);
         languageSummary.setDailyRepoLimit(request.getRepoLimit());
+        languageSummary.setPerRunRepoLimit(request.getPerRunRepoLimit());
         languageSummary.setReposProcessedToday(scaReportsToday);
         languageSummary.setScanDate(request.getScanDate().toString());
         if (remainingRepoLimit <= 0) {
@@ -453,6 +458,7 @@ public class SweRepoDiscoveryJob {
                     minSeenStars,
                     "scaOnly found=" + languageSummary.getFoundRepos()
                             + ", blacklisted=" + languageSummary.getBlacklistedRepos()
+                            + ", profileRejected=" + languageSummary.getProfileRejectedRepos()
                             + ", scaRejected=" + languageSummary.getScaRejectedRepos()
                             + ", scaAllowed=" + languageSummary.getScaAllowedRepos()
                             + ", scaChecked=" + languageSummary.getScaCheckedRepos());
@@ -468,7 +474,8 @@ public class SweRepoDiscoveryJob {
                 request.getMinStars(),
                 request.getMaxStars(),
                 request.getScanDate());
-        int remainingRepoLimit = Math.max(request.getRepoLimit() - scannedToday, 0);
+        int remainingDailyRepoLimit = Math.max(request.getRepoLimit() - scannedToday, 0);
+        int remainingRepoLimit = request.resolvePerRunRepoLimit(remainingDailyRepoLimit);
         List<String> repos = repoScaService.listAllowedReposForCandidateScan(
                 language,
                 request.getKeyword(),
@@ -482,6 +489,7 @@ public class SweRepoDiscoveryJob {
         languageSummary.setMinStars(request.getMinStars());
         languageSummary.setMaxStars(request.getMaxStars());
         languageSummary.setDailyRepoLimit(request.getRepoLimit());
+        languageSummary.setPerRunRepoLimit(request.getPerRunRepoLimit());
         languageSummary.setReposProcessedToday(scannedToday);
         languageSummary.setScanDate(request.getScanDate().toString());
         if (remainingRepoLimit <= 0) {
@@ -690,11 +698,25 @@ public class SweRepoDiscoveryJob {
             outcome.setScaRejectedRepos(1);
             return outcome;
         }
+        GithubRepoProfileService.RepoProfileDecision profileDecision = analyzeProfile(repository, request, outcome);
+        if (!profileDecision.isAllowed()) {
+            outcome.setProfileRejectedRepos(1);
+            log.info("Repo rejected by profile filter, repo={}, reasonCode={}, reason={}",
+                    repo,
+                    profileDecision.getReasonCode(),
+                    profileDecision.getReason());
+            return outcome;
+        }
         SweRepoScaService.LicensePrecheckDecision licensePrecheck = SweRepoScaService.precheckLicense(
                 repository.getLicenseSpdxId(),
                 repository.getLicenseName());
         if (!licensePrecheck.allowed()) {
-            repoScaService.analyzeRepo(repository, request.getKeyword(), request.getMinStars(), searchMaxStars);
+            repoScaService.analyzeRepo(
+                    repository,
+                    request.getKeyword(),
+                    request.getMinStars(),
+                    searchMaxStars,
+                    profileDecision.toJson());
             outcome.setScaCheckedRepos(1);
             outcome.setScaRejectedRepos(1);
             return outcome;
@@ -703,7 +725,8 @@ public class SweRepoDiscoveryJob {
                 repository,
                 request.getKeyword(),
                 request.getMinStars(),
-                searchMaxStars);
+                searchMaxStars,
+                profileDecision.toJson());
         outcome.setScaCheckedRepos(1);
         if (scaDecision.isAllowed()) {
             outcome.setScaAllowedRepos(1);
@@ -735,6 +758,15 @@ public class SweRepoDiscoveryJob {
                     precheck.reason());
             return outcome;
         }
+        GithubRepoProfileService.RepoProfileDecision profileDecision = analyzeProfile(repository, request, outcome);
+        if (!profileDecision.isAllowed()) {
+            outcome.setProfileRejectedRepos(1);
+            log.info("Repo rejected by profile filter, repo={}, reasonCode={}, reason={}",
+                    repo,
+                    profileDecision.getReasonCode(),
+                    profileDecision.getReason());
+            return outcome;
+        }
         SweRepoScaService.LicensePrecheckDecision licensePrecheck = SweRepoScaService.precheckLicense(
                 repository.getLicenseSpdxId(),
                 repository.getLicenseName());
@@ -750,7 +782,8 @@ public class SweRepoDiscoveryJob {
                 repository,
                 request.getKeyword(),
                 request.getMinStars(),
-                request.getMaxStars());
+                request.getMaxStars(),
+                profileDecision.toJson());
         outcome.setScaCheckedRepos(1);
         SweRepoPrecheckService.RepoPrecheckDecision postScaPrecheck = repoPrecheckService.check(repo);
         if (!postScaPrecheck.allowed()) {
@@ -767,6 +800,25 @@ public class SweRepoDiscoveryJob {
         }
         outcome.setAttemptedRepos(1);
         return scanRepo(repo, request, outcome);
+    }
+
+    private GithubRepoProfileService.RepoProfileDecision analyzeProfile(
+            GithubRepositoryDTO repository,
+            ScanRequest request,
+            RepoScanOutcome outcome) {
+        GithubRepoProfileService.ProfileConstraints constraints = new GithubRepoProfileService.ProfileConstraints();
+        constraints.setEnabled(request.isProfileFilterEnabled());
+        constraints.setMinPrimaryLanguageRatio(request.getMinPrimaryLanguageRatio());
+        constraints.setMaxLanguageCount(request.getMaxLanguageCount());
+        constraints.setMaxDirectDependencies(request.getMaxDirectDependencies());
+        constraints.setMaxManifestCount(request.getMaxManifestCount());
+        constraints.setMaxManifestDownloads(request.getMaxManifestDownloads());
+        GithubRepoProfileService.RepoProfileDecision decision = repoProfileService.analyze(repository, constraints);
+        outcome.setProfileCheckedRepos(1);
+        if (decision.isAllowed()) {
+            outcome.setProfileAllowedRepos(1);
+        }
+        return decision;
     }
 
     private boolean tryAcquireRepoScanSlot(AtomicInteger scannedReposForLanguage, int repoLimit) {
@@ -923,8 +975,9 @@ public class SweRepoDiscoveryJob {
         request.setRepositoryPages(intValue(json, "repositoryPages", request.getRepositoryPages(), 1, 10));
         request.setRepositoryPerPage(intValue(json, "repositoryPerPage", request.getRepositoryPerPage(), 1, 50));
         request.setRepositoryConcurrency(intValue(json, "repositoryConcurrency", request.getRepositoryConcurrency(), 1, 5));
-        request.setRepoLimit(intValue(json, "repoLimit", request.getRepoLimit(), 1, 200));
-        request.setRepoLimit(intValue(json, "dailyRepoLimit", request.getRepoLimit(), 1, 200));
+        request.setRepoLimit(intValue(json, "repoLimit", request.getRepoLimit(), 1, 1000));
+        request.setRepoLimit(intValue(json, "dailyRepoLimit", request.getRepoLimit(), 1, 1000));
+        request.setPerRunRepoLimit(optionalPositiveInt(json, "perRunRepoLimit"));
         request.setRepoOffset(intValue(json, "repoOffset", request.getRepoOffset(), 0, Integer.MAX_VALUE));
         request.setPullLimit(intValue(json, "pullLimit", request.getPullLimit(), 1, 50));
         request.setDays(intValue(json, "days", request.getDays(), 1, 3650));
@@ -935,6 +988,17 @@ public class SweRepoDiscoveryJob {
         request.setPullPage(intValue(json, "pullPage", request.getPullPage(), 1, Integer.MAX_VALUE));
         request.setPullPerPage(intValue(json, "pullPerPage", request.getPullPerPage(), 1, 10));
         request.setPullPagesPerRepo(intValue(json, "pullPagesPerRepo", request.getPullPagesPerRepo(), 1, 100));
+        request.setProfileFilterEnabled(booleanValue(json, "profileFilterEnabled", request.isProfileFilterEnabled()));
+        request.setMinPrimaryLanguageRatio(doubleValue(
+                json,
+                "minPrimaryLanguageRatio",
+                request.getMinPrimaryLanguageRatio(),
+                0.0d,
+                1.0d));
+        request.setMaxLanguageCount(intValue(json, "maxLanguageCount", request.getMaxLanguageCount(), 1, 20));
+        request.setMaxDirectDependencies(intValue(json, "maxDirectDependencies", request.getMaxDirectDependencies(), 0, 500));
+        request.setMaxManifestCount(intValue(json, "maxManifestCount", request.getMaxManifestCount(), 0, 100));
+        request.setMaxManifestDownloads(intValue(json, "maxManifestDownloads", request.getMaxManifestDownloads(), 0, 20));
         request.setUseStarCursor(booleanValue(json, "useStarCursor", request.isUseStarCursor()));
         request.setResetCursor(booleanValue(json, "resetCursor", request.isResetCursor()));
         request.setImportBlacklist(booleanValue(json, "importBlacklist", request.isImportBlacklist()));
@@ -1016,6 +1080,14 @@ public class SweRepoDiscoveryJob {
         return value == null ? defaultValue : value;
     }
 
+    private double doubleValue(JSONObject json, String key, double defaultValue, double minValue, double maxValue) {
+        Double value = json.getDouble(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        return Math.min(Math.max(value, minValue), maxValue);
+    }
+
     @Data
     private static class ScanRequest {
 
@@ -1039,6 +1111,8 @@ public class SweRepoDiscoveryJob {
 
         private int repoLimit = 10;
 
+        private Integer perRunRepoLimit;
+
         private int repoOffset;
 
         private int pullLimit = 3;
@@ -1059,6 +1133,18 @@ public class SweRepoDiscoveryJob {
 
         private int pullPagesPerRepo = 1;
 
+        private boolean profileFilterEnabled = true;
+
+        private double minPrimaryLanguageRatio = 0.70d;
+
+        private int maxLanguageCount = 4;
+
+        private int maxDirectDependencies = 30;
+
+        private int maxManifestCount = 8;
+
+        private int maxManifestDownloads = 3;
+
         private boolean useStarCursor = true;
 
         private boolean resetCursor;
@@ -1073,6 +1159,13 @@ public class SweRepoDiscoveryJob {
 
         private List<String> resolveLanguages() {
             return languages == null || languages.isEmpty() ? DEFAULT_LANGUAGES : languages;
+        }
+
+        private int resolvePerRunRepoLimit(int remainingDailyRepoLimit) {
+            if (perRunRepoLimit == null || perRunRepoLimit <= 0) {
+                return remainingDailyRepoLimit;
+            }
+            return Math.min(perRunRepoLimit, remainingDailyRepoLimit);
         }
     }
 
@@ -1096,6 +1189,12 @@ public class SweRepoDiscoveryJob {
         private int scaAllowedRepos;
 
         private int scaRejectedRepos;
+
+        private int profileCheckedRepos;
+
+        private int profileAllowedRepos;
+
+        private int profileRejectedRepos;
 
         private int candidates;
 
@@ -1123,6 +1222,9 @@ public class SweRepoDiscoveryJob {
             scaCheckedRepos += languageSummary.getScaCheckedRepos();
             scaAllowedRepos += languageSummary.getScaAllowedRepos();
             scaRejectedRepos += languageSummary.getScaRejectedRepos();
+            profileCheckedRepos += languageSummary.getProfileCheckedRepos();
+            profileAllowedRepos += languageSummary.getProfileAllowedRepos();
+            profileRejectedRepos += languageSummary.getProfileRejectedRepos();
             candidates += languageSummary.getCandidates();
             scannedPulls += languageSummary.getScannedPulls();
             skippedByFilter += languageSummary.getSkippedByFilter();
@@ -1164,6 +1266,12 @@ public class SweRepoDiscoveryJob {
 
         private int scaRejectedRepos;
 
+        private int profileCheckedRepos;
+
+        private int profileAllowedRepos;
+
+        private int profileRejectedRepos;
+
         private int candidates;
 
         private int scannedPulls;
@@ -1180,6 +1288,8 @@ public class SweRepoDiscoveryJob {
 
         private int dailyRepoLimit;
 
+        private Integer perRunRepoLimit;
+
         private int reposProcessedToday;
 
         private String scanDate;
@@ -1193,6 +1303,9 @@ public class SweRepoDiscoveryJob {
             scaCheckedRepos += outcome.getScaCheckedRepos();
             scaAllowedRepos += outcome.getScaAllowedRepos();
             scaRejectedRepos += outcome.getScaRejectedRepos();
+            profileCheckedRepos += outcome.getProfileCheckedRepos();
+            profileAllowedRepos += outcome.getProfileAllowedRepos();
+            profileRejectedRepos += outcome.getProfileRejectedRepos();
             candidates += outcome.getCandidates();
             scannedPulls += outcome.getScannedPulls();
             skippedByFilter += outcome.getSkippedByFilter();
@@ -1229,6 +1342,12 @@ public class SweRepoDiscoveryJob {
         private int scaAllowedRepos;
 
         private int scaRejectedRepos;
+
+        private int profileCheckedRepos;
+
+        private int profileAllowedRepos;
+
+        private int profileRejectedRepos;
 
         private int candidates;
 

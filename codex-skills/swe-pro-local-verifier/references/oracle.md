@@ -69,6 +69,7 @@ If `fixed` fails:
 - check whether generated snapshots need stable normalization
 - check whether test setup needs an existing fixture
 - check whether `gold.patch` and `test.patch` conflict
+- check whether the selected test package imports a broad dependency graph that exposes unrelated Docker-context omissions; if so, fix the context/toolkit issue or move the oracle to a narrower public boundary without overfitting
 - check whether dependencies belong in Docker/runtime setup rather than test code
 
 Do not edit production code inside `repo/` directly; update patches.

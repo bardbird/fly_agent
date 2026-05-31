@@ -932,10 +932,10 @@ public class SwePipelineService {
         command.add(StringUtils.hasText(model.getProvider()) ? model.getProvider() : "openai");
         command.add("--agent-max-steps");
         command.add(String.valueOf(resolveSweAgentMaxSteps()));
-        String opusMaxStepsSchedule = runtimeSettingsService.resolveOpusMaxStepsSchedule();
-        if (outName.toLowerCase().contains("opus") && StringUtils.hasText(opusMaxStepsSchedule)) {
+        String maxStepsSchedule = resolveModelMaxStepsSchedule(outName);
+        if (StringUtils.hasText(maxStepsSchedule)) {
             command.add("--agent-max-steps-schedule");
-            command.add(opusMaxStepsSchedule);
+            command.add(maxStepsSchedule);
         }
         command.add("--enable-thinking");
         command.add(outName.toLowerCase().contains("qwen") ? "false" : "omit");
@@ -977,6 +977,17 @@ public class SwePipelineService {
 
     private int resolveSweAgentMaxSteps() {
         return positiveInteger(runtimeSettingsService.resolveSweAgentMaxSteps(), SWE_BENCH_PRO_AGENT_MAX_STEPS);
+    }
+
+    private String resolveModelMaxStepsSchedule(String outName) {
+        String lower = outName == null ? "" : outName.toLowerCase();
+        if (lower.contains("qwen")) {
+            return runtimeSettingsService.resolveQwenMaxStepsSchedule();
+        }
+        if (lower.contains("opus")) {
+            return runtimeSettingsService.resolveOpusMaxStepsSchedule();
+        }
+        return null;
     }
 
     private String runDockerPackage(Long runId, Path packagePath) {

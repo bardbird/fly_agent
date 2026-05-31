@@ -14,7 +14,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -99,14 +101,25 @@ public class SweScaReportService {
             Integer page,
             Integer perPage,
             String language,
-            Boolean inCandidate) {
+            Boolean inCandidate,
+            String checkedFrom,
+            String checkedTo) {
         requireScaReportMapper();
         int resolvedPage = page == null ? 1 : Math.max(page, 1);
         int resolvedPerPage = perPage == null
                 ? DEFAULT_REPO_PAGE_SIZE
                 : Math.min(Math.max(perPage, 1), MAX_REPO_PAGE_SIZE);
         String normalizedLanguage = normalizeLanguage(language);
-        long total = scaReportMapper.countAllowedRepoReports(normalizedLanguage, inCandidate);
+        LocalDateTime checkedFromTime = parseCheckedDateStart(checkedFrom, "checkedFrom");
+        LocalDateTime checkedToExclusive = parseCheckedDateEndExclusive(checkedTo, "checkedTo");
+        if (checkedFromTime != null && checkedToExclusive != null && !checkedFromTime.isBefore(checkedToExclusive)) {
+            throw new BusinessException("检查开始时间必须早于检查结束时间");
+        }
+        long total = scaReportMapper.countAllowedRepoReports(
+                normalizedLanguage,
+                inCandidate,
+                checkedFromTime,
+                checkedToExclusive);
         int totalPages = total == 0 ? 1 : (int) Math.ceil(total / (double) resolvedPerPage);
         int offset = (resolvedPage - 1) * resolvedPerPage;
 
@@ -116,19 +129,33 @@ public class SweScaReportService {
         response.setTotal(total);
         response.setTotalPages(totalPages);
         response.setRepositories(scaReportMapper
-                .selectAllowedRepoReports(normalizedLanguage, inCandidate, resolvedPerPage, offset)
+                .selectAllowedRepoReports(
+                        normalizedLanguage,
+                        inCandidate,
+                        checkedFromTime,
+                        checkedToExclusive,
+                        resolvedPerPage,
+                        offset)
                 .stream()
                 .map(this::toAllowedRepoDTO)
                 .toList());
         return response;
     }
 
-    public String exportAllowedRepoCsv(String language, Boolean inCandidate) {
+    public String exportAllowedRepoCsv(
+            String language,
+            Boolean inCandidate,
+            String checkedFrom,
+            String checkedTo) {
         requireScaReportMapper();
+        LocalDateTime checkedFromTime = parseCheckedDateStart(checkedFrom, "checkedFrom");
+        LocalDateTime checkedToExclusive = parseCheckedDateEndExclusive(checkedTo, "checkedTo");
         StringBuilder csv = new StringBuilder("repo,github_url\n");
         for (Map<String, Object> row : scaReportMapper.selectAllowedRepoExportRows(
                 normalizeLanguage(language),
-                inCandidate)) {
+                inCandidate,
+                checkedFromTime,
+                checkedToExclusive)) {
             String repo = stringValue(row.get("repo"));
             csv.append(csv(repo))
                     .append(',')
@@ -183,6 +210,36 @@ public class SweScaReportService {
             case "js" -> "javascript";
             default -> normalized;
         };
+    }
+
+    private LocalDateTime parseCheckedDateStart(String value, String fieldName) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String trimmed = value.trim();
+        try {
+            if (trimmed.length() == 10) {
+                return LocalDate.parse(trimmed).atStartOfDay();
+            }
+            return LocalDateTime.parse(trimmed);
+        } catch (DateTimeParseException e) {
+            throw new BusinessException(fieldName + "格式无效，应为 yyyy-MM-dd 或 ISO 日期时间");
+        }
+    }
+
+    private LocalDateTime parseCheckedDateEndExclusive(String value, String fieldName) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String trimmed = value.trim();
+        try {
+            if (trimmed.length() == 10) {
+                return LocalDate.parse(trimmed).plusDays(1).atStartOfDay();
+            }
+            return LocalDateTime.parse(trimmed);
+        } catch (DateTimeParseException e) {
+            throw new BusinessException(fieldName + "格式无效，应为 yyyy-MM-dd 或 ISO 日期时间");
+        }
     }
 
     private String githubUrl(String repo) {

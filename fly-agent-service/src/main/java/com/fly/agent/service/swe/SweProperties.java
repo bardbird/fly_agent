@@ -23,6 +23,8 @@ public class SweProperties {
 
     private Integer opusAttempts = 8;
 
+    private String qwenMaxStepsSchedule = "100,80,10,10";
+
     private String opusMaxStepsSchedule = "180,50,10";
 
     private Integer modelTimeoutSeconds = 3600;

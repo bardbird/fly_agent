@@ -171,15 +171,25 @@ public class SwePipelineController {
             @RequestParam(value = "page", required = false) Integer page,
             @RequestParam(value = "perPage", required = false) Integer perPage,
             @RequestParam(value = "language", required = false) String language,
-            @RequestParam(value = "inCandidate", required = false) Boolean inCandidate) {
-        return Result.ok(sweScaReportService.listAllowedRepos(page, perPage, language, inCandidate));
+            @RequestParam(value = "inCandidate", required = false) Boolean inCandidate,
+            @RequestParam(value = "checkedFrom", required = false) String checkedFrom,
+            @RequestParam(value = "checkedTo", required = false) String checkedTo) {
+        return Result.ok(sweScaReportService.listAllowedRepos(
+                page,
+                perPage,
+                language,
+                inCandidate,
+                checkedFrom,
+                checkedTo));
     }
 
     @GetMapping(value = "/sca-report/allowed-repos/export", produces = "text/csv;charset=UTF-8")
     public ResponseEntity<String> exportAllowedScaRepos(
             @RequestParam(value = "language", required = false) String language,
-            @RequestParam(value = "inCandidate", required = false) Boolean inCandidate) {
-        String csv = sweScaReportService.exportAllowedRepoCsv(language, inCandidate);
+            @RequestParam(value = "inCandidate", required = false) Boolean inCandidate,
+            @RequestParam(value = "checkedFrom", required = false) String checkedFrom,
+            @RequestParam(value = "checkedTo", required = false) String checkedTo) {
+        String csv = sweScaReportService.exportAllowedRepoCsv(language, inCandidate, checkedFrom, checkedTo);
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()

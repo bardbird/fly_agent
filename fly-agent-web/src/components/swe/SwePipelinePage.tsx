@@ -142,6 +142,8 @@ export function SwePipelinePage() {
   const [allowedRepoTotalPages, setAllowedRepoTotalPages] = useState(1)
   const [allowedRepoLanguage, setAllowedRepoLanguage] = useState('all')
   const [allowedRepoCandidateFilter, setAllowedRepoCandidateFilter] = useState('all')
+  const [allowedRepoCheckedFrom, setAllowedRepoCheckedFrom] = useState('')
+  const [allowedRepoCheckedTo, setAllowedRepoCheckedTo] = useState('')
   const [candidates, setCandidates] = useState<GithubPullCandidate[]>([])
   const [candidateLoading, setCandidateLoading] = useState(false)
   const [candidatePage, setCandidatePage] = useState(1)
@@ -241,6 +243,8 @@ export function SwePipelinePage() {
         perPage: nextPerPage,
         language: allowedRepoLanguage === 'all' ? undefined : allowedRepoLanguage,
         inCandidate: parseCandidateFilter(allowedRepoCandidateFilter),
+        checkedFrom: allowedRepoCheckedFrom || undefined,
+        checkedTo: allowedRepoCheckedTo || undefined,
       })
       setAllowedRepos(response.repositories)
       setAllowedRepoPage(response.page)
@@ -260,6 +264,8 @@ export function SwePipelinePage() {
       const blob = await exportSweAllowedRepos({
         language: allowedRepoLanguage === 'all' ? undefined : allowedRepoLanguage,
         inCandidate: parseCandidateFilter(allowedRepoCandidateFilter),
+        checkedFrom: allowedRepoCheckedFrom || undefined,
+        checkedTo: allowedRepoCheckedTo || undefined,
       })
       downloadBlob(blob, 'swe_sca_allowed_repos.csv')
     } catch (requestError) {
@@ -306,7 +312,13 @@ export function SwePipelinePage() {
   useEffect(() => {
     if (activeStep !== 'discover') return
     refreshAllowedRepos(1, allowedRepoPerPage)
-  }, [activeStep, allowedRepoLanguage, allowedRepoCandidateFilter])
+  }, [
+    activeStep,
+    allowedRepoLanguage,
+    allowedRepoCandidateFilter,
+    allowedRepoCheckedFrom,
+    allowedRepoCheckedTo,
+  ])
 
   useEffect(() => {
     if (!selectedRun || selectedRun.status !== 'RUNNING') return
@@ -689,8 +701,12 @@ export function SwePipelinePage() {
               totalPages={allowedRepoTotalPages}
               language={allowedRepoLanguage}
               candidateFilter={allowedRepoCandidateFilter}
+              checkedFrom={allowedRepoCheckedFrom}
+              checkedTo={allowedRepoCheckedTo}
               onLanguageChange={setAllowedRepoLanguage}
               onCandidateFilterChange={setAllowedRepoCandidateFilter}
+              onCheckedFromChange={setAllowedRepoCheckedFrom}
+              onCheckedToChange={setAllowedRepoCheckedTo}
               onRefresh={() => refreshAllowedRepos(allowedRepoPage, allowedRepoPerPage)}
               onPageChange={(page) => refreshAllowedRepos(page, allowedRepoPerPage)}
               onPerPageChange={(perPage) => refreshAllowedRepos(1, perPage)}
@@ -1422,8 +1438,12 @@ function AllowedRepoRegistryPanel({
   totalPages,
   language,
   candidateFilter,
+  checkedFrom,
+  checkedTo,
   onLanguageChange,
   onCandidateFilterChange,
+  onCheckedFromChange,
+  onCheckedToChange,
   onRefresh,
   onPageChange,
   onPerPageChange,
@@ -1438,8 +1458,12 @@ function AllowedRepoRegistryPanel({
   totalPages: number
   language: string
   candidateFilter: string
+  checkedFrom: string
+  checkedTo: string
   onLanguageChange: (language: string) => void
   onCandidateFilterChange: (filter: string) => void
+  onCheckedFromChange: (value: string) => void
+  onCheckedToChange: (value: string) => void
   onRefresh: () => void
   onPageChange: (page: number) => void
   onPerPageChange: (perPage: number) => void
@@ -1457,7 +1481,7 @@ function AllowedRepoRegistryPanel({
             </p>
           </div>
         </div>
-        <div className="grid gap-2 sm:grid-cols-[150px_150px_96px_96px_auto]">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[140px_140px_140px_140px_92px_92px_auto]">
           <select
             className="input-base h-9 text-xs"
             value={language}
@@ -1478,6 +1502,22 @@ function AllowedRepoRegistryPanel({
             <option value="in">已入候选</option>
             <option value="not_in">未入候选</option>
           </select>
+          <input
+            type="date"
+            className="input-base h-9 text-xs"
+            value={checkedFrom}
+            aria-label="检查开始日期"
+            title="检查开始日期"
+            onChange={(event) => onCheckedFromChange(event.target.value)}
+          />
+          <input
+            type="date"
+            className="input-base h-9 text-xs"
+            value={checkedTo}
+            aria-label="检查结束日期"
+            title="检查结束日期"
+            onChange={(event) => onCheckedToChange(event.target.value)}
+          />
           <select
             className="input-base h-9 text-xs"
             value={perPage}

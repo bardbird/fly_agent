@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -188,11 +189,19 @@ public interface SweRepoScaReportMapper extends BaseMapper<SweRepoScaReportEntit
                     </otherwise>
                   </choose>
             </if>
+            <if test="checkedFrom != null">
+              AND s.checked_at &gt;= #{checkedFrom}
+            </if>
+            <if test="checkedToExclusive != null">
+              AND s.checked_at &lt; #{checkedToExclusive}
+            </if>
             </script>
             """)
     long countAllowedRepoReports(
             @Param("language") String language,
-            @Param("inCandidate") Boolean inCandidate);
+            @Param("inCandidate") Boolean inCandidate,
+            @Param("checkedFrom") LocalDateTime checkedFrom,
+            @Param("checkedToExclusive") LocalDateTime checkedToExclusive);
 
     @Select("""
             <script>
@@ -229,13 +238,21 @@ public interface SweRepoScaReportMapper extends BaseMapper<SweRepoScaReportEntit
                     </otherwise>
                   </choose>
             </if>
-            ORDER BY s.github_stars DESC, s.checked_at DESC, s.id DESC
+            <if test="checkedFrom != null">
+              AND s.checked_at &gt;= #{checkedFrom}
+            </if>
+            <if test="checkedToExclusive != null">
+              AND s.checked_at &lt; #{checkedToExclusive}
+            </if>
+            ORDER BY s.checked_at DESC, s.id DESC
             LIMIT #{limit} OFFSET #{offset}
             </script>
             """)
     List<Map<String, Object>> selectAllowedRepoReports(
             @Param("language") String language,
             @Param("inCandidate") Boolean inCandidate,
+            @Param("checkedFrom") LocalDateTime checkedFrom,
+            @Param("checkedToExclusive") LocalDateTime checkedToExclusive,
             @Param("limit") int limit,
             @Param("offset") int offset);
 
@@ -266,10 +283,18 @@ public interface SweRepoScaReportMapper extends BaseMapper<SweRepoScaReportEntit
                     </otherwise>
                   </choose>
             </if>
-            ORDER BY s.github_stars DESC, s.checked_at DESC, s.id DESC
+            <if test="checkedFrom != null">
+              AND s.checked_at &gt;= #{checkedFrom}
+            </if>
+            <if test="checkedToExclusive != null">
+              AND s.checked_at &lt; #{checkedToExclusive}
+            </if>
+            ORDER BY s.checked_at DESC, s.id DESC
             </script>
             """)
     List<Map<String, Object>> selectAllowedRepoExportRows(
             @Param("language") String language,
-            @Param("inCandidate") Boolean inCandidate);
+            @Param("inCandidate") Boolean inCandidate,
+            @Param("checkedFrom") LocalDateTime checkedFrom,
+            @Param("checkedToExclusive") LocalDateTime checkedToExclusive);
 }

@@ -6,7 +6,10 @@ SET @executor_appname = 'fly-agent-executor' COLLATE utf8mb4_0900_ai_ci;
 SET @github_token = 'REPLACE_WITH_GITHUB_TOKEN' COLLATE utf8mb4_0900_ai_ci;
 SET @swe_min_stars = 3000;
 SET @swe_max_stars = 10000;
-SET @sca_daily_repo_limit = 100;
+SET @sca_daily_repo_limit = 1000;
+SET @sca_per_run_repo_limit = 50;
+SET @candidate_daily_repo_limit = 240;
+SET @candidate_per_run_repo_limit = 10;
 SET @job_group_id = (
     SELECT id
     FROM xxl_job_group
@@ -45,10 +48,17 @@ SET j.job_desc = CONCAT('SWE SCA Discovery - ', l.language),
         'minStars', @swe_min_stars,
         'maxStars', @swe_max_stars,
         'dailyRepoLimit', @sca_daily_repo_limit,
+        'perRunRepoLimit', @sca_per_run_repo_limit,
+        'profileFilterEnabled', true,
+        'minPrimaryLanguageRatio', 0.70,
+        'maxLanguageCount', 4,
+        'maxDirectDependencies', 30,
+        'maxManifestCount', 8,
+        'maxManifestDownloads', 3,
         'useStarCursor', true
     ),
     j.schedule_type = 'CRON',
-    j.schedule_conf = CONCAT('0 ', l.cron_minute, ' 1 * * ?'),
+    j.schedule_conf = CONCAT('0 ', l.cron_minute, ' * * * ?'),
     j.executor_block_strategy = 'SERIAL_EXECUTION'
 WHERE @job_group_id IS NOT NULL
   AND j.job_group = @job_group_id
@@ -62,10 +72,12 @@ SET j.job_desc = CONCAT('SWE Candidate Backfill - ', l.language),
     j.update_time = NOW(),
     j.executor_param = JSON_OBJECT(
         'githubToken', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(j.executor_param, '$.githubToken')), @github_token),
-        'languages', JSON_ARRAY(l.language)
+        'languages', JSON_ARRAY(l.language),
+        'dailyRepoLimit', @candidate_daily_repo_limit,
+        'perRunRepoLimit', @candidate_per_run_repo_limit
     ),
     j.schedule_type = 'CRON',
-    j.schedule_conf = CONCAT('0 ', l.cron_minute, ' 3 * * ?'),
+    j.schedule_conf = CONCAT('0 ', l.cron_minute, ' * * * ?'),
     j.executor_block_strategy = 'SERIAL_EXECUTION'
 WHERE @job_group_id IS NOT NULL
   AND j.job_group = @job_group_id
@@ -104,7 +116,7 @@ SELECT
     'fly-agent',
     '',
     'CRON',
-    CONCAT('0 ', cron_minute, ' 1 * * ?'),
+    CONCAT('0 ', cron_minute, ' * * * ?'),
     'DO_NOTHING',
     'ROUND',
     'sweRepoScaDiscoveryJob',
@@ -114,6 +126,13 @@ SELECT
         'minStars', @swe_min_stars,
         'maxStars', @swe_max_stars,
         'dailyRepoLimit', @sca_daily_repo_limit,
+        'perRunRepoLimit', @sca_per_run_repo_limit,
+        'profileFilterEnabled', true,
+        'minPrimaryLanguageRatio', 0.70,
+        'maxLanguageCount', 4,
+        'maxDirectDependencies', 30,
+        'maxManifestCount', 8,
+        'maxManifestDownloads', 3,
         'useStarCursor', true
     ),
     'SERIAL_EXECUTION',
@@ -147,10 +166,17 @@ SET j.update_time = NOW(),
         'minStars', @swe_min_stars,
         'maxStars', @swe_max_stars,
         'dailyRepoLimit', @sca_daily_repo_limit,
+        'perRunRepoLimit', @sca_per_run_repo_limit,
+        'profileFilterEnabled', true,
+        'minPrimaryLanguageRatio', 0.70,
+        'maxLanguageCount', 4,
+        'maxDirectDependencies', 30,
+        'maxManifestCount', 8,
+        'maxManifestDownloads', 3,
         'useStarCursor', true
     ),
     j.schedule_type = 'CRON',
-    j.schedule_conf = CONCAT('0 ', l.cron_minute, ' 1 * * ?'),
+    j.schedule_conf = CONCAT('0 ', l.cron_minute, ' * * * ?'),
     j.executor_handler = 'sweRepoScaDiscoveryJob',
     j.executor_block_strategy = 'SERIAL_EXECUTION'
 WHERE @job_group_id IS NOT NULL
@@ -190,13 +216,15 @@ SELECT
     'fly-agent',
     '',
     'CRON',
-    CONCAT('0 ', cron_minute, ' 3 * * ?'),
+    CONCAT('0 ', cron_minute, ' * * * ?'),
     'DO_NOTHING',
     'ROUND',
     'sweRepoCandidateBackfillJob',
     JSON_OBJECT(
         'githubToken', @github_token,
-        'languages', JSON_ARRAY(language)
+        'languages', JSON_ARRAY(language),
+        'dailyRepoLimit', @candidate_daily_repo_limit,
+        'perRunRepoLimit', @candidate_per_run_repo_limit
     ),
     'SERIAL_EXECUTION',
     0,
@@ -225,10 +253,12 @@ JOIN tmp_swe_languages l
 SET j.update_time = NOW(),
     j.executor_param = JSON_OBJECT(
         'githubToken', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(j.executor_param, '$.githubToken')), @github_token),
-        'languages', JSON_ARRAY(l.language)
+        'languages', JSON_ARRAY(l.language),
+        'dailyRepoLimit', @candidate_daily_repo_limit,
+        'perRunRepoLimit', @candidate_per_run_repo_limit
     ),
     j.schedule_type = 'CRON',
-    j.schedule_conf = CONCAT('0 ', l.cron_minute, ' 3 * * ?'),
+    j.schedule_conf = CONCAT('0 ', l.cron_minute, ' * * * ?'),
     j.executor_handler = 'sweRepoCandidateBackfillJob',
     j.executor_block_strategy = 'SERIAL_EXECUTION'
 WHERE @job_group_id IS NOT NULL

@@ -137,6 +137,7 @@ fly-agent-task/
   }
   ```
 - **默认行为**: 每种语言每天最多新增处理 `repoLimit=10` 个 repo；同一自然日重复触发会扣减当天已写入的 SCA 报告数，确保后续触发继续拿新仓库。
+- **画像过滤**: 许可证 SCA 前会通过 GitHub API 拉取 `/languages`、`/git/trees` 和少量 manifest blob，过滤语言过散或依赖过重的仓库；结果写入现有 `report_json.repositoryProfile`，不新增表字段。默认阈值为主语言占比 `>=0.70`、有效语言数 `<=4`、直接依赖数 `<=30`、manifest 文件数 `<=8`，画像接口异常时 fail-open，避免限流导致整批中断。
 - **生产参数建议**:
   ```json
   {
@@ -144,11 +145,19 @@ fly-agent-task/
     "languages": ["python"],
     "minStars": 3000,
     "maxStars": 10000,
-    "dailyRepoLimit": 100,
+    "dailyRepoLimit": 1000,
+    "perRunRepoLimit": 50,
+    "profileFilterEnabled": true,
+    "minPrimaryLanguageRatio": 0.70,
+    "maxLanguageCount": 4,
+    "maxDirectDependencies": 30,
+    "maxManifestCount": 8,
+    "maxManifestDownloads": 3,
     "useStarCursor": true
   }
   ```
-- **分页说明**: SCA discovery 内部固定按 GitHub search 每页 50 条拉取，并按当天剩余额度自动计算页数；`repoLimit` 仍兼容旧参数，推荐新任务使用语义更明确的 `dailyRepoLimit`。
+- **分页说明**: SCA discovery 内部固定按 GitHub search 每页 50 条拉取，并按当天剩余额度自动计算页数；`repoLimit` 仍兼容旧参数，推荐新任务使用语义更明确的 `dailyRepoLimit`。若配置 `perRunRepoLimit`，每次触发只处理该数量，适合每小时持续拉取。
+- **定时建议**: `scripts/upsert-swe-xxl-language-jobs.sql` 默认把 10 种语言按 5 分钟错峰配置为每小时触发一次，每语言每次最多 50 个 repo、每天最多 1000 个 repo。
 
 #### sweRepoCandidateBackfillJob
 - **功能**: 从 SCA 允许的 repo 池中回填 issue-grounded merged PR 候选

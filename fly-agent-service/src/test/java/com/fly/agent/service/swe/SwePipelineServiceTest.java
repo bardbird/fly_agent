@@ -115,10 +115,12 @@ class SwePipelineServiceTest {
                 + "                runtimeSettingsService.resolveQwenAttempts(), \"QWEN_API_KEY\", false, true"));
         assertTrue(source.contains("\"opus4.7_pass8_swebench_agentic\", runtimeSettingsService.resolveOpusModel(),\n"
                 + "                positiveAttempts(runtimeSettingsService.resolveOpusAttempts(), 1), \"OPUS_API_KEY\", true, true"));
+        assertTrue(source.contains("runtimeSettingsService.resolveQwenMaxStepsSchedule()"));
         assertTrue(source.contains("runtimeSettingsService.resolveOpusMaxStepsSchedule()"));
         assertTrue(source.contains("runtimeSettingsService.resolveSweAgentMaxSteps()"));
         assertTrue(devConfig.contains("qwen-attempts: ${SWE_QWEN_ATTEMPTS:4}"));
         assertTrue(devConfig.contains("opus-attempts: ${SWE_OPUS_ATTEMPTS:8}"));
+        assertTrue(devConfig.contains("qwen-max-steps-schedule: ${SWE_QWEN_MAX_STEPS_SCHEDULE:100,80,10,10}"));
         assertTrue(devConfig.contains("opus-max-steps-schedule: ${SWE_OPUS_MAX_STEPS_SCHEDULE:180,50,10}"));
     }
 
@@ -337,12 +339,62 @@ class SwePipelineServiceTest {
         assertTrue(command.contains("22000"));
         assertTrue(command.contains("--agent-max-steps"));
         assertTrue(command.contains("20"));
+        assertTrue(command.contains("--agent-max-steps-schedule"));
+        assertTrue(command.contains("100,80,10,10"));
         assertTrue(command.contains("--enable-thinking"));
         assertTrue(command.contains("false"));
         Map<String, String> env = envCaptor.getValue();
         assertTrue("secret-token".equals(env.get("QWEN_API_KEY")));
         assertTrue(env.get("GOPROXY").contains("goproxy.cn"));
         assertTrue(env.containsKey("GOSUMDB"));
+    }
+
+    @Test
+    void qwenModelEvaluationUsesRuntimeStepGradient() throws Exception {
+        Path packagePath = tempDir.resolve("production-task-demo-1");
+        Files.createDirectories(packagePath);
+        Path logPath = tempDir.resolve("model_eval.log");
+        Files.writeString(logPath, "model eval log");
+        SweProperties.Model model = new SweProperties.Model();
+        model.setModel("qwen3.6-plus");
+        model.setBaseUrl("https://dashscope.example/v1");
+        model.setToken("secret-token");
+
+        SweCommandRunner commandRunner = mock(SweCommandRunner.class);
+        SweCommandRunner.CommandResult commandResult = new SweCommandRunner.CommandResult();
+        commandResult.setExitCode(0);
+        commandResult.setLogPath(logPath);
+        when(commandRunner.run(any(), any(), any(), any(), any(), any(), eq(false))).thenReturn(commandResult);
+        SwePipelineService service = newService(mock(SweCandidateMapper.class), commandRunner);
+
+        Method method = SwePipelineService.class.getDeclaredMethod(
+                "runModelEvaluation",
+                Long.class,
+                Path.class,
+                String.class,
+                SweProperties.Model.class,
+                Integer.class,
+                String.class,
+                boolean.class,
+                boolean.class);
+        method.setAccessible(true);
+        method.invoke(service, 1L, packagePath, "qwen_demo", model, 4, "QWEN_API_KEY", false, false);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
+        verify(commandRunner).run(
+                eq("model_eval_qwen_demo"),
+                commandCaptor.capture(),
+                eq(packagePath),
+                any(),
+                any(),
+                any(),
+                eq(false));
+        List<String> command = commandCaptor.getValue();
+        assertTrue(command.contains("--agent-max-steps-schedule"));
+        assertTrue(command.contains("100,80,10,10"));
+        assertTrue(command.contains("--agent-max-steps"));
+        assertTrue(command.contains("20"));
     }
 
     @Test
@@ -547,6 +599,7 @@ class SwePipelineServiceTest {
         when(runtimeSettingsService.resolveQwenAttempts()).thenReturn(4);
         when(runtimeSettingsService.resolveOpusAttempts()).thenReturn(8);
         when(runtimeSettingsService.resolveSweAgentMaxSteps()).thenReturn(20);
+        when(runtimeSettingsService.resolveQwenMaxStepsSchedule()).thenReturn("100,80,10,10");
         when(runtimeSettingsService.resolveOpusMaxStepsSchedule()).thenReturn("180,50,10");
         when(runtimeSettingsService.resolveModelTimeoutSeconds()).thenReturn(3600);
         return new SwePipelineService(

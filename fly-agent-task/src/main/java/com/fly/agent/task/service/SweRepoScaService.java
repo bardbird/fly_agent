@@ -86,6 +86,15 @@ public class SweRepoScaService {
             String searchKeyword,
             Integer searchMinStars,
             Integer searchMaxStars) {
+        return analyzeRepo(repository, searchKeyword, searchMinStars, searchMaxStars, null);
+    }
+
+    public ScaDecision analyzeRepo(
+            GithubRepositoryDTO repository,
+            String searchKeyword,
+            Integer searchMinStars,
+            Integer searchMaxStars,
+            JSONObject repositoryProfile) {
         if (repository == null) {
             return reject(null, null, null, "repo格式无效，无法生成SCA报告", null);
         }
@@ -95,7 +104,8 @@ public class SweRepoScaService {
                 repository.getStargazersCount(),
                 searchKeyword,
                 searchMinStars,
-                searchMaxStars);
+                searchMaxStars,
+                repositoryProfile);
     }
 
     private ScaDecision analyzeRepo(
@@ -105,6 +115,17 @@ public class SweRepoScaService {
             String searchKeyword,
             Integer searchMinStars,
             Integer searchMaxStars) {
+        return analyzeRepo(repo, primaryLanguage, githubStars, searchKeyword, searchMinStars, searchMaxStars, null);
+    }
+
+    private ScaDecision analyzeRepo(
+            String repo,
+            String primaryLanguage,
+            Integer githubStars,
+            String searchKeyword,
+            Integer searchMinStars,
+            Integer searchMaxStars,
+            JSONObject repositoryProfile) {
         initializeSchema();
         String normalizedRepo = SweRepoBlacklistService.normalizeRepo(repo);
         if (!StringUtils.hasText(normalizedRepo)) {
@@ -116,6 +137,15 @@ public class SweRepoScaService {
         String spdxId = license == null ? null : license.getString("spdx_id");
         String licenseName = license == null ? null : license.getString("name");
         ScaDecision decision = decide(normalizedRepo, spdxId, licenseName, payload);
+        if (repositoryProfile != null) {
+            decision.setReportJson(JSON.toJSONString(report(
+                    normalizedRepo,
+                    decision.getLicenseSpdxId(),
+                    decision.getLicenseName(),
+                    decision.getCompatibilityStatus(),
+                    decision.getCompatibilityReason(),
+                    repositoryProfile)));
+        }
         decision.setPrimaryLanguage(primaryLanguage);
         decision.setGithubStars(githubStars);
         decision.setSearchKeyword(normalizeKeyword(searchKeyword));
@@ -249,13 +279,19 @@ public class SweRepoScaService {
         decision.setCompatibilityStatus(status);
         decision.setCompatibilityReason(reason);
         decision.setComponentCount(1);
-        decision.setReportJson(JSON.toJSONString(report(repo, spdxId, licenseName, status, reason)));
+        decision.setReportJson(JSON.toJSONString(report(repo, spdxId, licenseName, status, reason, null)));
         decision.setRawJson(rawPayload == null ? null : rawPayload.toJSONString());
         decision.setCheckedAt(LocalDateTime.now());
         return decision;
     }
 
-    private JSONObject report(String repo, String spdxId, String licenseName, String status, String reason) {
+    private JSONObject report(
+            String repo,
+            String spdxId,
+            String licenseName,
+            String status,
+            String reason,
+            JSONObject repositoryProfile) {
         JSONObject report = new JSONObject();
         report.put("reportType", "software_composition_analysis");
         report.put("scope", "repository_source_code");
@@ -263,6 +299,9 @@ public class SweRepoScaService {
         report.put("compatibilityStatus", status);
         report.put("compatibilityReason", reason);
         report.put("compatibleLicenseAllowlist", COMMERCIAL_AI_COMPATIBLE_LICENSES);
+        if (repositoryProfile != null) {
+            report.put("repositoryProfile", repositoryProfile);
+        }
 
         JSONObject component = new JSONObject();
         component.put("componentName", repo);
