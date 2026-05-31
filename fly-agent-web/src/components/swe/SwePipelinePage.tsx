@@ -44,6 +44,7 @@ const DEFAULT_SAMPLE_PATH = '/Users/liuyifei/Downloads/production-task-new-api-4
 const PR_SCAN_BATCH_SIZE = 30
 const PR_SCAN_BATCHES_PER_CLICK = 12
 const PR_SCAN_TARGET_CANDIDATES = 10
+const MODEL_IO_DEFAULT_EXPANDED_STEPS = 3
 type WorkflowStep = 'discover' | 'candidates' | 'tasks' | 'runs'
 
 const WORKFLOW_STEPS: Array<{ key: WorkflowStep; label: string; icon: string }> = [
@@ -2611,33 +2612,86 @@ function ModelIoConsole({
 }
 
 function StepIoView({ attempt }: { attempt: SweModelIoAttempt | null }) {
+  const [expandedStepKeys, setExpandedStepKeys] = useState<Set<string>>(new Set())
+  const currentAttemptKey = attempt ? attemptKey(attempt) : ''
+  const maxSteps = attempt ? Math.max(attempt.modelInputBlocks.length, attempt.responses.length) : 0
+
+  useEffect(() => {
+    if (!currentAttemptKey || maxSteps === 0) {
+      setExpandedStepKeys(new Set())
+      return
+    }
+    const firstExpandedIndex = Math.max(0, maxSteps - MODEL_IO_DEFAULT_EXPANDED_STEPS)
+    setExpandedStepKeys(
+      new Set(
+        Array.from({ length: maxSteps - firstExpandedIndex }, (_, offset) =>
+          stepIoKey(currentAttemptKey, firstExpandedIndex + offset)
+        )
+      )
+    )
+  }, [currentAttemptKey, maxSteps])
+
   if (!attempt) {
     return <EmptyState icon="mdi:swap-vertical" text="等待模型调用记录" />
   }
-  const maxSteps = Math.max(attempt.modelInputBlocks.length, attempt.responses.length)
   if (maxSteps === 0) {
     return <EmptyState icon="mdi:swap-vertical" text="当前 attempt 尚无模型 I/O" />
   }
+  const collapsedCount = Math.max(0, maxSteps - MODEL_IO_DEFAULT_EXPANDED_STEPS)
   return (
     <div className="space-y-3">
+      {collapsedCount > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-terminal bg-slate-50 px-3 py-2 text-xs text-text-secondary">
+          <Icon icon="mdi:unfold-less-horizontal" className="h-4 w-4 text-text-muted" />
+          默认展开最新 {MODEL_IO_DEFAULT_EXPANDED_STEPS} 个 step，前 {collapsedCount} 个已折叠
+        </div>
+      )}
       {Array.from({ length: maxSteps }).map((_, index) => {
         const response = attempt.responses[index]
+        const stepKey = stepIoKey(currentAttemptKey, index)
+        const expanded = expandedStepKeys.has(stepKey)
         return (
-          <div key={`${attemptKey(attempt)}-${index}`} className="rounded-lg border border-terminal bg-slate-50 p-3">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div className="text-xs font-bold text-text-primary">Step {index + 1}</div>
-              {response && (
-                <div className="flex flex-wrap gap-2 text-[11px] text-text-secondary">
-                  <span className="rounded-full bg-white px-2 py-1">call #{response.apiCallIndex ?? index + 1}</span>
-                  <span className="rounded-full bg-white px-2 py-1">{response.finishReason || '-'}</span>
-                  <span className="rounded-full bg-white px-2 py-1">tokens {response.totalTokens ?? '-'}</span>
-                </div>
-              )}
-            </div>
-            <div className="grid gap-3 xl:grid-cols-2">
-              <ConsoleBlock compact title="请求提示词" text={attempt.modelInputBlocks[index] || ''} />
-              <ModelResponseBlock response={response} />
-            </div>
+          <div key={stepKey} className="rounded-lg border border-terminal bg-slate-50 p-3">
+            <button
+              type="button"
+              onClick={() =>
+                setExpandedStepKeys((previous) => {
+                  const next = new Set(previous)
+                  if (next.has(stepKey)) next.delete(stepKey)
+                  else next.add(stepKey)
+                  return next
+                })
+              }
+              className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
+              aria-expanded={expanded}
+            >
+              <div className="flex items-center gap-2 text-xs font-bold text-text-primary">
+                <Icon icon={expanded ? 'mdi:chevron-down' : 'mdi:chevron-right'} className="h-4 w-4 text-text-muted" />
+                Step {index + 1}
+              </div>
+              <div className="flex flex-wrap gap-2 text-[11px] text-text-secondary">
+                {!expanded && (
+                  <span className="rounded-full bg-white px-2 py-1">
+                    {formatBytes((attempt.modelInputBlocks[index] || '').length + (response?.assistantContent || '').length)}
+                  </span>
+                )}
+                {response ? (
+                  <>
+                    <span className="rounded-full bg-white px-2 py-1">call #{response.apiCallIndex ?? index + 1}</span>
+                    <span className="rounded-full bg-white px-2 py-1">{response.finishReason || '-'}</span>
+                    <span className="rounded-full bg-white px-2 py-1">tokens {response.totalTokens ?? '-'}</span>
+                  </>
+                ) : (
+                  <span className="rounded-full bg-white px-2 py-1">等待返回</span>
+                )}
+              </div>
+            </button>
+            {expanded && (
+              <div className="mt-2 grid gap-3 xl:grid-cols-2">
+                <ConsoleBlock compact title="请求提示词" text={attempt.modelInputBlocks[index] || ''} />
+                <ModelResponseBlock response={response} />
+              </div>
+            )}
           </div>
         )
       })}
@@ -2695,6 +2749,10 @@ function ConsoleBlock({
 
 function attemptKey(attempt: SweModelIoAttempt) {
   return `${attempt.evaluationName}:${attempt.attempt ?? attempt.runDir}`
+}
+
+function stepIoKey(attemptKeyValue: string, index: number) {
+  return `${attemptKeyValue}:step:${index}`
 }
 
 function shortPath(value?: string) {
