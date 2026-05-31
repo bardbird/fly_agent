@@ -64,6 +64,9 @@ python3 codex-skills/swe-pro-local-verifier/scripts/backend_dispatch_queue.py la
 
 Run `handoff` only after `logs/docker/validation.json` has `"ok": true`
 and its `task_spec_checksums` match the current task artifacts.
+Model evaluation must also verify that the validation image contains the same
+task spec bytes as the package before starting model calls. Treat checksum
+mismatch as infrastructure failure; do not infer this from test log keywords.
 
 Backend handoff paths must be visible from the fly-agent server/task
 containers. In this deployment the visible root is `/data/fly-agent/swe-output`.
@@ -144,6 +147,12 @@ will reuse the latest resumable backend run when possible.
 
 10. Resume fly-agent only after local verification passes.
    - Read `references/api-calls.md` before calling backend APIs.
+   - Confirm the model-eval script performs validation-image task spec checksum
+     preflight. The guard must compare actual sha256 values from inside the
+     image against current package files, not rely on image tags alone.
+   - Classify eval failures from structured step return codes and explicit
+     preflight errors. Do not classify fail-to-pass/pass-to-pass output as
+     infrastructure failure by scanning generic error words from test logs.
    - Before backend start/resume, re-run the QC placeholder gate so the deterministic tail cannot fail at `QC_REVIEW` because of generated review templates.
    - Handoff `samplePath` must be under a backend-visible root such as
      `/data/fly-agent/swe-output`; otherwise the backend fails immediately with

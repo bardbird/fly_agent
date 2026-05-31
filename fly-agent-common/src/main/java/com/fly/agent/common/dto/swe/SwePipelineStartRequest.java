@@ -25,6 +25,13 @@ public class SwePipelineStartRequest {
     private String resumeFromStage;
 
     /**
+     * Explicitly replay a run that is still marked RUNNING. This is intended
+     * for operator recovery after the service process was restarted and the
+     * in-memory async worker was lost.
+     */
+    private Boolean forceResume;
+
+    /**
      * Optional package path. If omitted, the task samplePath is used.
      */
     private String samplePath;

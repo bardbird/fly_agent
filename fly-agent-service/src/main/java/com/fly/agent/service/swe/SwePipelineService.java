@@ -272,8 +272,13 @@ public class SwePipelineService {
         if (run == null) {
             throw new BusinessException("SWE-Pro pipeline run not found");
         }
-        if (SwePipelineStatus.RUNNING.getCode().equals(run.getStatus())) {
+        boolean forceResume = Boolean.TRUE.equals(request.getForceResume());
+        if (SwePipelineStatus.RUNNING.getCode().equals(run.getStatus()) && !forceResume) {
             throw new BusinessException("该流水线正在运行，不能重复续跑");
+        }
+        if (SwePipelineStatus.RUNNING.getCode().equals(run.getStatus()) && forceResume
+                && !StringUtils.hasText(request.getResumeFromStage())) {
+            throw new BusinessException("强制续跑 RUNNING 流水线时必须指定 resumeFromStage");
         }
         if (SwePipelineStatus.COMPLETED.getCode().equals(run.getStatus())) {
             throw new BusinessException("该流水线已完成，无需断点续跑");
@@ -727,6 +732,7 @@ public class SwePipelineService {
         requireFile(toolkitRoot.resolve("scripts/prepare_tasks_from_candidates.py"), "prepare_tasks_from_candidates.py is required");
         requireFile(toolkitRoot.resolve("scripts/resolve_runtime_env.py"), "resolve_runtime_env.py is required");
         requireFile(toolkitRoot.resolve("scripts/eval_with_swe_agent.py"), "eval_with_swe_agent.py is required");
+        requireFile(toolkitRoot.resolve("scripts/finalize_task_metadata.py"), "finalize_task_metadata.py is required");
         requireFile(toolkitRoot.resolve("scripts/package_task.py"), "package_task.py is required");
         requireDirectory(sweAgentRoot(), "SWE-agent root does not exist");
         runEnvironmentProbe(runId, "git_version", List.of("git", "--version"));
@@ -1124,8 +1130,9 @@ public class SwePipelineService {
     }
 
     private String runPackageExport(Long runId, Path packagePath) {
-        TaskSpecSnapshot snapshot = taskSpecSnapshot(packagePath);
         cleanupDeliveryTempFiles(packagePath);
+        finalizeTaskMetadata(runId, packagePath);
+        TaskSpecSnapshot snapshot = taskSpecSnapshot(packagePath);
         if (hasValidPackageArchive(packagePath)) {
             assertTaskSpecUnchanged(packagePath, snapshot, "package export archive reuse");
             return inspectPackageExport(runId, packagePath);
@@ -1148,6 +1155,22 @@ public class SwePipelineService {
         return inspectPackageExport(runId, packagePath);
     }
 
+    private void finalizeTaskMetadata(Long runId, Path packagePath) {
+        SweCommandRunner.CommandResult result = commandRunner.run(
+                "finalize_task_metadata",
+                List.of(
+                        properties.getPython(),
+                        toolkitScript("finalize_task_metadata.py").toString(),
+                        packagePath.toString()
+                ),
+                packagePath.getParent(),
+                runLogDir(runId),
+                Map.of(),
+                null,
+                false);
+        recordArtifact(runId, "PACKAGE_LOG", result.getLogPath());
+    }
+
     private boolean hasValidPackageArchive(Path packagePath) {
         Path archive = packageArchivePath(packagePath);
         Path checksum = packageArchiveChecksumPath(packagePath);
@@ -1156,11 +1179,25 @@ public class SwePipelineService {
         }
         try {
             String expected = Files.readString(checksum, StandardCharsets.UTF_8).trim().split("\\s+")[0];
-            return StringUtils.hasText(expected) && expected.equalsIgnoreCase(sha256(archive));
+            return StringUtils.hasText(expected)
+                    && expected.equalsIgnoreCase(sha256(archive))
+                    && archiveIsFreshForFinalMetadata(packagePath, archive);
         } catch (Exception e) {
             log.warn("Ignoring invalid package archive checksum, archive={}", archive, e);
             return false;
         }
+    }
+
+    private boolean archiveIsFreshForFinalMetadata(Path packagePath, Path archive) throws IOException {
+        long archiveMtime = Files.getLastModifiedTime(archive).toMillis();
+        for (Path evidence : List.of(
+                packagePath.resolve("task.json"),
+                packagePath.resolve("logs/docker/validation.json"))) {
+            if (Files.isRegularFile(evidence) && Files.getLastModifiedTime(evidence).toMillis() > archiveMtime) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private Path packageArchivePath(Path packagePath) {

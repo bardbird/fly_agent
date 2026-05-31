@@ -183,6 +183,22 @@ class SwePipelineServiceTest {
     }
 
     @Test
+    void packageExportFinalizesTaskMetadataBeforeArchive() throws Exception {
+        String source = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/java/com/fly/agent/service/swe/SwePipelineService.java"));
+        int start = source.indexOf("private String runPackageExport");
+        int end = source.indexOf("private void finalizeTaskMetadata", start);
+        String block = source.substring(start, end);
+
+        assertTrue(source.contains("finalize_task_metadata.py"));
+        assertTrue(block.contains("cleanupDeliveryTempFiles(packagePath);"));
+        assertTrue(block.contains("finalizeTaskMetadata(runId, packagePath);"));
+        assertTrue(block.indexOf("finalizeTaskMetadata(runId, packagePath);")
+                < block.indexOf("TaskSpecSnapshot snapshot = taskSpecSnapshot(packagePath);"));
+        assertTrue(source.contains("archiveIsFreshForFinalMetadata(packagePath, archive)"));
+    }
+
+    @Test
     void qwenEvaluationDisablesThinkingForCostControlWithoutChangingPromptText() throws Exception {
         String source = java.nio.file.Files.readString(java.nio.file.Path.of(
                 "src/main/java/com/fly/agent/service/swe/SwePipelineService.java"));
@@ -253,6 +269,27 @@ class SwePipelineServiceTest {
         assertTrue(source.contains(".ge(SwePipelineStageEntity::getSortOrder, fromStage.getSortOrder())"));
         assertTrue(source.contains(".set(SwePipelineStageEntity::getStatus, SwePipelineStatus.CREATED.getCode())"));
         assertTrue(source.contains(".set(SwePipelineStageEntity::getResultSummary, null)"));
+    }
+
+    @Test
+    void forceResumeCanRecoverStaleRunningRunOnlyFromExplicitStage() throws Exception {
+        String dto = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "../fly-agent-common/src/main/java/com/fly/agent/common/dto/swe/SwePipelineStartRequest.java"));
+        String source = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/java/com/fly/agent/service/swe/SwePipelineService.java"));
+        String handoff = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "../codex-skills/swe-pro-local-verifier/scripts/handoff_resume.py"));
+        String job = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "../fly-agent-task/src/main/java/com/fly/agent/task/job/SwePipelineJob.java"));
+
+        assertTrue(dto.contains("private Boolean forceResume"));
+        assertTrue(source.contains("boolean forceResume = Boolean.TRUE.equals(request.getForceResume())"));
+        assertTrue(source.contains("SwePipelineStatus.RUNNING.getCode().equals(run.getStatus()) && !forceResume"));
+        assertTrue(source.contains("强制续跑 RUNNING 流水线时必须指定 resumeFromStage"));
+        assertTrue(handoff.contains("backend error"));
+        assertTrue(handoff.contains("\"forceResume\""));
+        assertTrue(job.contains("request.setResumeFromStage(json.getString(\"resumeFromStage\"))"));
+        assertTrue(job.contains("request.setForceResume(json.getBoolean(\"forceResume\"))"));
     }
 
     @Test
@@ -600,11 +637,17 @@ class SwePipelineServiceTest {
                 digest + "  production-task-demo-1.tar.gz\n", StandardCharsets.UTF_8);
 
         SweCommandRunner commandRunner = mock(SweCommandRunner.class);
+        SweCommandRunner.CommandResult commandResult = new SweCommandRunner.CommandResult();
+        commandResult.setExitCode(0);
+        commandResult.setLogPath(tempDir.resolve("finalize_task_metadata.log"));
+        when(commandRunner.run(eq("finalize_task_metadata"), any(), any(), any(), any(), any(), eq(false)))
+                .thenReturn(commandResult);
         SwePipelineService service = newService(mock(SweCandidateMapper.class), commandRunner);
         Method method = SwePipelineService.class.getDeclaredMethod("runPackageExport", Long.class, Path.class);
         method.setAccessible(true);
         method.invoke(service, 1L, packagePath);
 
+        verify(commandRunner).run(eq("finalize_task_metadata"), any(), any(), any(), any(), any(), eq(false));
         verify(commandRunner, never()).run(eq("package_export"), any(), any(), any(), any(), any(), eq(false));
     }
 

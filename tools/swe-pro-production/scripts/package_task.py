@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -51,6 +52,7 @@ TASK_SPEC_FILES = [
     'dockerfiles/Dockerfile',
     'runtime_env.json',
 ]
+MAX_FAIL_TO_PASS_TARGET_IDS = 20
 
 DOCKERIGNORE_TEXT = '''
 .git
@@ -189,6 +191,88 @@ def task_spec_checksums(root: Path) -> dict[str, str | None]:
         path = root / relative
         checksums[relative] = sha256_file(path) if path.is_file() else None
     return checksums
+
+
+def added_lines_from_patch(patch_text: str) -> list[str]:
+    lines: list[str] = []
+    for line in patch_text.splitlines():
+        if line.startswith('+++ ') or line.startswith('--- ') or line.startswith('++ '):
+            continue
+        if line.startswith('+'):
+            lines.append(line[1:])
+    return lines
+
+
+def command_uses_pytest(command: str) -> bool:
+    return 'pytest' in command.split() or '-m pytest' in command or ' pytest ' in f' {command} '
+
+
+def oracle_quality_report(root: Path) -> dict:
+    task = json.loads((root / 'task.json').read_text(encoding='utf-8')) if (root / 'task.json').is_file() else {}
+    test_patch = (root / 'patches' / 'test.patch').read_text(encoding='utf-8') if (root / 'patches' / 'test.patch').is_file() else ''
+    added = added_lines_from_patch(test_patch)
+    blocking: list[str] = []
+    warnings: list[str] = []
+    selected_ids = task.get('selected_test_ids_to_run') if isinstance(task.get('selected_test_ids_to_run'), list) else []
+    selected_ids = [str(test_id) for test_id in selected_ids if str(test_id).strip()]
+    fail_to_pass = task.get('fail_to_pass') if isinstance(task.get('fail_to_pass'), list) else []
+    fail_command = '\n'.join(str(command) for command in fail_to_pass)
+    script_text = (root / 'scripts' / 'run_selected_tests.sh').read_text(encoding='utf-8', errors='ignore') if (root / 'scripts' / 'run_selected_tests.sh').is_file() else ''
+    metadata = task.get('metadata') if isinstance(task.get('metadata'), dict) else {}
+
+    for index, line in enumerate(added, start=1):
+        stripped = line.strip()
+        if re.search(r'\._[A-Za-z][A-Za-z0-9_]*\s*\(', stripped) and not re.search(r'\.__[A-Za-z0-9_]+__\s*\(', stripped):
+            blocking.append(f'test.patch calls a protected/private member on added line {index}: {stripped[:160]}')
+        if re.search(r'\b(patch\.object|mock\.patch|monkeypatch\.setattr)\b', stripped):
+            blocking.append(f'test.patch mocks or replaces implementation internals on added line {index}: {stripped[:160]}')
+
+    if 'nearestneighbors' in '\n'.join(added).lower():
+        warnings.append(
+            'test.patch references NearestNeighbors. This is acceptable only when asserting public error-boundary behavior, '
+            'not when requiring a specific internal implementation.'
+        )
+
+    if len(selected_ids) > MAX_FAIL_TO_PASS_TARGET_IDS and not metadata.get('oracle_breadth_justification'):
+        blocking.append(
+            f'selected_test_ids_to_run has {len(selected_ids)} targets; '
+            f'prune to <= {MAX_FAIL_TO_PASS_TARGET_IDS} or add metadata.oracle_breadth_justification'
+        )
+
+    if selected_ids and command_uses_pytest(fail_command):
+        missing_from_fail = [test_id for test_id in selected_ids if test_id not in fail_command]
+        missing_from_script = [test_id for test_id in selected_ids if test_id not in script_text]
+        if missing_from_fail:
+            blocking.append(
+                'pytest fail_to_pass must target selected test node ids, not whole files; '
+                f'missing {len(missing_from_fail)} selected ids from fail_to_pass'
+            )
+        if missing_from_script:
+            blocking.append(
+                'scripts/run_selected_tests.sh baseline/fixed must target selected test node ids; '
+                f'missing {len(missing_from_script)} selected ids from script'
+            )
+
+    return {
+        'ok': not blocking,
+        'blocking_reasons': blocking,
+        'warnings': warnings,
+        'metrics': {
+            'added_lines': len(added),
+            'selected_test_ids': len(selected_ids),
+        },
+    }
+
+
+def enforce_oracle_quality(root: Path) -> dict:
+    report = oracle_quality_report(root)
+    log_path = root / 'logs' / 'oracle_quality.json'
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    if not report.get('ok'):
+        reasons = '; '.join(report.get('blocking_reasons') or [])
+        raise RuntimeError(f'oracle quality gate failed: {reasons}')
+    return report
 
 
 def blacklist_reference_candidates() -> list[Path]:
@@ -360,6 +444,7 @@ def main() -> int:
 
     root = Path(args.package_dir).resolve()
     ensure_delivery_static_files(root)
+    enforce_oracle_quality(root)
     task = load_task(root)
     image_tag = args.image_tag or default_image_tag(root, task)
     ensure_dockerignore(root)

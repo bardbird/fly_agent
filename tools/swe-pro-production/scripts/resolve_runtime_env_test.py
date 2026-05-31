@@ -5,6 +5,7 @@ import json
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -275,6 +276,61 @@ RUN git config --global --add safe.directory /workspace/repo \\
             old = checksums["runtime_env.json"]
             (package / "runtime_env.json").write_text("changed\n", encoding="utf-8")
             self.assertNotEqual(old, package_task.task_spec_checksums(package)["runtime_env.json"])
+
+    def test_package_task_rejects_pytest_file_level_fail_to_pass_when_node_ids_exist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            (package / "patches").mkdir()
+            (package / "scripts").mkdir()
+            selected = ["tests/test_app.py::test_login", "tests/test_app.py::test_logout"]
+            (package / "task.json").write_text(
+                json.dumps({
+                    "selected_test_ids_to_run": selected,
+                    "fail_to_pass": ["python3 -m pytest tests/test_app.py"],
+                    "metadata": {"oracle_breadth_justification": "small target set"},
+                }),
+                encoding="utf-8",
+            )
+            (package / "patches" / "test.patch").write_text(
+                "diff --git a/tests/test_app.py b/tests/test_app.py\n"
+                "--- a/tests/test_app.py\n"
+                "+++ b/tests/test_app.py\n"
+                "@@ -0,0 +1,2 @@\n"
+                "+def test_login(): pass\n"
+                "+def test_logout(): pass\n",
+                encoding="utf-8",
+            )
+            (package / "scripts" / "run_selected_tests.sh").write_text(
+                "python3 -m pytest tests/test_app.py\n",
+                encoding="utf-8",
+            )
+
+            report = package_task.oracle_quality_report(package)
+
+            self.assertFalse(report["ok"])
+            self.assertTrue(any("node ids" in reason for reason in report["blocking_reasons"]))
+
+    def test_package_task_rejects_too_many_fail_to_pass_targets_without_justification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            (package / "patches").mkdir()
+            (package / "scripts").mkdir()
+            selected = [f"tests/test_app.py::test_case_{index}" for index in range(21)]
+            command = "python3 -m pytest " + " ".join(selected)
+            (package / "task.json").write_text(
+                json.dumps({
+                    "selected_test_ids_to_run": selected,
+                    "fail_to_pass": [command],
+                }),
+                encoding="utf-8",
+            )
+            (package / "patches" / "test.patch").write_text("", encoding="utf-8")
+            (package / "scripts" / "run_selected_tests.sh").write_text(command, encoding="utf-8")
+
+            report = package_task.oracle_quality_report(package)
+
+            self.assertFalse(report["ok"])
+            self.assertTrue(any("prune" in reason for reason in report["blocking_reasons"]))
 
     def test_verify_package_rejects_stale_docker_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

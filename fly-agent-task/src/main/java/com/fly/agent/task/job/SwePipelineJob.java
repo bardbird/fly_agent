@@ -57,6 +57,8 @@ public class SwePipelineJob {
         SwePipelineStartRequest request = new SwePipelineStartRequest();
         request.setTaskId(json.getLong("taskId"));
         request.setResumeRunId(json.getLong("resumeRunId"));
+        request.setResumeFromStage(json.getString("resumeFromStage"));
+        request.setForceResume(json.getBoolean("forceResume"));
         request.setSamplePath(json.getString("samplePath"));
         request.setWorkspacePath(json.getString("workspacePath"));
         return request;

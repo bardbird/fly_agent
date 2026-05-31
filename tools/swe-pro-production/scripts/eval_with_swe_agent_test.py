@@ -16,6 +16,39 @@ import eval_with_swe_agent
 
 
 class EvalWithSweAgentTest(unittest.TestCase):
+    def test_validation_image_name_changes_when_oracle_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            for relative in eval_with_swe_agent.TASK_SPEC_FILES:
+                path = package / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f"{relative}: v1\n", encoding="utf-8")
+
+            first = eval_with_swe_agent.validation_image_name(package)
+            (package / "patches" / "test.patch").write_text("new oracle\n", encoding="utf-8")
+            second = eval_with_swe_agent.validation_image_name(package)
+
+            self.assertNotEqual(first, second)
+
+    def test_validation_image_checksum_preflight_rejects_stale_oracle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            out = package / "model_evaluation" / "demo"
+            for relative in eval_with_swe_agent.TASK_SPEC_FILES:
+                path = package / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f"{relative}: current\n", encoding="utf-8")
+            stale = eval_with_swe_agent.task_spec_checksums(package)
+            stale["patches/test.patch"] = "0" * 64
+
+            with patch.object(eval_with_swe_agent, "validation_image_task_spec_checksums", return_value=stale):
+                with self.assertRaisesRegex(RuntimeError, "patches/test.patch"):
+                    eval_with_swe_agent.verify_validation_image_task_specs(package, out, "validation-image")
+
+            report = json.loads((out / "validation_image_preflight" / "task_spec_checksums.json").read_text(encoding="utf-8"))
+            self.assertFalse(report["passed"])
+            self.assertIn("patches/test.patch", report["mismatches"])
+
     def test_problem_statement_omits_oracle_and_patch_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             package = Path(tmp)
@@ -435,6 +468,52 @@ CMD ["bash", "/workspace/scripts/run_selected_tests.sh", "fixed"]
             self.assertEqual("FROZEN", captured[0][1]["before_repo_set_cmd"])
             self.assertEqual(["FROZEN_FAIL"], captured[0][1]["fail_to_pass"])
             self.assertEqual(["FROZEN_PASS"], captured[1][1]["pass_to_pass"])
+
+    def test_eval_phase_test_output_is_not_infra_by_keyword(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            run_dir = package / "model_evaluation" / "demo" / "run_01"
+            run_dir.mkdir(parents=True)
+
+            def fake_run_phase(package_arg, run_dir_arg, image, task, phase):
+                if phase == "fail_to_pass":
+                    return {
+                        "model_patch": 0,
+                        "test_patch": 0,
+                        "before_repo_set_cmd": 0,
+                        "fail_to_pass": 1,
+                    }, (
+                        "__SWE_EVAL_RC__ model_patch 0\n"
+                        "__SWE_EVAL_RC__ test_patch 0\n"
+                        "__SWE_EVAL_RC__ before_repo_set_cmd 0\n"
+                        "ModuleNotFoundError: No module named 'pyod.models.missing_from_model_patch'\n"
+                        "__SWE_EVAL_RC__ fail_to_pass 1\n"
+                    )
+                return {
+                    "model_patch": 0,
+                    "before_repo_set_cmd": 0,
+                    "pass_to_pass": 0,
+                }, (
+                    "__SWE_EVAL_RC__ model_patch 0\n"
+                    "__SWE_EVAL_RC__ before_repo_set_cmd 0\n"
+                    "__SWE_EVAL_RC__ pass_to_pass 0\n"
+                )
+
+            with patch.object(eval_with_swe_agent, "run_docker_eval_phase", side_effect=fake_run_phase), \
+                    patch.object(eval_with_swe_agent, "reset_repo"):
+                result = eval_with_swe_agent.evaluate_model_patch(
+                    package,
+                    run_dir,
+                    ["pyod/models/demo.py"],
+                    "validation-image",
+                    {"fail_to_pass": ["pytest tests/test_demo.py"], "pass_to_pass": ["pytest tests/test_keep.py"]},
+                )
+
+            self.assertIsNone(result["error"])
+            self.assertEqual("partial", eval_with_swe_agent.standard_status(
+                result,
+                (run_dir / "eval.log").read_text(encoding="utf-8"),
+            ))
 
     def test_missing_api_key_error_is_infrastructure_failure(self) -> None:
         result = {

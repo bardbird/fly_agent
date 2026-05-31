@@ -97,4 +97,5 @@ pnpm-debug.log*
 
 # Local external tool checkouts and generated Python caches
 /tools/SWE-agent/
+/.swe-ai/
 __pycache__/

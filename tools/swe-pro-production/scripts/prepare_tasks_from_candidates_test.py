@@ -569,6 +569,27 @@ repl_test!(trailing_whitespace, |repl| {
             self.assertEqual("(cargo test -p demo-parser parser::tests)", fail_cmd)
             self.assertEqual("(cargo test -p demo-parser)", pass_cmd)
 
+    def test_python_fail_to_pass_uses_node_ids_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp) / "production-task-demo-14"
+            (package / "repo" / "tests").mkdir(parents=True)
+            test_files = ["tests/test_app.py"]
+            test_ids = [
+                "tests/test_app.py::test_login",
+                "tests/test_app.py::test_logout",
+            ]
+
+            fail_cmd = prepare.test_command_for_files(
+                package,
+                {"primary_language": "python"},
+                test_files,
+                test_ids,
+            )
+
+            self.assertIn("tests/test_app.py::test_login", fail_cmd)
+            self.assertIn("tests/test_app.py::test_logout", fail_cmd)
+            self.assertNotIn("python -m pytest tests/test_app.py)", fail_cmd)
+
     def test_generate_patches_uses_raw_pr_diff_without_llm_filtering(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             package = Path(tmp) / "production-task-demo-9"

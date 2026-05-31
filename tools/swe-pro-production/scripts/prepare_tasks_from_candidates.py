@@ -1118,7 +1118,11 @@ def test_command_for_files(pkg: Path, row: dict, test_files: list[str], test_ids
 
     py_files = [p for p in test_files if p.endswith('.py')]
     if py_files:
-        commands.append('python -m pytest ' + quote_paths(py_files))
+        py_ids = [
+            test_id for test_id in (test_ids or [])
+            if test_id.split('::', 1)[0].endswith('.py')
+        ]
+        commands.append('python -m pytest ' + quote_paths(py_ids or py_files))
 
     js_exts = ('.test.js', '.test.jsx', '.test.ts', '.test.tsx', '.spec.js', '.spec.jsx', '.spec.ts', '.spec.tsx')
     js_files = [p for p in test_files if p.endswith(js_exts)]

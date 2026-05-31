@@ -29,6 +29,10 @@ def request_json(base_url: str, method: str, path: str, payload: dict | None = N
 
 
 def unwrap(result: dict) -> dict:
+    if isinstance(result, dict) and result.get("code") not in (None, "SUCCESS"):
+        raise SystemExit(
+            f"backend error {result.get('code')}: {result.get('message') or result}"
+        )
     if isinstance(result, dict) and "data" in result:
         return result["data"]
     return result
@@ -103,6 +107,11 @@ def main() -> int:
     parser.add_argument("--task-name", default="")
     parser.add_argument("--resume-from-stage", default="MODEL_OPUS_EVAL")
     parser.add_argument(
+        "--force-resume",
+        action="store_true",
+        help="Ask backend to replay an existing RUNNING run, for recovery after a lost async worker.",
+    )
+    parser.add_argument(
         "--auto-resume-latest-run",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -168,6 +177,8 @@ def main() -> int:
             "resumeRunId": args.run_id,
             "resumeFromStage": args.resume_from_stage,
         }
+        if args.force_resume:
+            payload["forceResume"] = True
         if package_path_text:
             payload["samplePath"] = package_path_text
         calls.append({"method": "POST", "path": "/api/v1/swe/runs/start", "payload": payload})

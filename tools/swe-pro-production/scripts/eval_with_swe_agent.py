@@ -82,6 +82,26 @@ SECRET_LOG_PATTERNS = (
     re.compile(r'(DASHSCOPE_API_KEY\s*=\s*)\S+', flags=re.I),
 )
 
+TASK_SPEC_FILES = [
+    'task.json',
+    'problem_statement.md',
+    'patches/gold.patch',
+    'patches/test.patch',
+    'scripts/run_selected_tests.sh',
+    'scripts/verify_patch_application.sh',
+    'dockerfiles/Dockerfile',
+    'runtime_env.json',
+]
+
+VALIDATION_IMAGE_SPEC_FILES = [
+    'task.json',
+    'problem_statement.md',
+    'patches/gold.patch',
+    'patches/test.patch',
+    'scripts/run_selected_tests.sh',
+    'scripts/verify_patch_application.sh',
+]
+
 BASE_URL_LOG_PATTERNS = (
     re.compile(r'(--base-url\s+)\S+', flags=re.I),
     re.compile(r'(--base-url=)\S+', flags=re.I),
@@ -419,10 +439,26 @@ def build_model_safe_docker_image(package: Path, image: str) -> str:
 
 
 def validation_image_name(package: Path) -> str:
-    dockerfile = package / 'dockerfiles' / 'Dockerfile'
-    dockerfile_text = dockerfile.read_text(encoding='utf-8') if dockerfile.is_file() else ''
-    digest = hashlib.sha256(f'{package.resolve()}\n{dockerfile_text}'.encode('utf-8')).hexdigest()[:16]
+    h = hashlib.sha256()
+    h.update(f'{package.resolve()}\n'.encode('utf-8'))
+    for relative in TASK_SPEC_FILES:
+        path = package / relative
+        h.update(relative.encode('utf-8') + b'\0')
+        if path.is_file():
+            h.update(path.read_bytes())
+        h.update(b'\0')
+    digest = h.hexdigest()[:16]
     return f'local/swe-pro-validation-{digest}:latest'
+
+
+def file_sha256(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def task_spec_checksums(package: Path) -> dict[str, str | None]:
+    return {relative: file_sha256(package / relative) for relative in TASK_SPEC_FILES}
 
 
 def ensure_validation_docker_image(package: Path) -> str:
@@ -450,6 +486,71 @@ def ensure_validation_docker_image(package: Path) -> str:
     if code != 0:
         raise RuntimeError('failed to build validation docker image: ' + output[-2000:])
     return image
+
+
+def validation_image_task_spec_checksums(package: Path, image: str) -> dict[str, str | None]:
+    script_lines = ['cd /workspace || exit 97']
+    for relative in VALIDATION_IMAGE_SPEC_FILES:
+        quoted = shlex.quote(relative)
+        script_lines.append(
+            f'if [ -f {quoted} ]; then sha256sum {quoted}; else printf "MISSING  %s\\n" {quoted}; fi'
+        )
+    code, output = run(
+        [
+            'docker', 'run', '--rm',
+            *docker_run_proxy_args(),
+            image,
+            'bash',
+            '-lc',
+            '\n'.join(script_lines),
+        ],
+        package,
+        env=docker_proxy_env(),
+    )
+    if code != 0:
+        raise RuntimeError('validation image task-spec checksum preflight failed: ' + output[-1200:])
+    checksums: dict[str, str | None] = {}
+    for line in output.splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) != 2:
+            continue
+        digest, relative = parts
+        if relative in VALIDATION_IMAGE_SPEC_FILES:
+            checksums[relative] = None if digest == 'MISSING' else digest
+    return {relative: checksums.get(relative) for relative in VALIDATION_IMAGE_SPEC_FILES}
+
+
+def verify_validation_image_task_specs(package: Path, out: Path, image: str) -> dict:
+    expected = task_spec_checksums(package)
+    actual = validation_image_task_spec_checksums(package, image)
+    mismatches = {
+        relative: {
+            'package': expected.get(relative),
+            'image': actual.get(relative),
+        }
+        for relative in TASK_SPEC_FILES
+        if relative in VALIDATION_IMAGE_SPEC_FILES
+        if expected.get(relative) != actual.get(relative)
+    }
+    result = {
+        'image': image,
+        'passed': not mismatches,
+        'package_checksums': expected,
+        'image_checksums': actual,
+        'mismatches': mismatches,
+    }
+    preflight_dir = out / 'validation_image_preflight'
+    preflight_dir.mkdir(parents=True, exist_ok=True)
+    (preflight_dir / 'task_spec_checksums.json').write_text(
+        json.dumps(result, ensure_ascii=False, indent=2) + '\n',
+        encoding='utf-8',
+    )
+    if mismatches:
+        raise RuntimeError(
+            'validation image task-spec checksum mismatch: '
+            + ', '.join(sorted(mismatches))
+        )
+    return result
 
 
 def ensure_dockerignore(package: Path) -> None:
@@ -780,7 +881,7 @@ def standard_status(result: dict, log_text: str = '') -> str:
         return 'resolved'
     error = str(result.get('error') or '')
     signal = (error + '\n' + (log_text or '')).lower()
-    if is_infrastructure_failure(signal):
+    if is_infrastructure_failure(error):
         return 'test_infra_failed'
     if is_model_failure(signal):
         return 'model_failed'
@@ -1038,16 +1139,12 @@ def evaluate_model_patch(
         result['test_patch_applied'] = fail_rcs.get('test_patch') == 0
         if fail_rcs.get('before_repo_set_cmd', 0) != 0:
             raise RuntimeError('before_repo_set_cmd infrastructure failure')
-        if is_infrastructure_failure(fail_output):
-            raise RuntimeError('fail_to_pass infrastructure failure')
         result['fail_to_pass_passed'] = fail_rcs.get('fail_to_pass') == 0
 
         pass_rcs, pass_output = run_docker_eval_phase(package, run_dir, validation_image, task, 'pass_to_pass')
         lines.append(pass_output)
         if pass_rcs.get('before_repo_set_cmd', 0) != 0:
             raise RuntimeError('before_repo_set_cmd infrastructure failure')
-        if is_infrastructure_failure(pass_output):
-            raise RuntimeError('pass_to_pass infrastructure failure')
         result['pass_to_pass_passed'] = pass_rcs.get('pass_to_pass') == 0
         result['passed'] = all([
             result['model_patch_applied'],
@@ -1395,10 +1492,12 @@ def main() -> int:
     safe_image = None
     validation_image = None
     preflight_summary: dict | None = None
+    validation_image_preflight_summary: dict | None = None
     eval_shell_preflight_summary: dict | None = None
     try:
         safe_image = ensure_swe_agent_docker_image(package, task_snapshot)
         validation_image = ensure_validation_docker_image(package)
+        validation_image_preflight_summary = verify_validation_image_task_specs(package, out, validation_image)
         preflight_summary = preflight_model_safe_image(package, safe_image)
         eval_shell_preflight_summary = preflight_eval_shell(package, out, validation_image, task_snapshot)
     except Exception as exc:
@@ -1410,6 +1509,7 @@ def main() -> int:
             args.base_url,
             str(exc),
             {
+                'validation_image_preflight': validation_image_preflight_summary,
                 'image_preflight': preflight_summary,
                 'eval_shell_preflight': eval_shell_preflight_summary,
             },
