@@ -444,6 +444,77 @@ CMD ["bash", "/workspace/scripts/run_selected_tests.sh", "fixed"]
 
         self.assertEqual("test_infra_failed", eval_with_swe_agent.standard_status(result))
 
+    def test_before_repo_set_cmd_error_is_infrastructure_failure(self) -> None:
+        result = {
+            "passed": False,
+            "error": "before_repo_set_cmd infrastructure failure",
+        }
+
+        self.assertEqual("test_infra_failed", eval_with_swe_agent.standard_status(result))
+
+    def test_before_repo_set_cmd_step_marker_is_not_infrastructure_failure(self) -> None:
+        output = (
+            "__SWE_EVAL_STEP__ before_repo_set_cmd\n"
+            "__SWE_EVAL_RC__ before_repo_set_cmd 0\n"
+            "TypeError: LUNAR.__init__() got an unexpected keyword argument 'random_state'\n"
+        )
+
+        self.assertFalse(eval_with_swe_agent.is_infrastructure_failure(output))
+        self.assertNotEqual(
+            "test_infra_failed",
+            eval_with_swe_agent.standard_status({"passed": False}, output),
+        )
+
+    def test_runtime_typeerror_with_passing_pass_to_pass_is_partial_not_compile_error(self) -> None:
+        result = {
+            "passed": False,
+            "model_patch_applied": True,
+            "test_patch_applied": True,
+            "fail_to_pass_passed": False,
+            "pass_to_pass_passed": True,
+        }
+        output = (
+            "__SWE_EVAL_RC__ before_repo_set_cmd 0\n"
+            "E       TypeError: LUNAR.__init__() got an unexpected keyword argument 'random_state'\n"
+            "__SWE_EVAL_RC__ fail_to_pass 1\n"
+            "__SWE_EVAL_RC__ pass_to_pass 0\n"
+        )
+
+        self.assertEqual("partial", eval_with_swe_agent.standard_status(result, output))
+
+    def test_syntax_error_without_any_passing_tests_is_compile_error(self) -> None:
+        result = {
+            "passed": False,
+            "model_patch_applied": True,
+            "test_patch_applied": True,
+            "fail_to_pass_passed": False,
+            "pass_to_pass_passed": False,
+        }
+
+        self.assertEqual("compile_error", eval_with_swe_agent.standard_status(result, "SyntaxError: invalid syntax"))
+
+    def test_eval_shell_preflight_runs_before_model_attempts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            out = package / "model_evaluation" / "demo"
+            (package / "repo").mkdir(parents=True)
+            task = {"before_repo_set_cmd": "python3 -m pip install ."}
+            captured = []
+
+            def fake_run(cmd, cwd, env=None, timeout=None):
+                captured.append(cmd)
+                return 0, "ok\n"
+
+            with patch.object(eval_with_swe_agent, "run", side_effect=fake_run), \
+                    patch.object(eval_with_swe_agent, "docker_run_proxy_args", return_value=[]), \
+                    patch.object(eval_with_swe_agent, "docker_proxy_env", return_value={}):
+                result = eval_with_swe_agent.preflight_eval_shell(package, out, "validation-image", task)
+
+            self.assertTrue(result["passed"])
+            self.assertEqual("eval_shell_preflight", result["phase"])
+            self.assertEqual("cd /workspace/repo && python3 -m pip install .", captured[0][-1])
+            self.assertIn("ok", (out / "eval_shell_preflight" / "eval_shell_preflight.log").read_text(encoding="utf-8"))
+
     def test_max_steps_exhaustion_is_model_failure_not_invalid(self) -> None:
         result = {
             "passed": False,

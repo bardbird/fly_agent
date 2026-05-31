@@ -60,8 +60,8 @@ public class GithubPullCandidateService {
     private static final int DEFAULT_DAYS = 365;
     private static final int DEFAULT_LIMIT = 10;
     private static final int MAX_LIMIT = 50;
-    private static final int DEFAULT_SCAN_BATCH_SIZE = 5;
-    private static final int MAX_SCAN_BATCH_SIZE = 10;
+    private static final int DEFAULT_SCAN_BATCH_SIZE = 30;
+    private static final int MAX_SCAN_BATCH_SIZE = 100;
     private static final int PR_FILES_PER_PAGE = 30;
     private static final int GITHUB_PROXY_CONNECT_TIMEOUT_MS = 500;
     private static final String GITHUB_PROXY_HOST = "127.0.0.1";
@@ -69,8 +69,8 @@ public class GithubPullCandidateService {
     private static final int MIN_GOLD_FILES = 5;
     private static final int MIN_GOLD_LINES = 108;
     private static final int DEFAULT_MIN_GOLD_SOURCE_FILES = 5;
-    private static final int DEFAULT_MAX_GOLD_SOURCE_FILES = 10;
-    private static final int DEFAULT_MAX_GOLD_LINES = 300;
+    private static final int DEFAULT_MAX_GOLD_SOURCE_FILES = 100;
+    private static final int DEFAULT_MAX_GOLD_LINES = 1000;
     private static final int MIN_TEST_PATCH_FILES = 1;
     private static final int PREFERRED_GOLD_LINES = 200;
     private static final int STRONG_GOLD_LINES = 300;
@@ -107,7 +107,8 @@ public class GithubPullCandidateService {
             "dependency_heavy_change",
             "repo_too_large");
     private static final Pattern RESOLVED_ISSUE_PATTERN = Pattern.compile(
-            "(?i)\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#(\\d+)");
+            "(?i)\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s*:?"
+                    + "\\s+(?:(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#|https?://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/)(\\d+)");
     private static final Pattern GITHUB_ISSUE_URL_PATTERN = Pattern.compile(
             "^https?://github\\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/issues/(\\d+)(?:[/?#].*)?$");
     private static final Pattern GITHUB_PULL_URL_PATTERN = Pattern.compile(

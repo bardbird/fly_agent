@@ -17,9 +17,9 @@ class GithubPullCandidateServiceTest {
     void resolvedIssueReferencesAreExtractedFromTitleAndBody() {
         List<Integer> numbers = GithubPullCandidateService.extractResolvedIssueNumbers(
                 "Fix parser crash",
-                "This closes #42 and resolves owner/repo#77. Related to #99.");
+                "This closes #42, Fixes: #43, resolves owner/repo#77 and closes https://github.com/acme/project/issues/88. Related to #99.");
 
-        assertEquals(List.of(42, 77), numbers);
+        assertEquals(List.of(42, 43, 77, 88), numbers);
     }
 
     @Test

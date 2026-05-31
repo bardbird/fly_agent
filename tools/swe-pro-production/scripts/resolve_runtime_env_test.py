@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import package_task
 import eval_with_swe_agent
 import resolve_runtime_env
+import verify_package
 
 
 class ResolveRuntimeEnvTest(unittest.TestCase):
@@ -138,11 +139,13 @@ RUN git config --global --add safe.directory /workspace/repo \\
             self.assertIn("python3 -m pip install .", task["before_repo_set_cmd"])
             self.assertEqual(task["before_repo_set_cmd"], task["requirements"])
             self.assertNotIn("src/demo", task["before_repo_set_cmd"])
+            self.assertNotIn("((", task["before_repo_set_cmd"])
             self.assertIn("python3 -m pip install .", (package / "scripts" / "run_selected_tests.sh").read_text(encoding="utf-8"))
             dockerfile = (package / "dockerfiles" / "Dockerfile").read_text(encoding="utf-8")
             self.assertIn("FROM python:3.11-slim-bookworm", dockerfile)
             self.assertIn("python3 -m pip install .", dockerfile)
             self.assertIn("&& cd /workspace/repo", dockerfile)
+            self.assertNotIn("((", dockerfile)
 
     def test_update_task_metadata_publishes_multiple_docker_toolchains(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -245,6 +248,74 @@ RUN git config --global --add safe.directory /workspace/repo \\
             self.assertEqual(1, setup.count("cd frontend && npm install --legacy-peer-deps"))
             self.assertEqual(1, setup.count("cd backend && PIP_NO_CACHE_DIR=1 PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install -r requirements.txt"))
             self.assertEqual(1, setup.count("cd sdk && PIP_NO_CACHE_DIR=1 PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install ."))
+            self.assertNotIn("((", setup)
+
+    def test_compose_setup_command_does_not_create_bash_arithmetic_groups(self) -> None:
+        setup = resolve_runtime_env.compose_setup_command([
+            "true",
+            "(python3 -m pip install -e . || python3 -m pip install .)",
+        ])
+
+        self.assertNotIn("((", setup)
+        self.assertIn("( { (python3 -m pip install -e . || python3 -m pip install .); } )", setup)
+
+    def test_package_task_records_task_spec_checksums_for_validation_freshness(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            for relative in package_task.TASK_SPEC_FILES:
+                path = package / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(relative + "\n", encoding="utf-8")
+
+            checksums = package_task.task_spec_checksums(package)
+
+            self.assertIn("runtime_env.json", checksums)
+            self.assertIn("scripts/run_selected_tests.sh", checksums)
+            self.assertTrue(checksums["runtime_env.json"])
+            old = checksums["runtime_env.json"]
+            (package / "runtime_env.json").write_text("changed\n", encoding="utf-8")
+            self.assertNotEqual(old, package_task.task_spec_checksums(package)["runtime_env.json"])
+
+    def test_verify_package_rejects_stale_docker_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            for relative in verify_package.TASK_SPEC_FILES:
+                path = package / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(relative + "\n", encoding="utf-8")
+            validation_path = package / "logs" / "docker" / "validation.json"
+            validation_path.parent.mkdir(parents=True, exist_ok=True)
+            validation_path.write_text(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "validation": {
+                            "baseline": {"result": "fails"},
+                            "fixed": {"result": "passes"},
+                            "pass-to-pass": {"result": "passes"},
+                        },
+                        "task_spec_checksums": verify_package.task_spec_checksums(package),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (package / "runtime_env.json").write_text("changed\n", encoding="utf-8")
+            errors: list[str] = []
+
+            verify_package.check_docker_validation(package, errors)
+
+            self.assertIn("Docker validation is stale for current task spec: runtime_env.json", errors)
+
+    def test_package_task_accepts_existing_blacklist_when_reference_is_not_mounted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp)
+            (package / package_task.BLACKLIST_FILE_NAME).write_text("existing", encoding="utf-8")
+
+            with unittest.mock.patch.object(package_task, "find_blacklist_reference",
+                                            side_effect=RuntimeError("missing reference")):
+                package_task.ensure_delivery_static_files(package)
+
+            self.assertEqual("existing", (package / package_task.BLACKLIST_FILE_NAME).read_text(encoding="utf-8"))
 
     def test_package_task_does_not_mutate_dockerfile_from_runtime_env_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

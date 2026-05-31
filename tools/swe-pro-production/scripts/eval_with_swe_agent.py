@@ -735,7 +735,13 @@ def first_cmd(task: dict, key: str) -> str:
 
 def is_infrastructure_failure(output: str) -> bool:
     lower = (output or '').lower()
-    return any(needle in lower for needle in INFRASTRUCTURE_FAILURE_NEEDLES)
+    explicit_before_failure = (
+        'before_repo_set_cmd infrastructure failure',
+        'before_repo_set_cmd eval-shell preflight failed',
+    )
+    return any(needle in lower for needle in explicit_before_failure) or any(
+        needle in lower for needle in INFRASTRUCTURE_FAILURE_NEEDLES
+    )
 
 
 def is_compile_failure(output: str) -> bool:
@@ -744,7 +750,8 @@ def is_compile_failure(output: str) -> bool:
         'compile error',
         'compilation failed',
         'syntaxerror',
-        'typeerror:',
+        'indentationerror',
+        'taberror',
         'cannot find symbol',
         'undefined:',
         'build failed',
@@ -784,12 +791,12 @@ def standard_status(result: dict, log_text: str = '') -> str:
         'patch did not apply',
     )):
         return 'patch_apply_failed'
-    if is_compile_failure(signal):
-        return 'compile_error'
     if result.get('model_patch_applied') and (
         result.get('fail_to_pass_passed') or result.get('pass_to_pass_passed')
     ):
         return 'partial'
+    if is_compile_failure(signal):
+        return 'compile_error'
     return 'invalid'
 
 
@@ -938,6 +945,8 @@ def docker_eval_script(task: dict, phase: str) -> str:
         ])
     if before_cmd:
         lines.append('run_shell_step before_repo_set_cmd ' + shlex.quote(before_cmd))
+        lines.append('before_rc=$?')
+        lines.append('if [ "$before_rc" -ne 0 ]; then exit 0; fi')
     if test_cmd:
         lines.append('run_shell_step ' + test_key + ' ' + shlex.quote(test_cmd))
     lines.append('exit 0')
@@ -968,6 +977,40 @@ def run_docker_eval_phase(package: Path, run_dir: Path, image: str, task: dict, 
     return docker_eval_rcs(output), output
 
 
+def preflight_eval_shell(package: Path, out: Path, image: str, task: dict) -> dict:
+    before_cmd = str(task.get('before_repo_set_cmd') or '').strip()
+    run_dir = out / 'eval_shell_preflight'
+    run_dir.mkdir(parents=True, exist_ok=True)
+    log_path = run_dir / 'eval_shell_preflight.log'
+    result = {
+        'phase': 'eval_shell_preflight',
+        'passed': True,
+        'image': image,
+        'before_repo_set_cmd_present': bool(before_cmd),
+        'log_path': artifact_path(package, log_path),
+    }
+    if not before_cmd:
+        log_path.write_text('before_repo_set_cmd empty; skipped\n', encoding='utf-8')
+        result['skipped'] = True
+        return result
+    cmd = [
+        'docker', 'run', '--rm',
+        *docker_run_proxy_args(),
+        image,
+        'bash',
+        '-lc',
+        'cd /workspace/repo && ' + before_cmd,
+    ]
+    code, output = run(cmd, package, env=docker_proxy_env())
+    log_path.write_text(output, encoding='utf-8')
+    if code != 0:
+        result['passed'] = False
+        result['exit_code'] = code
+        raise RuntimeError('before_repo_set_cmd eval-shell preflight failed')
+    result['exit_code'] = 0
+    return result
+
+
 def evaluate_model_patch(
     package: Path,
     run_dir: Path,
@@ -993,7 +1036,7 @@ def evaluate_model_patch(
         lines.append(fail_output)
         result['model_patch_applied'] = fail_rcs.get('model_patch') == 0
         result['test_patch_applied'] = fail_rcs.get('test_patch') == 0
-        if fail_rcs.get('before_repo_set_cmd', 0) != 0 and is_infrastructure_failure(fail_output):
+        if fail_rcs.get('before_repo_set_cmd', 0) != 0:
             raise RuntimeError('before_repo_set_cmd infrastructure failure')
         if is_infrastructure_failure(fail_output):
             raise RuntimeError('fail_to_pass infrastructure failure')
@@ -1001,7 +1044,7 @@ def evaluate_model_patch(
 
         pass_rcs, pass_output = run_docker_eval_phase(package, run_dir, validation_image, task, 'pass_to_pass')
         lines.append(pass_output)
-        if pass_rcs.get('before_repo_set_cmd', 0) != 0 and is_infrastructure_failure(pass_output):
+        if pass_rcs.get('before_repo_set_cmd', 0) != 0:
             raise RuntimeError('before_repo_set_cmd infrastructure failure')
         if is_infrastructure_failure(pass_output):
             raise RuntimeError('pass_to_pass infrastructure failure')
@@ -1352,12 +1395,25 @@ def main() -> int:
     safe_image = None
     validation_image = None
     preflight_summary: dict | None = None
+    eval_shell_preflight_summary: dict | None = None
     try:
         safe_image = ensure_swe_agent_docker_image(package, task_snapshot)
         validation_image = ensure_validation_docker_image(package)
         preflight_summary = preflight_model_safe_image(package, safe_image)
+        eval_shell_preflight_summary = preflight_eval_shell(package, out, validation_image, task_snapshot)
     except Exception as exc:
-        write_infra_failure_summary(package, out, args.out_name, args.model, args.base_url, str(exc), preflight_summary)
+        write_infra_failure_summary(
+            package,
+            out,
+            args.out_name,
+            args.model,
+            args.base_url,
+            str(exc),
+            {
+                'image_preflight': preflight_summary,
+                'eval_shell_preflight': eval_shell_preflight_summary,
+            },
+        )
         raise
     max_steps_schedule = parse_max_steps_schedule(args.agent_max_steps_schedule, args.agent_max_steps)
     first_max_steps = max_steps_for_attempt(max_steps_schedule, 1)

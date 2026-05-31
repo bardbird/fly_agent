@@ -676,6 +676,7 @@ public class SweRepoDiscoveryJob {
             return outcome;
         }
         outcome.setAttemptedRepos(1);
+        repoScaService.markCandidateScanAttempt(repo);
         return scanRepo(repo, request, outcome);
     }
 
@@ -986,7 +987,7 @@ public class SweRepoDiscoveryJob {
         request.setMinGoldLines(optionalPositiveInt(json, "minGoldLines"));
         request.setMaxGoldLines(optionalPositiveInt(json, "maxGoldLines"));
         request.setPullPage(intValue(json, "pullPage", request.getPullPage(), 1, Integer.MAX_VALUE));
-        request.setPullPerPage(intValue(json, "pullPerPage", request.getPullPerPage(), 1, 10));
+        request.setPullPerPage(intValue(json, "pullPerPage", request.getPullPerPage(), 1, 100));
         request.setPullPagesPerRepo(intValue(json, "pullPagesPerRepo", request.getPullPagesPerRepo(), 1, 100));
         request.setProfileFilterEnabled(booleanValue(json, "profileFilterEnabled", request.isProfileFilterEnabled()));
         request.setMinPrimaryLanguageRatio(doubleValue(
@@ -1129,9 +1130,9 @@ public class SweRepoDiscoveryJob {
 
         private int pullPage = 1;
 
-        private int pullPerPage = 5;
+        private int pullPerPage = 30;
 
-        private int pullPagesPerRepo = 1;
+        private int pullPagesPerRepo = 5;
 
         private boolean profileFilterEnabled = true;
 

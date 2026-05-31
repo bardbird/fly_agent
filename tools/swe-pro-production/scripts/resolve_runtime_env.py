@@ -333,8 +333,12 @@ def resolve_runtime_env(root: Path) -> dict:
     }
 
 
+def shell_subshell(command: str) -> str:
+    return f'( {{ {command}; }} )'
+
+
 def compose_setup_command(commands: list[str]) -> str:
-    return ' && '.join(f'({command})' for command in commands if command.strip())
+    return ' && '.join(shell_subshell(command.strip()) for command in commands if command.strip())
 
 
 def generated_setup_command_already_covers(existing_before: str, setup_commands: list[str]) -> bool:

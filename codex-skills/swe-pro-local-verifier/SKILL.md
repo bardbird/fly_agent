@@ -1,6 +1,6 @@
 ---
 name: swe-pro-local-verifier
-description: Use this Codex skill when turning a SWE-Pro GitHub PR or local task package into a locally verified SWE-Pro package before model evaluation. It guides AI-assisted correction of gold.patch, test.patch, task.json, selected test commands, runtime_env, and Dockerfile until patch application and Docker baseline/fixed/pass-to-pass verification pass, then hands the package back to the existing fly-agent SWE-Pro pipeline resume flow.
+description: Use this Codex skill when turning a SWE-Pro GitHub PR or local task package into a locally verified SWE-Pro package before model evaluation, including backend-driven batch dispatch from SCA-allowed repositories. It guides AI-assisted correction of gold.patch, test.patch, task.json, selected test commands, runtime_env, and Dockerfile until patch application and Docker baseline/fixed/pass-to-pass verification pass, then hands the package back to the existing fly-agent SWE-Pro pipeline resume flow.
 ---
 
 # SWE-Pro Local Verifier
@@ -40,12 +40,52 @@ Use the repository scripts when available:
 python3 tools/swe-pro-production/scripts/package_task.py <package_dir> --docker
 ```
 
+## Batch Entry
+
+For backend-driven batches, the required entry is:
+
+```bash
+python3 codex-skills/swe-pro-local-verifier/scripts/backend_dispatch_queue.py discover \
+  --languages <language[,language...]> \
+  --max-repos-per-language <positive-count> \
+  --candidate-limit-per-repo <positive-count>
+```
+
+`discover` refuses to run without explicit language, repo count, and per-repo
+candidate count. It may create/reuse backend tasks and initialize packages, but
+must not start backend model evaluation. Use `claim` in each CLI window, or
+open visible workers with:
+
+```bash
+python3 codex-skills/swe-pro-local-verifier/scripts/backend_dispatch_queue.py launch-tmux \
+  --workers <positive-count> \
+  --languages <language[,language...]>
+```
+
+Run `handoff` only after `logs/docker/validation.json` has `"ok": true`
+and its `task_spec_checksums` match the current task artifacts.
+
+Backend handoff paths must be visible from the fly-agent server/task
+containers. In this deployment the visible root is `/data/fly-agent/swe-output`.
+The dispatcher therefore defaults package creation to that root and mirrors old
+packages there during handoff. Do not hand off `/home/.../swe-output/...`
+paths directly; the backend containers cannot see them unless the compose
+mounts are changed. If an earlier handoff failed after marking the queue item
+`handed_off`, rerun handoff with `--rehandoff --key <queue-key>`; the dispatcher
+will reuse the latest resumable backend run when possible.
+
 ## Workflow
 
 1. Claim exactly one candidate/package.
    - Use a DB/API lease in production orchestration.
    - Use a package-local lock before editing files.
    - Never let two agents edit the same package directory.
+   - For multi-window backend-driven batches, use
+     `scripts/backend_dispatch_queue.py discover` to enqueue package-local
+     verifier work, `scripts/backend_dispatch_queue.py claim` in each CLI
+     window, and `scripts/backend_dispatch_queue.py handoff` only after local
+     Docker verification passes. Do not use this dispatcher to start the
+     backend full pipeline before local verification.
 
 2. Build or inspect the task package.
    - Required files: `task.json`, `problem_statement.md`, `patches/gold.patch`, `patches/test.patch`, `scripts/run_selected_tests.sh`, `scripts/verify_patch_application.sh`, `dockerfiles/Dockerfile`.
@@ -81,7 +121,8 @@ python3 tools/swe-pro-production/scripts/package_task.py <package_dir> --docker
    - Inspect `logs/docker_build.log`, `logs/docker/baseline.log`, `logs/docker/fixed.log`, `logs/docker/pass_to_pass.log`, and `logs/docker/validation.json`.
    - Treat Docker-only patch failures as first-class patch/runtime issues. The validation image may not contain `.git` metadata or repository attributes, so CRLF-sensitive hunks can apply locally but fail in Docker. See `references/docker.md` before changing tests.
    - Inspect the generated Docker context exclusions when a package compiles locally but not in Docker. `package_task.py` may rewrite `.dockerignore`; broad patterns can exclude real source directories such as Go packages named `env`.
-   - A passing `logs/docker/validation.json` with `"ok": true` is the local verification gate.
+   - A passing `logs/docker/validation.json` with `"ok": true` and fresh
+     `task_spec_checksums` is the local verification gate.
 
 8. Run eval-shell parity checks before handoff.
    - Model evaluation executes task commands through `bash -lc` in a validation image. Re-run at least `before_repo_set_cmd` and command-tool discovery with the same shell form.
@@ -104,6 +145,12 @@ python3 tools/swe-pro-production/scripts/package_task.py <package_dir> --docker
 10. Resume fly-agent only after local verification passes.
    - Read `references/api-calls.md` before calling backend APIs.
    - Before backend start/resume, re-run the QC placeholder gate so the deterministic tail cannot fail at `QC_REVIEW` because of generated review templates.
+   - Handoff `samplePath` must be under a backend-visible root such as
+     `/data/fly-agent/swe-output`; otherwise the backend fails immediately with
+     `samplePath does not exist` and later UI calls report missing
+     `samplePath`.
+   - If a failed/created run already exists for the task, resume that run with
+     `resumeFromStage=MODEL_OPUS_EVAL` rather than creating a fresh run.
    - The local loop should use zero backend calls after task claim.
    - The normal handoff uses one to three backend calls per package, excluding polling.
 

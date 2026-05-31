@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,17 @@ REVIEW_FILES = (
     "reviewer_2.md",
     "reviewer_3.md",
     "adjudication_and_calibration.md",
+)
+
+TASK_SPEC_FILES = (
+    "task.json",
+    "problem_statement.md",
+    "patches/gold.patch",
+    "patches/test.patch",
+    "scripts/run_selected_tests.sh",
+    "scripts/verify_patch_application.sh",
+    "dockerfiles/Dockerfile",
+    "runtime_env.json",
 )
 
 REVIEWER_BACKGROUNDS = {
@@ -65,6 +77,22 @@ def read_json(path: Path) -> dict:
         return {}
 
 
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def task_spec_checksums(root: Path) -> dict[str, str | None]:
+    checksums: dict[str, str | None] = {}
+    for relative in TASK_SPEC_FILES:
+        path = root / relative
+        checksums[relative] = sha256_file(path) if path.is_file() else None
+    return checksums
+
+
 def rel(path: Path, root: Path) -> str:
     try:
         return path.relative_to(root).as_posix()
@@ -81,11 +109,21 @@ def find_model_summaries(root: Path) -> list[str]:
 
 def validation_summary(root: Path) -> tuple[str, dict]:
     validation = read_json(root / "logs" / "docker" / "validation.json")
-    if validation.get("ok") is True:
+    if validation.get("ok") is True and validation_matches_task_spec(root, validation):
         return "passed", validation
     if validation:
         return "not passed", validation
     return "not available", {}
+
+
+def validation_matches_task_spec(root: Path, validation: dict) -> bool:
+    recorded = validation.get("task_spec_checksums")
+    if not isinstance(recorded, dict) or not recorded:
+        return False
+    for relative, checksum in task_spec_checksums(root).items():
+        if recorded.get(relative) != checksum:
+            return False
+    return True
 
 
 def model_summary_line(root: Path) -> str:
@@ -217,6 +255,11 @@ Approved for backend model evaluation and downstream QC/package export.
 
 def check(root: Path) -> list[str]:
     errors: list[str] = []
+    validation = read_json(root / "logs" / "docker" / "validation.json")
+    if validation.get("ok") is not True:
+        errors.append("Docker validation is missing or not ok")
+    elif not validation_matches_task_spec(root, validation):
+        errors.append("Docker validation is stale for current task spec; rerun local Docker verification")
     review_dir = root / "review"
     for name in REVIEW_FILES:
         path = review_dir / name

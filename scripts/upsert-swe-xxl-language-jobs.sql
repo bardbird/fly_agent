@@ -10,6 +10,13 @@ SET @sca_daily_repo_limit = 1000;
 SET @sca_per_run_repo_limit = 50;
 SET @candidate_daily_repo_limit = 240;
 SET @candidate_per_run_repo_limit = 10;
+SET @candidate_pull_limit = 5;
+SET @candidate_pull_per_page = 30;
+SET @candidate_pull_pages_per_repo = 5;
+SET @candidate_min_gold_source_files = 5;
+SET @candidate_max_gold_source_files = 100;
+SET @candidate_min_gold_lines = 108;
+SET @candidate_max_gold_lines = 1000;
 SET @job_group_id = (
     SELECT id
     FROM xxl_job_group
@@ -74,7 +81,14 @@ SET j.job_desc = CONCAT('SWE Candidate Backfill - ', l.language),
         'githubToken', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(j.executor_param, '$.githubToken')), @github_token),
         'languages', JSON_ARRAY(l.language),
         'dailyRepoLimit', @candidate_daily_repo_limit,
-        'perRunRepoLimit', @candidate_per_run_repo_limit
+        'perRunRepoLimit', @candidate_per_run_repo_limit,
+        'pullLimit', @candidate_pull_limit,
+        'pullPerPage', @candidate_pull_per_page,
+        'pullPagesPerRepo', @candidate_pull_pages_per_repo,
+        'minGoldSourceFiles', @candidate_min_gold_source_files,
+        'maxGoldSourceFiles', @candidate_max_gold_source_files,
+        'minGoldLines', @candidate_min_gold_lines,
+        'maxGoldLines', @candidate_max_gold_lines
     ),
     j.schedule_type = 'CRON',
     j.schedule_conf = CONCAT('0 ', l.cron_minute, ' * * * ?'),
@@ -224,7 +238,14 @@ SELECT
         'githubToken', @github_token,
         'languages', JSON_ARRAY(language),
         'dailyRepoLimit', @candidate_daily_repo_limit,
-        'perRunRepoLimit', @candidate_per_run_repo_limit
+        'perRunRepoLimit', @candidate_per_run_repo_limit,
+        'pullLimit', @candidate_pull_limit,
+        'pullPerPage', @candidate_pull_per_page,
+        'pullPagesPerRepo', @candidate_pull_pages_per_repo,
+        'minGoldSourceFiles', @candidate_min_gold_source_files,
+        'maxGoldSourceFiles', @candidate_max_gold_source_files,
+        'minGoldLines', @candidate_min_gold_lines,
+        'maxGoldLines', @candidate_max_gold_lines
     ),
     'SERIAL_EXECUTION',
     0,
@@ -255,7 +276,14 @@ SET j.update_time = NOW(),
         'githubToken', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(j.executor_param, '$.githubToken')), @github_token),
         'languages', JSON_ARRAY(l.language),
         'dailyRepoLimit', @candidate_daily_repo_limit,
-        'perRunRepoLimit', @candidate_per_run_repo_limit
+        'perRunRepoLimit', @candidate_per_run_repo_limit,
+        'pullLimit', @candidate_pull_limit,
+        'pullPerPage', @candidate_pull_per_page,
+        'pullPagesPerRepo', @candidate_pull_pages_per_repo,
+        'minGoldSourceFiles', @candidate_min_gold_source_files,
+        'maxGoldSourceFiles', @candidate_max_gold_source_files,
+        'minGoldLines', @candidate_min_gold_lines,
+        'maxGoldLines', @candidate_max_gold_lines
     ),
     j.schedule_type = 'CRON',
     j.schedule_conf = CONCAT('0 ', l.cron_minute, ' * * * ?'),

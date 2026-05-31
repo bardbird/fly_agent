@@ -90,6 +90,22 @@ class EvalModelsPromptTest(unittest.TestCase):
             self.assertEqual("test_infra_failed", output["status"])
             self.assertIn("- conclusion: test_infra_failed", report)
 
+    def test_runtime_typeerror_with_passing_pass_to_pass_is_partial_not_compile_error(self) -> None:
+        result = {
+            "passed": False,
+            "model_patch_applied": True,
+            "test_patch_applied": True,
+            "fail_to_pass_passed": False,
+            "pass_to_pass_passed": True,
+        }
+        output = (
+            "E       TypeError: LUNAR.__init__() got an unexpected keyword argument 'random_state'\n"
+            "__SWE_EVAL_RC__ fail_to_pass 1\n"
+            "__SWE_EVAL_RC__ pass_to_pass 0\n"
+        )
+
+        self.assertEqual("partial", eval_models.standard_status(result, output))
+
     def test_qwen_plus_metadata_uses_current_model_name(self) -> None:
         self.assertEqual(
             "qwen3_6_plus_pass_at_4",

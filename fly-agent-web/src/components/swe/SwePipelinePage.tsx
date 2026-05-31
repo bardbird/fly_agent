@@ -41,7 +41,7 @@ import type {
 } from '@/types/swe'
 
 const DEFAULT_SAMPLE_PATH = '/Users/liuyifei/Downloads/production-task-new-api-4889'
-const PR_SCAN_BATCH_SIZE = 5
+const PR_SCAN_BATCH_SIZE = 30
 const PR_SCAN_BATCHES_PER_CLICK = 12
 const PR_SCAN_TARGET_CANDIDATES = 10
 type WorkflowStep = 'discover' | 'candidates' | 'tasks' | 'runs'
@@ -1653,9 +1653,9 @@ function RepositoryScoreDialog({
   const [scanLoading, setScanLoading] = useState(false)
   const [scanError, setScanError] = useState<string | null>(null)
   const [scanMinSourceFiles, setScanMinSourceFiles] = useState('5')
-  const [scanMaxSourceFiles, setScanMaxSourceFiles] = useState('10')
+  const [scanMaxSourceFiles, setScanMaxSourceFiles] = useState('100')
   const [scanMinGoldLines, setScanMinGoldLines] = useState('108')
-  const [scanMaxGoldLines, setScanMaxGoldLines] = useState('300')
+  const [scanMaxGoldLines, setScanMaxGoldLines] = useState('1000')
 
   function mergePullScan(
     previous: GithubPullScanResponse | null,
@@ -1894,7 +1894,7 @@ function RepositoryScoreDialog({
             </>
           ) : (
             <p className="text-xs leading-5 text-text-secondary">
-              每批扫描 {PR_SCAN_BATCH_SIZE} 个 closed PR，一次点击最多连续扫描 {PR_SCAN_BATCHES_PER_CLICK} 批；默认只保留最近 365 天、源码文件 5 到 10 个、Gold 行数 108 到 300 行的候选。
+              每批扫描 {PR_SCAN_BATCH_SIZE} 个 closed PR，一次点击最多连续扫描 {PR_SCAN_BATCHES_PER_CLICK} 批；默认只保留最近 365 天、源码文件 5 到 100 个、Gold 行数 108 到 1000 行的候选。
             </p>
           )}
         </div>

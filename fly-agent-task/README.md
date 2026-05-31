@@ -168,9 +168,10 @@ fly-agent-task/
     "githubToken": "ghp_xxx"
   }
   ```
-- **默认行为**: 默认扫描全部支持语言，每种语言每天最多尝试 `repoLimit=10` 个 SCA allow repo；当天已经尝试过 candidate backfill 的 repo 会跳过，第二天重新计数。
+- **默认行为**: 默认扫描全部支持语言，每种语言每天最多尝试 `repoLimit=10` 个 SCA allow repo；每个 repo 默认拉取 5 页、每页 30 个 closed PR；当天已经尝试过 candidate backfill 的 repo 会跳过，第二天重新计数。
+- **默认候选范围**: 源码文件数 `5-100`，Gold 行数 `108-1000`。
 - **候选硬门槛**: 回填调用 `GithubPullCandidateService.scanMergedPulls`，会执行 PR 元数据、变更文件、PR/issue 描述和评论中的上传、认证、云服务、依赖变更多、仓库过重等过滤逻辑。
-- **批量补齐任务**: 可使用 `scripts/upsert-swe-xxl-language-jobs.sql` 在 XXL-Job 数据库中补齐 10 种语言的 SCA discovery 和 candidate backfill 任务；执行前替换脚本里的 `REPLACE_WITH_GITHUB_TOKEN`。
+- **批量补齐任务**: 可使用 `scripts/upsert-swe-xxl-language-jobs.sql` 在 XXL-Job 数据库中补齐 10 种语言的 SCA discovery 和 candidate backfill 任务；脚本默认配置 `pullLimit=5`、`pullPerPage=30`、`pullPagesPerRepo=5`、`minGoldSourceFiles=5`、`maxGoldSourceFiles=100`、`minGoldLines=108`、`maxGoldLines=1000`；执行前替换脚本里的 `REPLACE_WITH_GITHUB_TOKEN`。
 
 ## 配置说明
 

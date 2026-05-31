@@ -128,7 +128,11 @@ public interface SweRepoScaReportMapper extends BaseMapper<SweRepoScaReportEntit
             WHERE s.compatibility_status = 'ALLOW'
               AND b.repo IS NULL
               AND c.repo IS NULL
-            ORDER BY s.checked_at DESC, s.id DESC
+            ORDER BY
+                CASE WHEN s.candidate_last_scanned_at IS NULL THEN 0 ELSE 1 END,
+                s.candidate_last_scanned_at ASC,
+                s.checked_at DESC,
+                s.id DESC
             LIMIT #{limit} OFFSET #{offset}
             """)
     List<String> selectAllowedReposForCandidateScan(@Param("limit") int limit, @Param("offset") int offset);
@@ -144,7 +148,12 @@ public interface SweRepoScaReportMapper extends BaseMapper<SweRepoScaReportEntit
               AND (#{minStars} IS NULL OR s.github_stars >= #{minStars})
               AND (#{maxStars} IS NULL OR s.github_stars <= #{maxStars})
               AND (s.candidate_last_scanned_at IS NULL OR DATE(s.candidate_last_scanned_at) <> #{scanDate})
-            ORDER BY s.github_stars DESC, s.checked_at DESC, s.id DESC
+            ORDER BY
+                CASE WHEN s.candidate_last_scanned_at IS NULL THEN 0 ELSE 1 END,
+                s.candidate_last_scanned_at ASC,
+                s.github_stars DESC,
+                s.checked_at DESC,
+                s.id DESC
             LIMIT #{limit} OFFSET #{offset}
             """)
     List<String> selectAllowedReposInScanScope(

@@ -41,6 +41,17 @@ DELIVERY_EXCLUDE_FILES = {
     '.DS_Store',
 }
 
+TASK_SPEC_FILES = [
+    'task.json',
+    'problem_statement.md',
+    'patches/gold.patch',
+    'patches/test.patch',
+    'scripts/run_selected_tests.sh',
+    'scripts/verify_patch_application.sh',
+    'dockerfiles/Dockerfile',
+    'runtime_env.json',
+]
+
 DOCKERIGNORE_TEXT = '''
 .git
 **/.git
@@ -172,6 +183,14 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def task_spec_checksums(root: Path) -> dict[str, str | None]:
+    checksums: dict[str, str | None] = {}
+    for relative in TASK_SPEC_FILES:
+        path = root / relative
+        checksums[relative] = sha256_file(path) if path.is_file() else None
+    return checksums
+
+
 def blacklist_reference_candidates() -> list[Path]:
     candidates: list[Path] = []
     env_path = os.environ.get('SWE_EXISTING_DATASET_BLACKLIST_XLSX', '').strip()
@@ -191,8 +210,13 @@ def find_blacklist_reference() -> Path:
 
 
 def ensure_delivery_static_files(root: Path) -> None:
-    source = find_blacklist_reference()
     target = root / BLACKLIST_FILE_NAME
+    try:
+        source = find_blacklist_reference()
+    except RuntimeError:
+        if target.is_file():
+            return
+        raise
     if target.is_file() and sha256_file(target) == sha256_file(source):
         return
     shutil.copyfile(source, target)
@@ -257,7 +281,13 @@ def run_docker_checks(root: Path, image_tag: str, save_image: bool) -> dict:
     ensure_dockerignore(root)
     docker_build(root, image_tag, root / 'logs' / 'docker_build.log')
 
-    results: dict[str, object] = {'image_tag': image_tag, 'validation': {}, 'ok': True, 'blocking_reasons': []}
+    results: dict[str, object] = {
+        'image_tag': image_tag,
+        'validation': {},
+        'ok': True,
+        'blocking_reasons': [],
+        'task_spec_checksums': task_spec_checksums(root),
+    }
     expected = {'baseline': False, 'fixed': True, 'pass-to-pass': True}
     for mode, should_pass in expected.items():
         log_name = mode.replace('-', '_') + '.log'

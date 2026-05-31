@@ -243,7 +243,7 @@ public class SwePipelineService {
         SweTaskEntity task = requireTask(request.getTaskId());
         attachCandidate(task);
         String samplePath = StringUtils.hasText(request.getSamplePath())
-                ? request.getSamplePath()
+                ? persistExplicitSamplePath(task, request.getSamplePath())
                 : (isGithubPullTask(task) ? null : task.getSamplePath());
 
         SwePipelineRunEntity run = new SwePipelineRunEntity();
@@ -302,10 +302,18 @@ public class SwePipelineService {
         }
 
         String samplePath = StringUtils.hasText(request.getSamplePath())
-                ? request.getSamplePath()
+                ? persistExplicitSamplePath(task, request.getSamplePath())
                 : (isGithubPullTask(task) ? null : task.getSamplePath());
         launchAfterCommit(task, run.getId(), samplePath, true);
         return getRun(run.getId());
+    }
+
+    private String persistExplicitSamplePath(SweTaskEntity task, String requestedSamplePath) {
+        Path samplePath = requireSamplePath(requestedSamplePath);
+        updateTaskSamplePath(task.getId(), samplePath);
+        String persistedPath = samplePath.toAbsolutePath().toString();
+        task.setSamplePath(persistedPath);
+        return persistedPath;
     }
 
     private SwePipelineStage resolveResumeFromStage(String stageCode) {
@@ -441,7 +449,7 @@ public class SwePipelineService {
         runStageUnchecked(runId, SwePipelineStage.TASK_PACKAGE_INIT, () -> "Existing package mode: package already initialized at " + samplePath, resumeMode);
         runStageUnchecked(runId, SwePipelineStage.PATCH_VERIFY, () -> inspectPatches(runId, samplePath), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.HARNESS_BUILD, () -> inspectHarness(runId, samplePath), resumeMode);
-        runStageUnchecked(runId, SwePipelineStage.LOCAL_VERIFY, () -> inspectVerificationLogs(runId, samplePath), resumeMode);
+        runStageUnchecked(runId, SwePipelineStage.LOCAL_VERIFY, () -> ensureExistingPackageLocalVerification(runId, samplePath), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.MODEL_OPUS_EVAL, () -> runOpusEvaluation(runId, samplePath), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.MODEL_QWEN_EVAL, () -> runQwenEvaluation(runId, samplePath), resumeMode);
         runStageUnchecked(runId, SwePipelineStage.DOCKER_PACKAGE, () -> runDockerPackage(runId, samplePath), resumeMode);
@@ -600,6 +608,16 @@ public class SwePipelineService {
     }
 
     private String inspectVerificationLogs(Long runId, Path samplePath) {
+        Path validationJson = requireFile(samplePath.resolve("logs/docker/validation.json"),
+                "docker validation.json is required");
+        JSONObject validation = readJson(validationJson);
+        if (!validation.getBooleanValue("ok")) {
+            throw new BusinessException("docker validation.json is not ok: " + validationJson);
+        }
+        if (!dockerValidationMatchesTaskSpec(samplePath, validation)) {
+            throw new BusinessException("docker validation.json is stale for current task spec; rerun local Docker verification");
+        }
+        recordArtifact(runId, "VERIFY_LOG", validationJson);
         Path verification = requireFile(samplePath.resolve("verification.md"), "verification.md is required");
         recordArtifact(runId, "VERIFY_LOG", verification);
         List<Path> logs = findMatchingFiles(samplePath.resolve("logs"), ".log", ".txt", ".md");
@@ -608,6 +626,37 @@ public class SwePipelineService {
         }
         logs.forEach(path -> recordArtifact(runId, "VERIFY_LOG", path));
         return "Verification evidence found, logFiles=" + logs.size();
+    }
+
+    private String ensureExistingPackageLocalVerification(Long runId, Path samplePath) {
+        if (hasFreshDockerValidation(samplePath)) {
+            return inspectVerificationLogs(runId, samplePath);
+        }
+        return runLocalVerification(runId, samplePath);
+    }
+
+    private boolean hasFreshDockerValidation(Path samplePath) {
+        Path validationJson = samplePath.resolve("logs/docker/validation.json");
+        if (!Files.isRegularFile(validationJson)) {
+            return false;
+        }
+        JSONObject validation = readJson(validationJson);
+        return validation.getBooleanValue("ok") && dockerValidationMatchesTaskSpec(samplePath, validation);
+    }
+
+    private boolean dockerValidationMatchesTaskSpec(Path samplePath, JSONObject validation) {
+        JSONObject expected = validation.getJSONObject("task_spec_checksums");
+        if (expected == null || expected.isEmpty()) {
+            return false;
+        }
+        TaskSpecSnapshot current = taskSpecSnapshot(samplePath);
+        for (Map.Entry<String, String> entry : current.checksums().entrySet()) {
+            String actual = expected.getString(entry.getKey());
+            if (!java.util.Objects.equals(entry.getValue(), actual)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private String inspectQualityEvidence(Long runId, Path samplePath) {
@@ -822,6 +871,7 @@ public class SwePipelineService {
         assertTaskSpecUnchanged(packagePath, snapshot, "docker verification");
         findMatchingFiles(packagePath.resolve("logs/docker"), ".log")
                 .forEach(path -> recordArtifact(runId, "LOCAL_VERIFY_LOG", path));
+        inspectVerificationLogs(runId, packagePath);
         return "Docker verification passed: baseline failed as expected, fixed/pass-to-pass passed";
     }
 
@@ -955,6 +1005,7 @@ public class SwePipelineService {
             boolean allowFailure,
             boolean requireSummary) {
         ensureModelConfig(outName, model);
+        requireFreshDockerValidationForModel(packagePath, outName);
         TaskSpecSnapshot snapshot = taskSpecSnapshot(packagePath);
         List<String> command = new ArrayList<>();
         command.add(properties.getPython());
@@ -1013,6 +1064,13 @@ public class SwePipelineService {
         recordArtifact(runId, "MODEL_SUMMARY", summaryPath);
         JSONObject summary = readJson(summaryPath);
         return summary;
+    }
+
+    private void requireFreshDockerValidationForModel(Path packagePath, String outName) {
+        if (!hasFreshDockerValidation(packagePath)) {
+            throw new BusinessException(outName + " requires fresh local Docker verification for current task spec; "
+                    + "resume from LOCAL_VERIFY before model evaluation");
+        }
     }
 
     private Path sweAgentRoot() {
@@ -2034,11 +2092,13 @@ public class SwePipelineService {
     private List<String> taskSpecFiles() {
         return List.of(
                 "task.json",
+                "problem_statement.md",
                 "patches/gold.patch",
                 "patches/test.patch",
                 "scripts/run_selected_tests.sh",
                 "scripts/verify_patch_application.sh",
-                "dockerfiles/Dockerfile"
+                "dockerfiles/Dockerfile",
+                "runtime_env.json"
         );
     }
 

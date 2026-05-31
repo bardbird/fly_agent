@@ -128,7 +128,8 @@ def is_compile_failure(output: str) -> bool:
         'compile error',
         'compilation failed',
         'syntaxerror',
-        'typeerror:',
+        'indentationerror',
+        'taberror',
         'cannot find symbol',
         'undefined:',
         'build failed',
@@ -147,12 +148,12 @@ def standard_status(result: dict, log_text: str = '') -> str:
         return 'test_infra_failed'
     if 'did not apply' in signal or ('git apply' in signal and 'error:' in signal):
         return 'patch_apply_failed'
-    if is_compile_failure(signal):
-        return 'compile_error'
     if result.get('model_patch_applied') and (
         result.get('fail_to_pass_passed') or result.get('pass_to_pass_passed')
     ):
         return 'partial'
+    if is_compile_failure(signal):
+        return 'compile_error'
     return 'invalid'
 
 

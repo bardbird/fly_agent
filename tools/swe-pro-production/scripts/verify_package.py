@@ -7,6 +7,16 @@ MIN_GOLD_FILES = 5
 MIN_GOLD_LINES = 108
 PREFERRED_GOLD_LINES = 200
 BLACKLIST_FILE_NAME = 'swe_existing_dataset_blacklist.xlsx'
+TASK_SPEC_FILES = [
+    'task.json',
+    'problem_statement.md',
+    'patches/gold.patch',
+    'patches/test.patch',
+    'scripts/run_selected_tests.sh',
+    'scripts/verify_patch_application.sh',
+    'dockerfiles/Dockerfile',
+    'runtime_env.json',
+]
 
 
 def run(cmd: list[str], cwd: Path, allow_fail: bool = False) -> tuple[int, str]:
@@ -18,6 +28,23 @@ def run(cmd: list[str], cwd: Path, allow_fail: bool = False) -> tuple[int, str]:
 
 def load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding='utf-8'))
+
+
+def sha256_file(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with path.open('rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def task_spec_checksums(root: Path) -> dict[str, str | None]:
+    checksums: dict[str, str | None] = {}
+    for relative in TASK_SPEC_FILES:
+        path = root / relative
+        checksums[relative] = sha256_file(path) if path.is_file() else None
+    return checksums
 
 
 def check_task_json(root: Path, errors: list[str]) -> dict:
@@ -118,6 +145,14 @@ def check_docker_validation(root: Path, errors: list[str]) -> None:
             continue
         if result.get('result') != expected_result:
             errors.append(f'Docker validation {mode} expected {expected_result}, got {result.get("result")}')
+    recorded_checksums = validation.get('task_spec_checksums')
+    if not isinstance(recorded_checksums, dict) or not recorded_checksums:
+        errors.append('Docker validation is missing task_spec_checksums; rerun package_task.py --docker')
+        return
+    current_checksums = task_spec_checksums(root)
+    for relative, checksum in current_checksums.items():
+        if recorded_checksums.get(relative) != checksum:
+            errors.append(f'Docker validation is stale for current task spec: {relative}')
 
 
 def main() -> int:

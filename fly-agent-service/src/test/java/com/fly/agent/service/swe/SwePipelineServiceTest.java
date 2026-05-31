@@ -165,6 +165,24 @@ class SwePipelineServiceTest {
     }
 
     @Test
+    void existingPackageLocalVerifyRejectsStaleDockerValidation() throws Exception {
+        String source = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/java/com/fly/agent/service/swe/SwePipelineService.java"));
+        int existingPackageStart = source.indexOf("private void executeExistingPackageRun");
+        int candidatePackageStart = source.indexOf("private Path executeCandidateProductionRun");
+        String existingPackageBlock = source.substring(existingPackageStart, candidatePackageStart);
+
+        assertTrue(existingPackageBlock.contains("ensureExistingPackageLocalVerification(runId, samplePath)"));
+        assertFalse(existingPackageBlock.contains("inspectVerificationLogs(runId, samplePath)"));
+        assertTrue(source.contains("dockerValidationMatchesTaskSpec(samplePath, validation)"));
+        assertTrue(source.contains("requireFreshDockerValidationForModel(packagePath, outName)"));
+        assertTrue(source.contains("resume from LOCAL_VERIFY before model evaluation"));
+        assertTrue(source.contains("task_spec_checksums"));
+        assertTrue(source.contains("\"runtime_env.json\""));
+        assertTrue(source.contains("rerun local Docker verification"));
+    }
+
+    @Test
     void qwenEvaluationDisablesThinkingForCostControlWithoutChangingPromptText() throws Exception {
         String source = java.nio.file.Files.readString(java.nio.file.Path.of(
                 "src/main/java/com/fly/agent/service/swe/SwePipelineService.java"));
@@ -196,8 +214,27 @@ class SwePipelineServiceTest {
         String resumeBlock = source.substring(resumeStart, launchStart);
 
         assertTrue(resumeBlock.contains("String samplePath = StringUtils.hasText(request.getSamplePath())"));
-        assertTrue(resumeBlock.contains("? request.getSamplePath()"));
+        assertTrue(resumeBlock.contains("? persistExplicitSamplePath(task, request.getSamplePath())"));
         assertTrue(resumeBlock.contains(": (isGithubPullTask(task) ? null : task.getSamplePath())"));
+    }
+
+    @Test
+    void explicitSamplePathIsPersistedBeforeAsyncLaunch() throws Exception {
+        String source = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/java/com/fly/agent/service/swe/SwePipelineService.java"));
+        int startRunStart = source.indexOf("public SwePipelineRunDTO startRun");
+        int startLaunch = source.indexOf("launchAfterCommit(task, run.getId(), samplePath, false)", startRunStart);
+        String startBlock = source.substring(startRunStart, startLaunch);
+        int resumeStart = source.indexOf("public SwePipelineRunDTO resumeRun");
+        int resumeLaunch = source.indexOf("launchAfterCommit(task, run.getId(), samplePath, true)", resumeStart);
+        String resumeBlock = source.substring(resumeStart, resumeLaunch);
+
+        assertTrue(startBlock.contains("? persistExplicitSamplePath(task, request.getSamplePath())"));
+        assertTrue(resumeBlock.contains("? persistExplicitSamplePath(task, request.getSamplePath())"));
+        assertTrue(source.contains("private String persistExplicitSamplePath(SweTaskEntity task, String requestedSamplePath)"));
+        assertTrue(source.contains("Path samplePath = requireSamplePath(requestedSamplePath)"));
+        assertTrue(source.contains("updateTaskSamplePath(task.getId(), samplePath)"));
+        assertTrue(source.contains("task.setSamplePath(persistedPath)"));
     }
 
     @Test
@@ -333,6 +370,7 @@ class SwePipelineServiceTest {
     void modelEvaluationInheritsVerificationEnvironment() throws Exception {
         Path packagePath = tempDir.resolve("production-task-demo-1");
         Files.createDirectories(packagePath);
+        writeFreshDockerValidation(packagePath);
         Path logPath = tempDir.resolve("model_eval.log");
         Files.writeString(logPath, "model eval log");
         SweProperties.Model model = new SweProperties.Model();
@@ -391,6 +429,7 @@ class SwePipelineServiceTest {
     void qwenModelEvaluationUsesRuntimeStepGradient() throws Exception {
         Path packagePath = tempDir.resolve("production-task-demo-1");
         Files.createDirectories(packagePath);
+        writeFreshDockerValidation(packagePath);
         Path logPath = tempDir.resolve("model_eval.log");
         Files.writeString(logPath, "model eval log");
         SweProperties.Model model = new SweProperties.Model();
@@ -439,6 +478,7 @@ class SwePipelineServiceTest {
     void opusModelEvaluationUsesRuntimeStepGradient() throws Exception {
         Path packagePath = tempDir.resolve("production-task-demo-1");
         Files.createDirectories(packagePath);
+        writeFreshDockerValidation(packagePath);
         Path logPath = tempDir.resolve("model_eval.log");
         Files.writeString(logPath, "model eval log");
         SweProperties.Model model = new SweProperties.Model();
@@ -622,6 +662,48 @@ class SwePipelineServiceTest {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         digest.update(Files.readAllBytes(path));
         return HexFormat.of().formatHex(digest.digest());
+    }
+
+    private void writeFreshDockerValidation(Path packagePath) throws Exception {
+        List<String> specFiles = List.of(
+                "task.json",
+                "problem_statement.md",
+                "patches/gold.patch",
+                "patches/test.patch",
+                "scripts/run_selected_tests.sh",
+                "scripts/verify_patch_application.sh",
+                "dockerfiles/Dockerfile",
+                "runtime_env.json"
+        );
+        for (String relative : specFiles) {
+            Path path = packagePath.resolve(relative);
+            Files.createDirectories(path.getParent());
+            Files.writeString(path, relative + "\n", StandardCharsets.UTF_8);
+        }
+        StringBuilder checksums = new StringBuilder();
+        for (int index = 0; index < specFiles.size(); index++) {
+            String relative = specFiles.get(index);
+            if (index > 0) {
+                checksums.append(",\n");
+            }
+            checksums.append("    \"").append(relative).append("\": \"")
+                    .append(sha256(packagePath.resolve(relative))).append("\"");
+        }
+        Path validation = packagePath.resolve("logs/docker/validation.json");
+        Files.createDirectories(validation.getParent());
+        Files.writeString(validation, """
+                {
+                  "ok": true,
+                  "validation": {
+                    "baseline": {"result": "fails"},
+                    "fixed": {"result": "passes"},
+                    "pass-to-pass": {"result": "passes"}
+                  },
+                  "task_spec_checksums": {
+                %s
+                  }
+                }
+                """.formatted(checksums), StandardCharsets.UTF_8);
     }
 
     private SwePipelineService newService(SweCandidateMapper candidateMapper) {
