@@ -191,10 +191,18 @@ public class SwePipelineService {
 
     @Transactional(rollbackFor = Exception.class)
     public SweTaskDTO createTaskFromCandidate(SweTaskFromCandidateRequest request) {
-        SweCandidateEntity candidate = requireCandidate(request.getCandidateId());
-        if ("DELIVERED".equals(candidate.getDuplicateStatus())) {
-            throw new BusinessException("该候选 PR 已标记为已交付，不能重复创建任务");
+        SweCandidateEntity candidate = candidateMapper.selectByIdForUpdate(request.getCandidateId());
+        if (candidate == null) {
+            throw new BusinessException("候选PR不存在");
         }
+        SweTaskEntity existing = existingTaskForCandidate(candidate);
+        if (existing != null) {
+            if (!"DELIVERED".equals(candidate.getDuplicateStatus())) {
+                markCandidateStatus(candidate.getId(), "selected");
+            }
+            return toTaskDTO(existing, false);
+        }
+        validateCandidateReadyForTask(candidate);
 
         SweTaskEntity entity = new SweTaskEntity();
         entity.setTaskName(StringUtils.hasText(request.getTaskName())
@@ -217,6 +225,38 @@ public class SwePipelineService {
 
         markCandidateStatus(candidate.getId(), "selected");
         return toTaskDTO(entity, false);
+    }
+
+    private void validateCandidateReadyForTask(SweCandidateEntity candidate) {
+        if ("DELIVERED".equals(candidate.getDuplicateStatus())) {
+            throw new BusinessException("该候选 PR 已标记为已交付，不能重复创建任务");
+        }
+        if (!StringUtils.hasText(candidate.getRepo())
+                || !StringUtils.hasText(candidate.getPrUrl())
+                || !StringUtils.hasText(candidate.getBaseCommit())
+                || !StringUtils.hasText(candidate.getFixCommit())) {
+            throw new BusinessException("候选 PR 缺少 repo、PR URL 或 commit 信息，不能创建任务");
+        }
+        if (!StringUtils.hasText(candidate.getIssueUrl())
+                && !StringUtils.hasText(candidate.getProblemStatement())) {
+            throw new BusinessException("候选 PR 缺少 issue/problem evidence，不能创建任务");
+        }
+        if (!Boolean.TRUE.equals(candidate.getTestPatchPresent())) {
+            throw new BusinessException("候选 PR 缺少 test patch，不能创建任务");
+        }
+        if (candidate.getScore() == null || candidate.getScore() < 70) {
+            throw new BusinessException("候选 PR 分数低于生产任务门槛，不能创建任务");
+        }
+    }
+
+    private SweTaskEntity existingTaskForCandidate(SweCandidateEntity candidate) {
+        LambdaQueryWrapper<SweTaskEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SweTaskEntity::getCandidateId, candidate.getId());
+        if (StringUtils.hasText(candidate.getPrUrl())) {
+            wrapper.or().eq(SweTaskEntity::getSourceUrl, candidate.getPrUrl());
+        }
+        wrapper.orderByDesc(SweTaskEntity::getCreatedAt).last("LIMIT 1");
+        return taskMapper.selectOne(wrapper);
     }
 
     public SweTaskDTO getTask(Long id) {

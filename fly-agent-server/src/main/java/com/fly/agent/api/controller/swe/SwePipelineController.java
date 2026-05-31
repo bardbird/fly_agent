@@ -131,8 +131,36 @@ public class SwePipelineController {
             @RequestParam(value = "page", required = false) Integer page,
             @RequestParam(value = "perPage", required = false) Integer perPage,
             @RequestParam(value = "candidateStatus", required = false) String candidateStatus,
-            @RequestParam(value = "duplicateStatus", required = false) String duplicateStatus) {
-        return Result.ok(githubPullCandidateService.listCandidates(page, perPage, candidateStatus, duplicateStatus));
+            @RequestParam(value = "duplicateStatus", required = false) String duplicateStatus,
+            @RequestParam(value = "language", required = false) String language,
+            @RequestParam(value = "dateField", required = false) String dateField,
+            @RequestParam(value = "dateFrom", required = false) String dateFrom,
+            @RequestParam(value = "dateTo", required = false) String dateTo,
+            @RequestParam(value = "minScore", required = false) Integer minScore,
+            @RequestParam(value = "minGoldSourceFiles", required = false) Integer minGoldSourceFiles,
+            @RequestParam(value = "maxGoldSourceFiles", required = false) Integer maxGoldSourceFiles,
+            @RequestParam(value = "minGoldLines", required = false) Integer minGoldLines,
+            @RequestParam(value = "maxGoldLines", required = false) Integer maxGoldLines,
+            @RequestParam(value = "testPatchPresent", required = false) Boolean testPatchPresent,
+            @RequestParam(value = "qualifiedOnly", required = false) Boolean qualifiedOnly,
+            @RequestParam(value = "excludeTasked", required = false) Boolean excludeTasked) {
+        return Result.ok(githubPullCandidateService.listCandidates(
+                page,
+                perPage,
+                candidateStatus,
+                duplicateStatus,
+                language,
+                dateField,
+                dateFrom,
+                dateTo,
+                minScore,
+                minGoldSourceFiles,
+                maxGoldSourceFiles,
+                minGoldLines,
+                maxGoldLines,
+                testPatchPresent,
+                qualifiedOnly,
+                excludeTasked));
     }
 
     @PostMapping("/tasks")

@@ -20,6 +20,15 @@ public interface SweCandidateMapper extends BaseMapper<SweCandidateEntity> {
     SweCandidateEntity selectByPrUrlForUpdate(@Param("prUrl") String prUrl);
 
     @Select("""
+            SELECT *
+            FROM swe_candidate
+            WHERE id = #{id}
+            LIMIT 1
+            FOR UPDATE
+            """)
+    SweCandidateEntity selectByIdForUpdate(@Param("id") Long id);
+
+    @Select("""
             SELECT COUNT(1)
             FROM swe_candidate
             WHERE repo = #{repo}

@@ -3,6 +3,8 @@ package com.fly.agent.service.swe;
 import com.fly.agent.dao.entity.swe.SweCandidateEntity;
 import com.fly.agent.dao.entity.swe.SweTaskEntity;
 import com.fly.agent.common.dto.swe.SweModelIoAttemptDTO;
+import com.fly.agent.common.dto.swe.SweTaskDTO;
+import com.fly.agent.common.dto.swe.SweTaskFromCandidateRequest;
 import com.fly.agent.dao.mapper.swe.SweArtifactMapper;
 import com.fly.agent.dao.mapper.swe.SweCandidateMapper;
 import com.fly.agent.dao.mapper.swe.SwePipelineRunMapper;
@@ -79,6 +81,49 @@ class SwePipelineServiceTest {
         assertTrue(csv.contains("issue_specificity"));
         assertTrue(csv.contains("[\"\"api_feat\"\"]"));
         assertTrue(csv.contains("api_knowledge"));
+    }
+
+    @Test
+    void createTaskFromCandidateReusesExistingTaskForSameCandidate() {
+        SweCandidateMapper candidateMapper = mock(SweCandidateMapper.class);
+        SweTaskMapper taskMapper = mock(SweTaskMapper.class);
+        SweCandidateEntity candidate = readyCandidate();
+        SweTaskEntity existing = new SweTaskEntity();
+        existing.setId(99L);
+        existing.setCandidateId(candidate.getId());
+        existing.setTaskName("existing-task");
+        existing.setRepo(candidate.getRepo());
+        existing.setSourceUrl(candidate.getPrUrl());
+        existing.setStatus("CREATED");
+        when(candidateMapper.selectByIdForUpdate(candidate.getId())).thenReturn(candidate);
+        when(taskMapper.selectOne(any())).thenReturn(existing);
+
+        SwePipelineService service = newService(taskMapper, candidateMapper, mock(SweCommandRunner.class));
+        SweTaskFromCandidateRequest request = new SweTaskFromCandidateRequest();
+        request.setCandidateId(candidate.getId());
+
+        SweTaskDTO result = service.createTaskFromCandidate(request);
+
+        assertEquals(99L, result.getId());
+        verify(taskMapper, never()).insert(any());
+    }
+
+    @Test
+    void createTaskFromCandidateRejectsClearlyUnqualifiedCandidate() {
+        SweCandidateMapper candidateMapper = mock(SweCandidateMapper.class);
+        SweTaskMapper taskMapper = mock(SweTaskMapper.class);
+        SweCandidateEntity candidate = readyCandidate();
+        candidate.setScore(20);
+        when(candidateMapper.selectByIdForUpdate(candidate.getId())).thenReturn(candidate);
+
+        SwePipelineService service = newService(taskMapper, candidateMapper, mock(SweCommandRunner.class));
+        SweTaskFromCandidateRequest request = new SweTaskFromCandidateRequest();
+        request.setCandidateId(candidate.getId());
+
+        BusinessException error = assertThrows(BusinessException.class, () -> service.createTaskFromCandidate(request));
+
+        assertTrue(error.getMessage().contains("分数低于生产任务门槛"));
+        verify(taskMapper, never()).insert(any());
     }
 
     @Test
@@ -754,6 +799,10 @@ class SwePipelineServiceTest {
     }
 
     private SwePipelineService newService(SweCandidateMapper candidateMapper, SweCommandRunner commandRunner) {
+        return newService(mock(SweTaskMapper.class), candidateMapper, commandRunner);
+    }
+
+    private SwePipelineService newService(SweTaskMapper taskMapper, SweCandidateMapper candidateMapper, SweCommandRunner commandRunner) {
         SweProperties properties = new SweProperties();
         SweRuntimeSettingsService runtimeSettingsService = mock(SweRuntimeSettingsService.class);
         when(runtimeSettingsService.resolveQwenModel()).thenReturn(properties.getQwen());
@@ -766,7 +815,7 @@ class SwePipelineServiceTest {
         when(runtimeSettingsService.resolveOpusMaxStepsSchedule()).thenReturn("180,50,10");
         when(runtimeSettingsService.resolveModelTimeoutSeconds()).thenReturn(3600);
         return new SwePipelineService(
-                mock(SweTaskMapper.class),
+                taskMapper,
                 mock(SwePipelineRunMapper.class),
                 mock(SwePipelineStageMapper.class),
                 mock(SweArtifactMapper.class),
@@ -775,5 +824,21 @@ class SwePipelineServiceTest {
                 runtimeSettingsService,
                 commandRunner,
                 mock(SweAcceptanceReportService.class));
+    }
+
+    private SweCandidateEntity readyCandidate() {
+        SweCandidateEntity candidate = new SweCandidateEntity();
+        candidate.setId(12L);
+        candidate.setRepo("acme/project");
+        candidate.setPrUrl("https://github.com/acme/project/pull/7");
+        candidate.setBaseCommit("base");
+        candidate.setFixCommit("fix");
+        candidate.setPrimaryLanguage("python");
+        candidate.setIssueUrl("https://github.com/acme/project/issues/42");
+        candidate.setProblemStatement("Parser crashes on empty input");
+        candidate.setTestPatchPresent(true);
+        candidate.setScore(85);
+        candidate.setDuplicateStatus("NEW");
+        return candidate;
     }
 }

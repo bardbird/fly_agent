@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -376,16 +377,56 @@ public class GithubPullCandidateService {
             Integer page,
             Integer perPage,
             String candidateStatus,
-            String duplicateStatus) {
+            String duplicateStatus,
+            String language,
+            String dateField,
+            String dateFrom,
+            String dateTo,
+            Integer minScore,
+            Integer minGoldSourceFiles,
+            Integer maxGoldSourceFiles,
+            Integer minGoldLines,
+            Integer maxGoldLines,
+            Boolean testPatchPresent,
+            Boolean qualifiedOnly,
+            Boolean excludeTasked) {
         int resolvedPage = page == null ? 1 : Math.max(page, 1);
         int resolvedPerPage = perPage == null ? 10 : Math.min(Math.max(perPage, 1), 50);
-        LambdaQueryWrapper<SweCandidateEntity> countWrapper = candidateFilter(candidateStatus, duplicateStatus);
+        LambdaQueryWrapper<SweCandidateEntity> countWrapper = candidateFilter(
+                candidateStatus,
+                duplicateStatus,
+                language,
+                dateField,
+                dateFrom,
+                dateTo,
+                minScore,
+                minGoldSourceFiles,
+                maxGoldSourceFiles,
+                minGoldLines,
+                maxGoldLines,
+                testPatchPresent,
+                qualifiedOnly,
+                excludeTasked);
         Long total = candidateMapper.selectCount(countWrapper);
         int totalPages = total == null || total == 0
                 ? 1
                 : (int) Math.ceil(total / (double) resolvedPerPage);
         int offset = (resolvedPage - 1) * resolvedPerPage;
-        LambdaQueryWrapper<SweCandidateEntity> wrapper = candidateFilter(candidateStatus, duplicateStatus)
+        LambdaQueryWrapper<SweCandidateEntity> wrapper = candidateFilter(
+                candidateStatus,
+                duplicateStatus,
+                language,
+                dateField,
+                dateFrom,
+                dateTo,
+                minScore,
+                minGoldSourceFiles,
+                maxGoldSourceFiles,
+                minGoldLines,
+                maxGoldLines,
+                testPatchPresent,
+                qualifiedOnly,
+                excludeTasked)
                 .orderByDesc(SweCandidateEntity::getModifiedAt)
                 .last("LIMIT " + offset + ", " + resolvedPerPage);
         GithubPullCandidateListResponse response = new GithubPullCandidateListResponse();
@@ -399,15 +440,147 @@ public class GithubPullCandidateService {
         return response;
     }
 
-    private LambdaQueryWrapper<SweCandidateEntity> candidateFilter(String candidateStatus, String duplicateStatus) {
+    private LambdaQueryWrapper<SweCandidateEntity> candidateFilter(
+            String candidateStatus,
+            String duplicateStatus,
+            String language,
+            String dateField,
+            String dateFrom,
+            String dateTo,
+            Integer minScore,
+            Integer minGoldSourceFiles,
+            Integer maxGoldSourceFiles,
+            Integer minGoldLines,
+            Integer maxGoldLines,
+            Boolean testPatchPresent,
+            Boolean qualifiedOnly,
+            Boolean excludeTasked) {
         LambdaQueryWrapper<SweCandidateEntity> wrapper = new LambdaQueryWrapper<>();
         if (StringUtils.hasText(candidateStatus)) {
-            wrapper.eq(SweCandidateEntity::getCandidateStatus, candidateStatus);
+            inCsv(wrapper, SweCandidateEntity::getCandidateStatus, candidateStatus);
         }
         if (StringUtils.hasText(duplicateStatus)) {
-            wrapper.eq(SweCandidateEntity::getDuplicateStatus, duplicateStatus);
+            inCsv(wrapper, SweCandidateEntity::getDuplicateStatus, duplicateStatus);
+        }
+        if (StringUtils.hasText(language)) {
+            inCsv(wrapper, SweCandidateEntity::getPrimaryLanguage, language.toLowerCase(Locale.ROOT));
+        }
+        if (minScore != null) {
+            wrapper.ge(SweCandidateEntity::getScore, minScore);
+        }
+        if (minGoldSourceFiles != null) {
+            wrapper.ge(SweCandidateEntity::getGoldSourceFiles, minGoldSourceFiles);
+        }
+        if (maxGoldSourceFiles != null) {
+            wrapper.le(SweCandidateEntity::getGoldSourceFiles, maxGoldSourceFiles);
+        }
+        if (minGoldLines != null) {
+            wrapper.ge(SweCandidateEntity::getGoldTotalChanged, minGoldLines);
+        }
+        if (maxGoldLines != null) {
+            wrapper.le(SweCandidateEntity::getGoldTotalChanged, maxGoldLines);
+        }
+        if (testPatchPresent != null) {
+            wrapper.eq(SweCandidateEntity::getTestPatchPresent, testPatchPresent);
+        }
+        if (Boolean.TRUE.equals(qualifiedOnly)) {
+            applyCandidateQualityGate(wrapper);
+        }
+        if (Boolean.TRUE.equals(excludeTasked)) {
+            wrapper.notExists("""
+                    SELECT 1
+                    FROM swe_task t
+                    WHERE t.candidate_id = id
+                       OR (t.source_url IS NOT NULL AND t.source_url = pr_url)
+                    """);
+        }
+        LocalDateTime start = parseDateBoundary(dateFrom, true);
+        LocalDateTime endExclusive = parseDateBoundary(dateTo, false);
+        if (start != null) {
+            switch (normalizedDateField(dateField)) {
+                case "created" -> wrapper.ge(SweCandidateEntity::getCreatedAt, start);
+                case "merged" -> wrapper.ge(SweCandidateEntity::getMergedAt, start);
+                case "updated" -> wrapper.ge(SweCandidateEntity::getUpdatedAt, start);
+                default -> wrapper.ge(SweCandidateEntity::getModifiedAt, start);
+            }
+        }
+        if (endExclusive != null) {
+            switch (normalizedDateField(dateField)) {
+                case "created" -> wrapper.lt(SweCandidateEntity::getCreatedAt, endExclusive);
+                case "merged" -> wrapper.lt(SweCandidateEntity::getMergedAt, endExclusive);
+                case "updated" -> wrapper.lt(SweCandidateEntity::getUpdatedAt, endExclusive);
+                default -> wrapper.lt(SweCandidateEntity::getModifiedAt, endExclusive);
+            }
         }
         return wrapper;
+    }
+
+    private void applyCandidateQualityGate(LambdaQueryWrapper<SweCandidateEntity> wrapper) {
+        wrapper.isNotNull(SweCandidateEntity::getRepo)
+                .ne(SweCandidateEntity::getRepo, "")
+                .isNotNull(SweCandidateEntity::getPrUrl)
+                .ne(SweCandidateEntity::getPrUrl, "")
+                .isNotNull(SweCandidateEntity::getBaseCommit)
+                .ne(SweCandidateEntity::getBaseCommit, "")
+                .isNotNull(SweCandidateEntity::getFixCommit)
+                .ne(SweCandidateEntity::getFixCommit, "")
+                .eq(SweCandidateEntity::getTestPatchPresent, true)
+                .and(nested -> nested
+                        .isNotNull(SweCandidateEntity::getIssueUrl)
+                        .ne(SweCandidateEntity::getIssueUrl, "")
+                        .or()
+                        .isNotNull(SweCandidateEntity::getProblemStatement)
+                        .ne(SweCandidateEntity::getProblemStatement, ""));
+    }
+
+    private void inCsv(
+            LambdaQueryWrapper<SweCandidateEntity> wrapper,
+            com.baomidou.mybatisplus.core.toolkit.support.SFunction<SweCandidateEntity, ?> column,
+            String value) {
+        List<String> values = csvValues(value);
+        if (values.size() == 1) {
+            wrapper.eq(column, values.get(0));
+        } else if (!values.isEmpty()) {
+            wrapper.in(column, values);
+        }
+    }
+
+    private List<String> csvValues(String value) {
+        if (!StringUtils.hasText(value)) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(value.split(","))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+    }
+
+    private String normalizedDateField(String dateField) {
+        if (!StringUtils.hasText(dateField)) {
+            return "modified";
+        }
+        String normalized = dateField.trim().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "created", "merged", "updated" -> normalized;
+            default -> "modified";
+        };
+    }
+
+    private LocalDateTime parseDateBoundary(String value, boolean start) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String trimmed = value.trim();
+        try {
+            if (trimmed.length() == 10) {
+                LocalDate date = LocalDate.parse(trimmed);
+                return start ? date.atStartOfDay() : date.plusDays(1).atStartOfDay();
+            }
+            return LocalDateTime.parse(trimmed);
+        } catch (Exception e) {
+            throw new BusinessException("候选日期参数格式错误，应为 yyyy-MM-dd 或 yyyy-MM-ddTHH:mm:ss");
+        }
     }
 
     private void requireRepoPrecheckAllowed(String repo) {

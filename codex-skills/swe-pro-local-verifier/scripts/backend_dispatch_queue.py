@@ -45,6 +45,7 @@ TASK_TERMINAL_STATUSES = {"COMPLETED", "DELIVERED"}
 TASK_ACTIVE_STATUSES = {"RUNNING"}
 READY_VALIDATION_STATUSES = {"pending_verifier", "claimed_verifier", "local_verified", "handoff_failed"}
 DISCOVER_BUSY_STATUSES = {"creating_task", "preparing_package", "pending_verifier", "claimed_verifier", "local_verified", "handed_off"}
+DISCOVER_SOURCES = {"sca-repo-scan", "candidate-db"}
 
 CANDIDATE_CSV_FIELDS = [
     "candidate_id",
@@ -373,6 +374,54 @@ def scan_candidates(args: argparse.Namespace, repo: str) -> list[dict[str, Any]]
         )
         candidates.extend(response.get("candidates") or [])
         if not response.get("hasMore"):
+            break
+        page += 1
+    return candidates
+
+
+def candidate_date_bounds(args: argparse.Namespace) -> tuple[str | None, str | None]:
+    if args.candidate_date:
+        return args.candidate_date, args.candidate_date
+    return args.candidate_from, args.candidate_to
+
+
+def list_candidate_db_page(args: argparse.Namespace, language: str, page: int) -> dict[str, Any]:
+    date_from, date_to = candidate_date_bounds(args)
+    return get_json(
+        args.base_url,
+        "/api/v1/swe/candidates",
+        {
+            "page": page,
+            "perPage": args.candidate_db_page_size,
+            "candidateStatus": args.candidate_statuses,
+            "duplicateStatus": args.duplicate_status,
+            "language": language,
+            "dateField": args.candidate_date_field,
+            "dateFrom": date_from,
+            "dateTo": date_to,
+            "minScore": args.min_score,
+            "minGoldSourceFiles": args.min_gold_source_files,
+            "maxGoldSourceFiles": args.max_gold_source_files,
+            "minGoldLines": args.min_gold_lines,
+            "maxGoldLines": args.max_gold_lines,
+            "testPatchPresent": True,
+            "qualifiedOnly": True,
+            "excludeTasked": True,
+        },
+    )
+
+
+def list_candidate_db_candidates(args: argparse.Namespace, language: str, max_candidates: int = 0) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    page = 1
+    max_pages = args.candidate_db_pages_per_language
+    while max_pages <= 0 or page <= max_pages:
+        response = list_candidate_db_page(args, language, page)
+        page_candidates = response.get("candidates") or []
+        candidates.extend(page_candidates)
+        if max_candidates > 0 and len(candidates) >= max_candidates:
+            return candidates[:max_candidates]
+        if page >= int(response.get("totalPages") or 1):
             break
         page += 1
     return candidates
@@ -745,15 +794,122 @@ def command_launch_tmux(args: argparse.Namespace) -> int:
     return 0
 
 
+def queue_candidate_from_discover(
+    args: argparse.Namespace,
+    *,
+    state_file: Path,
+    base_work_dir: Path,
+    discover_owner: str,
+    language: str,
+    repo: str,
+    candidate: dict[str, Any],
+    summary: dict[str, Any],
+    lang_summary: dict[str, Any],
+    total: int,
+    language_total: int,
+) -> tuple[int, int]:
+    key = candidate_key(candidate)
+    if args.dry_run:
+        total += 1
+        language_total += 1
+        lang_summary["candidates"] += 1
+        lang_summary["enqueued"] += 1
+        summary["enqueued"] += 1
+        print(
+            f"[dry-run] would queue language={language} repo={repo} "
+            f"pr=#{candidate.get('number')} key={key} package={Path(args.package_root).expanduser().resolve() / package_name(candidate)}",
+            flush=True,
+        )
+        return total, language_total
+
+    token = f"{discover_owner}:{time.time_ns()}"
+    reserved = reserve_candidate_for_discover(
+        state_file,
+        key,
+        token=token,
+        language=language,
+        repo=repo,
+        candidate=candidate,
+        owner=discover_owner,
+        stale_minutes=args.stale_claim_minutes,
+        overwrite=args.overwrite_queue_item,
+    )
+    if not reserved:
+        summary["skipped"] += 1
+        return total, language_total
+
+    try:
+        if args.reuse_existing_task:
+            by_candidate, by_pr = load_tasks(args.base_url)
+            existing = existing_task_for(candidate, by_candidate, by_pr)
+        else:
+            existing = None
+        task = create_or_reuse_task(args, candidate, existing)
+        if task is None:
+            update_reserved_item(
+                state_file,
+                key,
+                token,
+                status="skipped",
+                skip_reason="existing task is active or completed",
+            )
+            summary["skipped"] += 1
+            return total, language_total
+
+        update_reserved_item(
+            state_file,
+            key,
+            token,
+            status="preparing_package",
+            task_id=task.get("id"),
+            task_name=task.get("taskName") or task_name(candidate),
+            task_status=task.get("status"),
+        )
+        item_dir = base_work_dir / key.replace(":", "_").replace("/", "_").replace("#", "_")
+        package_path = prepare_package(args, candidate, item_dir)
+        enqueued = enqueue_item(
+            state_file,
+            key,
+            token=token,
+            language=language,
+            repo=repo,
+            candidate=candidate,
+            task=task,
+            package_path=package_path,
+            item_dir=item_dir,
+            overwrite=args.overwrite_queue_item,
+        )
+        if not enqueued:
+            summary["skipped"] += 1
+            return total, language_total
+
+        total += 1
+        language_total += 1
+        lang_summary["candidates"] += 1
+        lang_summary["enqueued"] += 1
+        summary["enqueued"] += 1
+        print(f"[{language}] queued repo={repo} pr=#{candidate.get('number')} package={package_path}", flush=True)
+    except Exception as exc:
+        summary["failed"] += 1
+        update_reserved_item(state_file, key, token, status="failed", error=str(exc))
+        print(f"[{language}] enqueue failed key={key}: {exc}", file=sys.stderr, flush=True)
+
+    return total, language_total
+
+
 def command_discover(args: argparse.Namespace) -> int:
     state_file = Path(args.state_file).expanduser().resolve()
-    grouped = repos_by_language(args)
     base_work_dir = Path(args.work_dir).expanduser().resolve()
     discover_owner = f"{socket.gethostname()}:{os.getpid()}"
     summary = {
         "mode": "discover",
+        "source": args.source,
         "checked_from": args.checked_from,
         "checked_to": args.checked_to,
+        "candidate_date": args.candidate_date,
+        "candidate_from": args.candidate_from,
+        "candidate_to": args.candidate_to,
+        "candidate_date_field": args.candidate_date_field,
         "languages": {},
         "enqueued": 0,
         "skipped": 0,
@@ -762,6 +918,46 @@ def command_discover(args: argparse.Namespace) -> int:
     }
 
     total = 0
+    if args.source == "candidate-db":
+        for language in parse_languages(args.languages):
+            if args.max_total_candidates > 0 and total >= args.max_total_candidates:
+                break
+            try:
+                needed = args.max_candidates_per_language
+                if args.max_total_candidates > 0:
+                    remaining = args.max_total_candidates - total
+                    needed = remaining if needed <= 0 else min(needed, remaining)
+                candidates = list_candidate_db_candidates(args, language, needed)
+            except Exception as exc:
+                summary["failed"] += 1
+                print(f"[{language}] candidate-db query failed: {exc}", file=sys.stderr, flush=True)
+                continue
+            lang_summary = summary["languages"].setdefault(language, {"repos": 0, "candidates": 0, "enqueued": 0})
+            language_total = 0
+            print(f"[{language}] candidate-db candidates={len(candidates)}", flush=True)
+            for candidate in candidates:
+                if args.max_total_candidates > 0 and total >= args.max_total_candidates:
+                    break
+                if args.max_candidates_per_language > 0 and language_total >= args.max_candidates_per_language:
+                    break
+                repo = str(candidate.get("repo") or "")
+                total, language_total = queue_candidate_from_discover(
+                    args,
+                    state_file=state_file,
+                    base_work_dir=base_work_dir,
+                    discover_owner=discover_owner,
+                    language=language,
+                    repo=repo,
+                    candidate=candidate,
+                    summary=summary,
+                    lang_summary=lang_summary,
+                    total=total,
+                    language_total=language_total,
+                )
+        print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
+        return 1 if summary["failed"] else 0
+
+    grouped = repos_by_language(args)
     for language, repos in grouped.items():
         if args.max_repos_per_language > 0:
             repos = repos[: args.max_repos_per_language]
@@ -786,87 +982,19 @@ def command_discover(args: argparse.Namespace) -> int:
                     break
                 if args.max_candidates_per_language > 0 and language_total >= args.max_candidates_per_language:
                     break
-                key = candidate_key(candidate)
-                if args.dry_run:
-                    total += 1
-                    language_total += 1
-                    lang_summary["candidates"] += 1
-                    lang_summary["enqueued"] += 1
-                    summary["enqueued"] += 1
-                    print(
-                        f"[dry-run] would queue language={language} repo={repo} "
-                        f"pr=#{candidate.get('number')} key={key} package={Path(args.package_root).expanduser().resolve() / package_name(candidate)}",
-                        flush=True,
-                    )
-                    continue
-                token = f"{discover_owner}:{time.time_ns()}"
-                reserved = reserve_candidate_for_discover(
-                    state_file,
-                    key,
-                    token=token,
+                total, language_total = queue_candidate_from_discover(
+                    args,
+                    state_file=state_file,
+                    base_work_dir=base_work_dir,
+                    discover_owner=discover_owner,
                     language=language,
                     repo=repo,
                     candidate=candidate,
-                    owner=discover_owner,
-                    stale_minutes=args.stale_claim_minutes,
-                    overwrite=args.overwrite_queue_item,
+                    summary=summary,
+                    lang_summary=lang_summary,
+                    total=total,
+                    language_total=language_total,
                 )
-                if not reserved:
-                    summary["skipped"] += 1
-                    continue
-                try:
-                    if args.reuse_existing_task:
-                        by_candidate, by_pr = load_tasks(args.base_url)
-                        existing = existing_task_for(candidate, by_candidate, by_pr)
-                    else:
-                        existing = None
-                    task = create_or_reuse_task(args, candidate, existing)
-                    if task is None:
-                        update_reserved_item(
-                            state_file,
-                            key,
-                            token,
-                            status="skipped",
-                            skip_reason="existing task is active or completed",
-                        )
-                        summary["skipped"] += 1
-                        continue
-                    update_reserved_item(
-                        state_file,
-                        key,
-                        token,
-                        status="preparing_package",
-                        task_id=task.get("id"),
-                        task_name=task.get("taskName") or task_name(candidate),
-                        task_status=task.get("status"),
-                    )
-                    item_dir = base_work_dir / key.replace(":", "_").replace("/", "_").replace("#", "_")
-                    package_path = prepare_package(args, candidate, item_dir)
-                    enqueued = enqueue_item(
-                        state_file,
-                        key,
-                        token=token,
-                        language=language,
-                        repo=repo,
-                        candidate=candidate,
-                        task=task,
-                        package_path=package_path,
-                        item_dir=item_dir,
-                        overwrite=args.overwrite_queue_item,
-                    )
-                    if not enqueued:
-                        summary["skipped"] += 1
-                        continue
-                    total += 1
-                    language_total += 1
-                    lang_summary["candidates"] += 1
-                    lang_summary["enqueued"] += 1
-                    summary["enqueued"] += 1
-                    print(f"[{language}] queued repo={repo} pr=#{candidate.get('number')} package={package_path}", flush=True)
-                except Exception as exc:
-                    summary["failed"] += 1
-                    update_reserved_item(state_file, key, token, status="failed", error=str(exc))
-                    print(f"[{language}] enqueue failed key={key}: {exc}", file=sys.stderr, flush=True)
 
     print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
     return 1 if summary["failed"] else 0
@@ -991,10 +1119,18 @@ def validate_discover_args(parser: argparse.ArgumentParser, args: argparse.Names
     languages = parse_languages(args.languages)
     if not languages:
         parser.error("discover requires explicit --languages, for example --languages go or --languages go,python; 'all' is not allowed")
-    if args.max_repos_per_language <= 0:
-        parser.error("discover requires --max-repos-per-language > 0")
-    if args.candidate_limit_per_repo <= 0:
-        parser.error("discover requires --candidate-limit-per-repo > 0")
+    if args.source not in DISCOVER_SOURCES:
+        parser.error(f"discover --source must be one of: {', '.join(sorted(DISCOVER_SOURCES))}")
+    if args.source == "sca-repo-scan":
+        if args.max_repos_per_language <= 0:
+            parser.error("discover with --source sca-repo-scan requires --max-repos-per-language > 0")
+        if args.candidate_limit_per_repo <= 0:
+            parser.error("discover with --source sca-repo-scan requires --candidate-limit-per-repo > 0")
+    if args.source == "candidate-db":
+        if not args.candidate_date and not args.candidate_from and not args.candidate_to:
+            parser.error("discover with --source candidate-db requires --candidate-date or --candidate-from/--candidate-to")
+        if args.max_total_candidates <= 0 and args.max_candidates_per_language <= 0:
+            parser.error("discover with --source candidate-db requires --max-total-candidates or --max-candidates-per-language")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1004,18 +1140,26 @@ def build_parser() -> argparse.ArgumentParser:
     today = today_text()
     discover = sub.add_parser("discover", help="Discover candidates and enqueue package-local verifier work.")
     add_common_api_args(discover)
+    discover.add_argument("--source", choices=sorted(DISCOVER_SOURCES), default="sca-repo-scan")
     discover.add_argument("--checked-from", default=today)
     discover.add_argument("--checked-to", default=today)
     discover.add_argument("--languages", required=True)
     discover.add_argument("--in-candidate", action=argparse.BooleanOptionalAction, default=None)
     discover.add_argument("--repo-page-size", type=positive_int, default=100)
-    discover.add_argument("--max-repos-per-language", type=positive_int, required=True)
+    discover.add_argument("--max-repos-per-language", type=non_negative_int, default=0)
     discover.add_argument("--max-candidates-per-language", type=non_negative_int, default=0)
     discover.add_argument("--max-total-candidates", type=non_negative_int, default=0)
     discover.add_argument("--scan-days", type=positive_int, default=365)
-    discover.add_argument("--candidate-limit-per-repo", type=positive_int, required=True)
+    discover.add_argument("--candidate-limit-per-repo", type=non_negative_int, default=0)
     discover.add_argument("--candidate-pages-per-repo", type=positive_int, default=1)
     discover.add_argument("--candidate-scan-page-size", type=positive_int, default=10)
+    discover.add_argument("--candidate-db-page-size", type=positive_int, default=50)
+    discover.add_argument("--candidate-db-pages-per-language", type=non_negative_int, default=0)
+    discover.add_argument("--candidate-date", default="")
+    discover.add_argument("--candidate-from", default="")
+    discover.add_argument("--candidate-to", default="")
+    discover.add_argument("--candidate-date-field", choices=["created", "modified", "merged", "updated"], default="created")
+    discover.add_argument("--duplicate-status", default="NEW")
     discover.add_argument("--min-gold-source-files", type=int)
     discover.add_argument("--max-gold-source-files", type=int)
     discover.add_argument("--min-gold-lines", type=int)

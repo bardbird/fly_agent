@@ -42,19 +42,36 @@ python3 tools/swe-pro-production/scripts/package_task.py <package_dir> --docker
 
 ## Batch Entry
 
-For backend-driven batches, the required entry is:
+For backend-driven batches, the default SCA-repo scan entry is:
 
 ```bash
 python3 codex-skills/swe-pro-local-verifier/scripts/backend_dispatch_queue.py discover \
+  --source sca-repo-scan \
   --languages <language[,language...]> \
   --max-repos-per-language <positive-count> \
   --candidate-limit-per-repo <positive-count>
 ```
 
-`discover` refuses to run without explicit language, repo count, and per-repo
-candidate count. It may create/reuse backend tasks and initialize packages, but
-must not start backend model evaluation. Use `claim` in each CLI window, or
-open visible workers with:
+To enqueue already persisted candidate PRs from the candidate DB, use:
+
+```bash
+python3 codex-skills/swe-pro-local-verifier/scripts/backend_dispatch_queue.py discover \
+  --source candidate-db \
+  --candidate-date <yyyy-mm-dd> \
+  --duplicate-status NEW \
+  --languages <language[,language...]> \
+  --max-total-candidates <positive-count>
+```
+
+`candidate-db` discovery uses backend candidate filters with
+`qualifiedOnly=true` and `excludeTasked=true`, so it skips candidates missing
+basic package evidence and candidates that already have a task by candidate id
+or PR URL. `discover` refuses to run without explicit languages. The
+`sca-repo-scan` source also requires repo count and per-repo candidate count;
+the `candidate-db` source requires a candidate date/range plus a per-language
+or total candidate limit. Discovery may create/reuse backend tasks and
+initialize packages, but must not start backend model evaluation. Use `claim`
+in each CLI window, or open visible workers with:
 
 ```bash
 python3 codex-skills/swe-pro-local-verifier/scripts/backend_dispatch_queue.py launch-tmux \
