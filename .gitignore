@@ -96,6 +96,8 @@ pnpm-debug.log*
 /swe-output/*
 /tb20-output
 /tb20-output/*
+/tb20-swe-results
+/tb20-swe-results/*
 
 # Local external tool checkouts and generated Python caches
 /tools/SWE-agent/

@@ -34,10 +34,10 @@ python3 "$SKILL_DIR/scripts/tb20_flow.py" deps --workspace "$WORKSPACE"
 python3 "$SKILL_DIR/scripts/tb20_flow.py" inspect --workspace "$WORKSPACE"
 python3 "$SKILL_DIR/scripts/tb20_flow.py" validate-task \
   --workspace "$WORKSPACE" \
-  --task sqlite-wal-forensic-recovery
+  --task medium/sqlite-wal-forensic-recovery
 python3 "$SKILL_DIR/scripts/tb20_flow.py" package \
   --workspace "$WORKSPACE" \
-  --task sqlite-wal-forensic-recovery \
+  --task medium/sqlite-wal-forensic-recovery \
   --copy-tasks
 python3 "$SKILL_DIR/scripts/tb20_flow.py" audit --workspace "$WORKSPACE"
 ```
