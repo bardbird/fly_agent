@@ -94,6 +94,7 @@ pnpm-debug.log*
 # 交付文件
 /swe-output
 /swe-output/*
+/tb20-output
 /tb20-output/*
 
 # Local external tool checkouts and generated Python caches

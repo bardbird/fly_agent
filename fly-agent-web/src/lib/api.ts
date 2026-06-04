@@ -19,6 +19,14 @@ import type {
   SweTaskCreateRequest,
   SweTaskFromCandidateRequest,
 } from '@/types/swe'
+import type {
+  Tb20ApiResult,
+  Tb20Blueprint,
+  Tb20DependencyStatus,
+  Tb20InspectRequest,
+  Tb20PipelineResponse,
+  Tb20Task,
+} from '@/types/tb20'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -28,6 +36,13 @@ export const api = axios.create({
 const GITHUB_PULL_SCAN_TIMEOUT_MS = 5 * 60 * 1000
 
 function unwrapResult<T>(response: { data: ApiResult<T> }): T {
+  if (response.data.code !== 'SUCCESS') {
+    throw new Error(response.data.message || '请求失败')
+  }
+  return response.data.data
+}
+
+function unwrapTb20Result<T>(response: { data: Tb20ApiResult<T> }): T {
   if (response.data.code !== 'SUCCESS') {
     throw new Error(response.data.message || '请求失败')
   }
@@ -441,3 +456,72 @@ export async function exportSweAllowedRepos(params?: {
   })
   return response.data
 }
+
+function normalizeTb20Response(response: Tb20PipelineResponse): Tb20PipelineResponse {
+  return {
+    ...response,
+    summary: response?.summary ?? {},
+    tasks: Array.isArray(response?.tasks) ? response.tasks : [],
+    dependencies: Array.isArray(response?.dependencies) ? response.dependencies : [],
+  }
+}
+
+export async function getTb20Blueprint(params?: {
+  harborRoot?: string
+  terminalBenchRoot?: string
+}): Promise<Tb20Blueprint> {
+  const response = unwrapTb20Result(
+    await api.get<Tb20ApiResult<Tb20Blueprint>>('/tb20/blueprint', { params })
+  )
+  return {
+    ...response,
+    requiredTaskFiles: Array.isArray(response?.requiredTaskFiles) ? response.requiredTaskFiles : [],
+    optionalDeliveryLogs: Array.isArray(response?.optionalDeliveryLogs) ? response.optionalDeliveryLogs : [],
+    stages: Array.isArray(response?.stages) ? response.stages : [],
+    nonAutomatableBoundaries: Array.isArray(response?.nonAutomatableBoundaries)
+      ? response.nonAutomatableBoundaries
+      : [],
+    aiScaleOutControls: Array.isArray(response?.aiScaleOutControls)
+      ? response.aiScaleOutControls
+      : [],
+    dependencies: Array.isArray(response?.dependencies) ? response.dependencies : [],
+  }
+}
+
+export async function checkTb20Dependencies(params?: {
+  harborRoot?: string
+  terminalBenchRoot?: string
+}): Promise<Tb20DependencyStatus[]> {
+  const response = unwrapTb20Result(
+    await api.get<Tb20ApiResult<Tb20DependencyStatus[]>>('/tb20/dependencies/check', { params })
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export async function inspectTb20Dataset(data: Tb20InspectRequest): Promise<Tb20PipelineResponse> {
+  return normalizeTb20Response(
+    unwrapTb20Result(await api.post<Tb20ApiResult<Tb20PipelineResponse>>('/tb20/inspect', data))
+  )
+}
+
+export async function runTb20Single(data: Tb20InspectRequest): Promise<Tb20PipelineResponse> {
+  return normalizeTb20Response(
+    unwrapTb20Result(
+      await api.post<Tb20ApiResult<Tb20PipelineResponse>>('/tb20/runs/single', data, {
+        timeout: 120000,
+      })
+    )
+  )
+}
+
+export async function runTb20Batch(data: Tb20InspectRequest): Promise<Tb20PipelineResponse> {
+  return normalizeTb20Response(
+    unwrapTb20Result(
+      await api.post<Tb20ApiResult<Tb20PipelineResponse>>('/tb20/runs/batch', data, {
+        timeout: 120000,
+      })
+    )
+  )
+}
+
+export type { Tb20Task }

@@ -4,8 +4,10 @@ import { useChatStore } from '@/store/chatStore'
 import { cn } from '@/lib/utils'
 import { formatTimestamp } from '@/lib/utils'
 import { Link } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 
 export function Sidebar() {
+  const location = useLocation()
   const {
     conversations,
     currentConversationId,
@@ -61,12 +63,19 @@ export function Sidebar() {
                   icon="mdi:message-processing-outline"
                   label="智能对话"
                   to="/"
-                  active
+                  active={location.pathname === '/'}
                 />
                 <WorkspaceLink
                   icon="mdi:source-branch-sync"
                   label="SWE-Pro 流水线"
                   to="/swe"
+                  active={location.pathname === '/swe'}
+                />
+                <WorkspaceLink
+                  icon="mdi:console-line"
+                  label="TB 2.0 流水线"
+                  to="/tb20"
+                  active={location.pathname === '/tb20'}
                 />
               </div>
             </div>
