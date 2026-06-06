@@ -97,6 +97,27 @@ public class SweRepoScanCursorService {
         scanCursorMapper.upsertProgress(entity);
     }
 
+    public void restart(
+            String language,
+            String keyword,
+            int minStars,
+            Integer initialMaxStars,
+            String summary) {
+        initializeSchema();
+        SweRepoScanCursorEntity entity = new SweRepoScanCursorEntity();
+        entity.setCursorKey(cursorKey(language, keyword, minStars, initialMaxStars));
+        entity.setLanguage(normalizeLanguage(language));
+        entity.setKeyword(normalizeKeyword(keyword));
+        entity.setMinStars(minStars);
+        entity.setInitialMaxStars(initialMaxStars);
+        entity.setCurrentMaxStars(initialMaxStars);
+        entity.setCurrentPage(1);
+        entity.setLastMinSeenStars(null);
+        entity.setExhausted(false);
+        entity.setLastSummary(limitSummary(summary));
+        scanCursorMapper.upsertProgress(entity);
+    }
+
     public void reset(String language, String keyword, int minStars, Integer initialMaxStars) {
         initializeSchema();
         scanCursorMapper.deleteByCursorKey(cursorKey(language, keyword, minStars, initialMaxStars));

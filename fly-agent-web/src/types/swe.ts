@@ -52,6 +52,33 @@ export interface SweRuntimeSettingsRequest {
   values: Record<string, string>
 }
 
+export interface GithubTokenPoolItem {
+  id: string
+  maskedToken: string
+  enabled: boolean
+  available: boolean
+  inUse: boolean
+  unavailableToday: boolean
+  inUseBy?: string
+  leasedUntil?: string
+  lastUsedAt?: string
+  unavailableAt?: string
+  unavailableReason?: string
+  updatedAt?: string
+}
+
+export interface GithubTokenPoolResponse {
+  tokens: GithubTokenPoolItem[]
+  totalCount: number
+  availableCount: number
+  inUseCount: number
+  unavailableTodayCount: number
+}
+
+export interface GithubTokenPoolSaveRequest {
+  tokens: string[]
+}
+
 export interface SweTaskFromCandidateRequest {
   candidateId: number
   taskName?: string

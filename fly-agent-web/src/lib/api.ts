@@ -2,6 +2,8 @@ import axios from 'axios'
 import type { SendMessageRequest } from '@/types/chat'
 import type {
   ApiResult,
+  GithubTokenPoolResponse,
+  GithubTokenPoolSaveRequest,
   GithubLanguage,
   GithubPullCandidateListResponse,
   GithubPullScanResponse,
@@ -51,6 +53,18 @@ function normalizeTask(task: SweTask | null | undefined): SweTask {
     status: task?.status ?? 'CREATED',
     ...task,
     recentRuns: Array.isArray(task?.recentRuns) ? task.recentRuns.map(normalizeRun) : [],
+  }
+}
+
+function normalizeGithubTokenPool(response: GithubTokenPoolResponse | null | undefined): GithubTokenPoolResponse {
+  const tokens = Array.isArray(response?.tokens) ? response.tokens : []
+  return {
+    tokens,
+    totalCount: response?.totalCount ?? tokens.length,
+    availableCount: response?.availableCount ?? tokens.filter((token) => token.available).length,
+    inUseCount: response?.inUseCount ?? tokens.filter((token) => token.inUse).length,
+    unavailableTodayCount:
+      response?.unavailableTodayCount ?? tokens.filter((token) => token.unavailableToday).length,
   }
 }
 
@@ -271,6 +285,44 @@ export async function saveSweRuntimeSettings(
   return {
     settings: Array.isArray(response?.settings) ? response.settings : [],
   }
+}
+
+export async function getGithubTokenPool(): Promise<GithubTokenPoolResponse> {
+  return normalizeGithubTokenPool(
+    unwrapResult(await api.get<ApiResult<GithubTokenPoolResponse>>('/swe/github/tokens'))
+  )
+}
+
+export async function addGithubTokens(
+  data: GithubTokenPoolSaveRequest
+): Promise<GithubTokenPoolResponse> {
+  return normalizeGithubTokenPool(
+    unwrapResult(await api.post<ApiResult<GithubTokenPoolResponse>>('/swe/github/tokens', data))
+  )
+}
+
+export async function deleteGithubTokens(ids: string[]): Promise<GithubTokenPoolResponse> {
+  return normalizeGithubTokenPool(
+    unwrapResult(await api.post<ApiResult<GithubTokenPoolResponse>>('/swe/github/tokens/delete', { ids }))
+  )
+}
+
+export async function enableGithubTokens(ids: string[]): Promise<GithubTokenPoolResponse> {
+  return normalizeGithubTokenPool(
+    unwrapResult(await api.post<ApiResult<GithubTokenPoolResponse>>('/swe/github/tokens/enable', { ids }))
+  )
+}
+
+export async function disableGithubTokens(ids: string[]): Promise<GithubTokenPoolResponse> {
+  return normalizeGithubTokenPool(
+    unwrapResult(await api.post<ApiResult<GithubTokenPoolResponse>>('/swe/github/tokens/disable', { ids }))
+  )
+}
+
+export async function resetGithubTokenTodayStatus(ids: string[]): Promise<GithubTokenPoolResponse> {
+  return normalizeGithubTokenPool(
+    unwrapResult(await api.post<ApiResult<GithubTokenPoolResponse>>('/swe/github/tokens/reset-today', { ids }))
+  )
 }
 
 export async function searchGithubRepositories(params: {

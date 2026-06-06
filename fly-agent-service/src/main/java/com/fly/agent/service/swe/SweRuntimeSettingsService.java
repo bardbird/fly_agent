@@ -88,6 +88,9 @@ public class SweRuntimeSettingsService {
     }
 
     public String resolveGithubToken(String fallback) {
+        if (StringUtils.hasText(fallback)) {
+            return fallback;
+        }
         String value = getStoredValue(KEY_GITHUB_TOKEN);
         return StringUtils.hasText(value) ? value : fallback;
     }
@@ -257,8 +260,6 @@ public class SweRuntimeSettingsService {
 
     private static Map<String, SettingDefinition> buildDefinitions() {
         Map<String, SettingDefinition> definitions = new LinkedHashMap<>();
-        definitions.put(KEY_GITHUB_TOKEN, new SettingDefinition(KEY_GITHUB_TOKEN, "GitHub Token", true,
-                "GitHub repository search and PR collection"));
         definitions.put(KEY_ZHIPU_API_KEY, new SettingDefinition(KEY_ZHIPU_API_KEY, "智谱 API Key", true,
                 "GLM chat model key"));
         definitions.put(KEY_QWEN_BASE_URL, new SettingDefinition(KEY_QWEN_BASE_URL, "Qwen Base URL", false,

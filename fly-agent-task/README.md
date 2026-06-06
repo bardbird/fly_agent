@@ -130,28 +130,22 @@ fly-agent-task/
 - **功能**: 按语言和 star 游标发现 GitHub repo，只落 SCA/license 报告，不做 PR 扫描
 - **JobHandler**: `sweRepoScaDiscoveryJob`
 - **默认语言**: `c,c++,ruby,rust,go,javascript,php,typescript,python,java`
-- **必填参数**:
-  ```json
-  {
-    "githubToken": "ghp_xxx"
-  }
-  ```
+- **GitHub Key**: 默认从 Redis 里的 GitHub Key 池租用可用 key；不需要在 XXL 参数中传 `githubToken`。
 - **默认行为**: 每种语言每天最多新增处理 `repoLimit=10` 个 repo；同一自然日重复触发会扣减当天已写入的 SCA 报告数，确保后续触发继续拿新仓库。
-- **画像过滤**: 许可证 SCA 前会通过 GitHub API 拉取 `/languages`、`/git/trees` 和少量 manifest blob，过滤语言过散或依赖过重的仓库；结果写入现有 `report_json.repositoryProfile`，不新增表字段。默认阈值为主语言占比 `>=0.70`、有效语言数 `<=4`、直接依赖数 `<=30`、manifest 文件数 `<=8`，画像接口异常时 fail-open，避免限流导致整批中断。
+- **画像过滤**: 许可证 SCA 前会通过 GitHub API 拉取 `/languages`、`/git/trees` 和少量 manifest blob，过滤语言过散或依赖过重的仓库；结果写入现有 `report_json.repositoryProfile`，不新增表字段。默认阈值为主语言占比 `>=0.50`、有效语言数 `<=8`、直接依赖数 `<=80`、manifest 文件数 `<=20`，画像接口异常时 fail-open，避免限流导致整批中断。
 - **生产参数建议**:
   ```json
   {
-    "githubToken": "ghp_xxx",
     "languages": ["python"],
     "minStars": 3000,
     "maxStars": 10000,
     "dailyRepoLimit": 1000,
     "perRunRepoLimit": 50,
     "profileFilterEnabled": true,
-    "minPrimaryLanguageRatio": 0.70,
-    "maxLanguageCount": 4,
-    "maxDirectDependencies": 30,
-    "maxManifestCount": 8,
+    "minPrimaryLanguageRatio": 0.50,
+    "maxLanguageCount": 8,
+    "maxDirectDependencies": 80,
+    "maxManifestCount": 20,
     "maxManifestDownloads": 3,
     "useStarCursor": true
   }
@@ -162,16 +156,11 @@ fly-agent-task/
 #### sweRepoCandidateBackfillJob
 - **功能**: 从 SCA 允许的 repo 池中回填 issue-grounded merged PR 候选
 - **JobHandler**: `sweRepoCandidateBackfillJob`
-- **必填参数**:
-  ```json
-  {
-    "githubToken": "ghp_xxx"
-  }
-  ```
+- **GitHub Key**: 默认从 Redis 里的 GitHub Key 池租用可用 key；`githubToken` 仅保留为旧任务兼容参数。
 - **默认行为**: 默认扫描全部支持语言，每种语言每天最多尝试 `repoLimit=10` 个 SCA allow repo；每个 repo 默认拉取 5 页、每页 30 个 closed PR；当天已经尝试过 candidate backfill 的 repo 会跳过，第二天重新计数。
 - **默认候选范围**: 源码文件数 `5-100`，Gold 行数 `108-1000`。
 - **候选硬门槛**: 回填调用 `GithubPullCandidateService.scanMergedPulls`，会执行 PR 元数据、变更文件、PR/issue 描述和评论中的上传、认证、云服务、依赖变更多、仓库过重等过滤逻辑。
-- **批量补齐任务**: 可使用 `scripts/upsert-swe-xxl-language-jobs.sql` 在 XXL-Job 数据库中补齐 10 种语言的 SCA discovery 和 candidate backfill 任务；脚本默认配置 `pullLimit=5`、`pullPerPage=30`、`pullPagesPerRepo=5`、`minGoldSourceFiles=5`、`maxGoldSourceFiles=100`、`minGoldLines=108`、`maxGoldLines=1000`；执行前替换脚本里的 `REPLACE_WITH_GITHUB_TOKEN`。
+- **批量补齐任务**: 可使用 `scripts/upsert-swe-xxl-language-jobs.sql` 在 XXL-Job 数据库中补齐 10 种语言的 SCA discovery 和 candidate backfill 任务；脚本默认配置 `pullLimit=5`、`pullPerPage=30`、`pullPagesPerRepo=5`、`minGoldSourceFiles=5`、`maxGoldSourceFiles=100`、`minGoldLines=108`、`maxGoldLines=1000`。
 
 ## 配置说明
 

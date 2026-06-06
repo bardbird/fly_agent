@@ -5,6 +5,9 @@ import com.fly.agent.common.dto.swe.GithubPullScanResponse;
 import com.fly.agent.common.dto.swe.GithubPullCandidateListResponse;
 import com.fly.agent.common.dto.swe.GithubRepositorySearchRequest;
 import com.fly.agent.common.dto.swe.GithubRepositorySearchResponse;
+import com.fly.agent.common.dto.swe.GithubTokenPoolResponse;
+import com.fly.agent.common.dto.swe.GithubTokenPoolSaveRequest;
+import com.fly.agent.common.dto.swe.GithubTokenPoolTokenIdsRequest;
 import com.fly.agent.common.dto.swe.SwePipelineRunDTO;
 import com.fly.agent.common.dto.swe.SwePipelineStartRequest;
 import com.fly.agent.common.dto.swe.SweRuntimeSettingsRequest;
@@ -18,6 +21,7 @@ import com.fly.agent.common.dto.swe.SweTaskDTO;
 import com.fly.agent.common.dto.swe.SweTaskFromCandidateRequest;
 import com.fly.agent.service.swe.GithubPullCandidateService;
 import com.fly.agent.service.swe.GithubRepositorySearchService;
+import com.fly.agent.service.swe.GithubTokenPoolService;
 import com.fly.agent.service.swe.SwePipelineService;
 import com.fly.agent.service.swe.SweRuntimeSettingsService;
 import com.fly.agent.service.swe.SweScaReportService;
@@ -55,6 +59,7 @@ public class SwePipelineController {
     private final GithubRepositorySearchService githubRepositorySearchService;
     private final GithubPullCandidateService githubPullCandidateService;
     private final SweRuntimeSettingsService sweRuntimeSettingsService;
+    private final GithubTokenPoolService githubTokenPoolService;
 
     @GetMapping("/settings")
     public Result<SweRuntimeSettingsResponse> getSettings() {
@@ -64,6 +69,36 @@ public class SwePipelineController {
     @PostMapping("/settings")
     public Result<SweRuntimeSettingsResponse> saveSettings(@RequestBody SweRuntimeSettingsRequest request) {
         return Result.ok(sweRuntimeSettingsService.saveSettings(request));
+    }
+
+    @GetMapping("/github/tokens")
+    public Result<GithubTokenPoolResponse> listGithubTokens() {
+        return Result.ok(githubTokenPoolService.listTokens());
+    }
+
+    @PostMapping("/github/tokens")
+    public Result<GithubTokenPoolResponse> addGithubTokens(@RequestBody GithubTokenPoolSaveRequest request) {
+        return Result.ok(githubTokenPoolService.addTokens(request == null ? null : request.getTokens()));
+    }
+
+    @PostMapping("/github/tokens/delete")
+    public Result<GithubTokenPoolResponse> deleteGithubTokens(@RequestBody GithubTokenPoolTokenIdsRequest request) {
+        return Result.ok(githubTokenPoolService.deleteTokens(request == null ? null : request.getIds()));
+    }
+
+    @PostMapping("/github/tokens/enable")
+    public Result<GithubTokenPoolResponse> enableGithubTokens(@RequestBody GithubTokenPoolTokenIdsRequest request) {
+        return Result.ok(githubTokenPoolService.enableTokens(request == null ? null : request.getIds(), true));
+    }
+
+    @PostMapping("/github/tokens/disable")
+    public Result<GithubTokenPoolResponse> disableGithubTokens(@RequestBody GithubTokenPoolTokenIdsRequest request) {
+        return Result.ok(githubTokenPoolService.enableTokens(request == null ? null : request.getIds(), false));
+    }
+
+    @PostMapping("/github/tokens/reset-today")
+    public Result<GithubTokenPoolResponse> resetGithubTokenTodayStatus(@RequestBody GithubTokenPoolTokenIdsRequest request) {
+        return Result.ok(githubTokenPoolService.resetTodayStatus(request == null ? null : request.getIds()));
     }
 
     @GetMapping("/github/repositories/search")

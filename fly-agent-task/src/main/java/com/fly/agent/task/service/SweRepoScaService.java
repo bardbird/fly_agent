@@ -7,6 +7,7 @@ import com.fly.agent.common.dto.swe.GithubRepositoryDTO;
 import com.fly.agent.dao.entity.swe.SweRepoScaReportEntity;
 import com.fly.agent.dao.mapper.swe.SweRepoScaReportMapper;
 import com.fly.agent.service.swe.GithubTokenContext;
+import com.fly.agent.service.swe.GithubTokenPoolService;
 import jakarta.annotation.PostConstruct;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -61,6 +62,7 @@ public class SweRepoScaService {
             "CDDL-1.1");
 
     private final SweRepoScaReportMapper scaReportMapper;
+    private final GithubTokenPoolService githubTokenPoolService;
 
     @Value("${swe.github.token:}")
     private String githubToken;
@@ -95,12 +97,23 @@ public class SweRepoScaService {
             Integer searchMinStars,
             Integer searchMaxStars,
             JSONObject repositoryProfile) {
+        String primaryLanguage = repository == null ? null : repository.getLanguage();
+        return analyzeRepo(repository, primaryLanguage, searchKeyword, searchMinStars, searchMaxStars, repositoryProfile);
+    }
+
+    public ScaDecision analyzeRepo(
+            GithubRepositoryDTO repository,
+            String scanLanguage,
+            String searchKeyword,
+            Integer searchMinStars,
+            Integer searchMaxStars,
+            JSONObject repositoryProfile) {
         if (repository == null) {
             return reject(null, null, null, "repo格式无效，无法生成SCA报告", null);
         }
         return analyzeRepo(
                 repository.getFullName(),
-                normalizeLanguage(repository.getLanguage()),
+                normalizeLanguage(scanLanguage),
                 repository.getStargazersCount(),
                 searchKeyword,
                 searchMinStars,
@@ -178,6 +191,12 @@ public class SweRepoScaService {
                 normalizeKeyword(keyword),
                 minStars,
                 maxStars,
+                scanDate);
+    }
+
+    public int countReposCheckedOnDateForLanguage(String language, LocalDate scanDate) {
+        return scaReportMapper.countReposCheckedOnDateForLanguage(
+                normalizeLanguage(language),
                 scanDate);
     }
 
@@ -262,7 +281,12 @@ public class SweRepoScaService {
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, response -> response.bodyToMono(String.class)
                         .defaultIfEmpty("")
-                        .map(body -> new IllegalStateException("GitHub license SCA failed: " + body)))
+                        .map(body -> {
+                            githubTokenPoolService.markCurrentTokenUnavailableIfGithubFailure(
+                                    response.statusCode(),
+                                    body);
+                            return new IllegalStateException("GitHub license SCA failed: " + body);
+                        }))
                 .bodyToMono(JSONObject.class)
                 .timeout(REQUEST_TIMEOUT)
                 .onErrorReturn(new JSONObject())

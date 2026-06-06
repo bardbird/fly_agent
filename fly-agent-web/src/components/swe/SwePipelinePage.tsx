@@ -1,14 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import { Icon } from '@iconify/react'
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
+  addGithubTokens,
   createSweTask,
   createSweTaskFromCandidate,
+  deleteGithubTokens,
+  disableGithubTokens,
+  enableGithubTokens,
   exportSweAllowedRepos,
+  getGithubTokenPool,
   getSweModelIoConsole,
   getSweRuntimeSettings,
   getSweRun,
@@ -18,6 +23,7 @@ import {
   listSweTasks,
   scanGithubMergedPullCandidates,
   searchGithubRepositories,
+  resetGithubTokenTodayStatus,
   saveSweRuntimeSettings,
   startSweRun,
 } from '@/lib/api'
@@ -27,6 +33,8 @@ import type {
   GithubPullScanResponse,
   GithubRepository,
   GithubSortOrder,
+  GithubTokenPoolItem,
+  GithubTokenPoolResponse,
   PipelineStatus,
   SweAllowedRepo,
   SweArtifact,
@@ -156,12 +164,26 @@ export function SwePipelinePage() {
   const [modelIoError, setModelIoError] = useState<string | null>(null)
   const [secretSettingsOpen, setSecretSettingsOpen] = useState(false)
   const [evaluationSettingsOpen, setEvaluationSettingsOpen] = useState(false)
+  const [githubTokenSettingsOpen, setGithubTokenSettingsOpen] = useState(false)
   const [runtimeSettings, setRuntimeSettings] = useState<SweRuntimeSetting[]>([])
   const [settingsForm, setSettingsForm] = useState<Record<string, string>>({})
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null)
+  const [githubTokenPool, setGithubTokenPool] = useState<GithubTokenPoolResponse>({
+    tokens: [],
+    totalCount: 0,
+    availableCount: 0,
+    inUseCount: 0,
+    unavailableTodayCount: 0,
+  })
+  const [githubTokenInput, setGithubTokenInput] = useState('')
+  const [githubTokenSelectedIds, setGithubTokenSelectedIds] = useState<string[]>([])
+  const [githubTokenLoading, setGithubTokenLoading] = useState(false)
+  const [githubTokenSaving, setGithubTokenSaving] = useState(false)
+  const [githubTokenError, setGithubTokenError] = useState<string | null>(null)
+  const [githubTokenMessage, setGithubTokenMessage] = useState<string | null>(null)
   const safeTasks = Array.isArray(tasks) ? tasks : []
   const safeRuns = Array.isArray(runs) ? runs : []
 
@@ -190,6 +212,17 @@ export function SwePipelinePage() {
     () => runtimeSettings.filter((setting) => setting.secret && setting.configured).length,
     [runtimeSettings]
   )
+
+  const modalOpen = secretSettingsOpen || evaluationSettingsOpen || githubTokenSettingsOpen
+
+  useEffect(() => {
+    if (!modalOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [modalOpen])
 
   async function refreshTasks(nextSelectedId?: number) {
     const nextTasks = await listSweTasks()
@@ -294,9 +327,29 @@ export function SwePipelinePage() {
     }
   }
 
+  async function refreshGithubTokenPool(quiet = false) {
+    if (!quiet) {
+      setGithubTokenLoading(true)
+    }
+    setGithubTokenError(null)
+    try {
+      const response = await getGithubTokenPool()
+      setGithubTokenPool(response)
+      setGithubTokenSelectedIds((current) =>
+        current.filter((id) => response.tokens.some((token) => token.id === id))
+      )
+    } catch (requestError) {
+      setGithubTokenError(requestError instanceof Error ? requestError.message : '加载 GitHub Key 失败')
+    } finally {
+      if (!quiet) {
+        setGithubTokenLoading(false)
+      }
+    }
+  }
+
   useEffect(() => {
     setLoading(true)
-    Promise.all([refreshTasks(), refreshCandidates(), refreshRuntimeSettings(true)])
+    Promise.all([refreshTasks(), refreshCandidates(), refreshRuntimeSettings(true), refreshGithubTokenPool(true)])
       .catch((requestError: unknown) =>
         setError(requestError instanceof Error ? requestError.message : '加载任务失败')
       )
@@ -541,6 +594,67 @@ export function SwePipelinePage() {
     }
   }
 
+  async function handleAddGithubTokens(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const tokens = githubTokenInput
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean)
+    if (tokens.length === 0) {
+      setGithubTokenError('请输入至少一个 GitHub Key')
+      return
+    }
+    setGithubTokenSaving(true)
+    setGithubTokenError(null)
+    setGithubTokenMessage(null)
+    try {
+      const response = await addGithubTokens({ tokens })
+      setGithubTokenPool(response)
+      setGithubTokenInput('')
+      setGithubTokenMessage(`已保存 ${tokens.length} 个 GitHub Key 到 Redis`)
+    } catch (requestError) {
+      setGithubTokenError(requestError instanceof Error ? requestError.message : '保存 GitHub Key 失败')
+    } finally {
+      setGithubTokenSaving(false)
+    }
+  }
+
+  async function handleGithubTokenAction(
+    action: (ids: string[]) => Promise<GithubTokenPoolResponse>,
+    successMessage: string,
+    ids = githubTokenSelectedIds
+  ) {
+    if (ids.length === 0) {
+      setGithubTokenError('请选择至少一个 GitHub Key')
+      return
+    }
+    setGithubTokenSaving(true)
+    setGithubTokenError(null)
+    setGithubTokenMessage(null)
+    try {
+      const response = await action(ids)
+      setGithubTokenPool(response)
+      setGithubTokenSelectedIds([])
+      setGithubTokenMessage(successMessage)
+    } catch (requestError) {
+      setGithubTokenError(requestError instanceof Error ? requestError.message : '操作 GitHub Key 失败')
+    } finally {
+      setGithubTokenSaving(false)
+    }
+  }
+
+  function toggleGithubTokenSelection(id: string) {
+    setGithubTokenSelectedIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    )
+  }
+
+  function closeSettingsModals() {
+    setSecretSettingsOpen(false)
+    setEvaluationSettingsOpen(false)
+    setGithubTokenSettingsOpen(false)
+  }
+
   return (
     <div className="h-screen overflow-y-auto bg-primary custom-scrollbar">
       <div className="sticky top-0 z-20 border-b border-terminal bg-white/90 px-4 py-3 backdrop-blur-lg">
@@ -559,8 +673,9 @@ export function SwePipelinePage() {
               type="button"
               className="inline-flex h-9 items-center gap-2 rounded-lg border border-terminal bg-white px-3 text-sm font-bold text-text-primary transition-colors hover:bg-tertiary/50"
               onClick={() => {
-                setSecretSettingsOpen((value) => !value)
+                setSecretSettingsOpen(true)
                 setEvaluationSettingsOpen(false)
+                setGithubTokenSettingsOpen(false)
                 if (runtimeSettings.length === 0) {
                   refreshRuntimeSettings()
                 }
@@ -578,8 +693,9 @@ export function SwePipelinePage() {
               type="button"
               className="inline-flex h-9 items-center gap-2 rounded-lg border border-terminal bg-white px-3 text-sm font-bold text-text-primary transition-colors hover:bg-tertiary/50"
               onClick={() => {
-                setEvaluationSettingsOpen((value) => !value)
+                setEvaluationSettingsOpen(true)
                 setSecretSettingsOpen(false)
+                setGithubTokenSettingsOpen(false)
                 if (runtimeSettings.length === 0) {
                   refreshRuntimeSettings()
                 }
@@ -587,6 +703,22 @@ export function SwePipelinePage() {
             >
               <Icon icon="mdi:tune-variant" className="h-4 w-4 text-cyan" />
               评测配置
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-terminal bg-white px-3 text-sm font-bold text-text-primary transition-colors hover:bg-tertiary/50"
+              onClick={() => {
+                setGithubTokenSettingsOpen(true)
+                setSecretSettingsOpen(false)
+                setEvaluationSettingsOpen(false)
+                refreshGithubTokenPool()
+              }}
+            >
+              <Icon icon="mdi:github" className="h-4 w-4 text-cyan" />
+              GitHub Key
+              <span className="rounded-full bg-tertiary px-1.5 py-0.5 text-[10px] text-text-secondary">
+                {githubTokenPool.availableCount}/{githubTokenPool.totalCount}
+              </span>
             </button>
             <Link
               to="/"
@@ -620,10 +752,13 @@ export function SwePipelinePage() {
           </div>
         )}
 
-        {secretSettingsOpen && (
+        <SettingsModal
+          open={secretSettingsOpen}
+          title="SWE-Pro 密钥设置"
+          icon="mdi:key-chain"
+          onClose={closeSettingsModals}
+        >
           <RuntimeSettingsPanel
-            title="SWE-Pro 密钥设置"
-            icon="mdi:key-chain"
             settings={runtimeSettings.filter((setting) => setting.secret)}
             values={settingsForm}
             loading={settingsLoading}
@@ -637,12 +772,15 @@ export function SwePipelinePage() {
             onRefresh={() => refreshRuntimeSettings()}
             onSubmit={handleSaveSettings}
           />
-        )}
+        </SettingsModal>
 
-        {evaluationSettingsOpen && (
+        <SettingsModal
+          open={evaluationSettingsOpen}
+          title="SWE-Pro 评测配置"
+          icon="mdi:tune-variant"
+          onClose={closeSettingsModals}
+        >
           <RuntimeSettingsPanel
-            title="SWE-Pro 评测配置"
-            icon="mdi:tune-variant"
             settings={runtimeSettings.filter((setting) => !setting.secret)}
             values={settingsForm}
             loading={settingsLoading}
@@ -656,7 +794,34 @@ export function SwePipelinePage() {
             onRefresh={() => refreshRuntimeSettings()}
             onSubmit={handleSaveSettings}
           />
-        )}
+        </SettingsModal>
+
+        <SettingsModal
+          open={githubTokenSettingsOpen}
+          title="GitHub Key 维护"
+          icon="mdi:github"
+          onClose={closeSettingsModals}
+        >
+          <GithubTokenPoolPanel
+            pool={githubTokenPool}
+            input={githubTokenInput}
+            selectedIds={githubTokenSelectedIds}
+            loading={githubTokenLoading}
+            saving={githubTokenSaving}
+            error={githubTokenError}
+            message={githubTokenMessage}
+            onInputChange={setGithubTokenInput}
+            onToggle={toggleGithubTokenSelection}
+            onRefresh={() => refreshGithubTokenPool()}
+            onSubmit={handleAddGithubTokens}
+            onEnable={() => handleGithubTokenAction(enableGithubTokens, '已启用选中的 GitHub Key')}
+            onDisable={() => handleGithubTokenAction(disableGithubTokens, '已停用选中的 GitHub Key')}
+            onResetToday={() =>
+              handleGithubTokenAction(resetGithubTokenTodayStatus, '已重置选中 GitHub Key 的今日状态')
+            }
+            onDelete={() => handleGithubTokenAction(deleteGithubTokens, '已删除选中的 GitHub Key')}
+          />
+        </SettingsModal>
 
         <WorkflowStepper activeStep={activeStep} onChange={setActiveStep} />
 
@@ -824,8 +989,6 @@ function buildSettingsForm(settings: SweRuntimeSetting[]): Record<string, string
 }
 
 function RuntimeSettingsPanel({
-  title,
-  icon,
   settings,
   values,
   loading,
@@ -836,8 +999,6 @@ function RuntimeSettingsPanel({
   onRefresh,
   onSubmit,
 }: {
-  title: string
-  icon: string
   settings: SweRuntimeSetting[]
   values: Record<string, string>
   loading: boolean
@@ -851,13 +1012,10 @@ function RuntimeSettingsPanel({
   return (
     <form
       onSubmit={(event) => onSubmit(event, settings)}
-      className="mb-4 rounded-lg border border-terminal bg-white p-4 shadow-sm"
+      className="space-y-4"
     >
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-2">
-          <Icon icon={icon} className="h-5 w-5 text-cyan" />
-          <h3 className="text-sm font-bold text-text-primary">{title}</h3>
-        </div>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="text-xs text-text-secondary">配置会写入 Redis，密钥字段留空表示保持当前值。</div>
         <div className="flex gap-2">
           <Button type="button" size="sm" variant="outline" disabled={loading} onClick={onRefresh}>
             刷新
@@ -882,27 +1040,286 @@ function RuntimeSettingsPanel({
       {loading && settings.length === 0 ? (
         <EmptyState icon="mdi:loading" text="加载中" />
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2">
           {settings.map((setting) =>
             setting.secret ? (
-                <SecretSettingField
-                  key={setting.key}
-                  setting={setting}
-                  value={values[setting.key] ?? ''}
-                  onChange={(value) => onChange(setting.key, value)}
-                />
+              <SecretSettingField
+                key={setting.key}
+                setting={setting}
+                value={values[setting.key] ?? ''}
+                onChange={(value) => onChange(setting.key, value)}
+              />
             ) : (
-                <SettingField
-                  key={setting.key}
-                  setting={setting}
-                  value={values[setting.key] ?? ''}
-                  onChange={(value) => onChange(setting.key, value)}
-                />
+              <SettingField
+                key={setting.key}
+                setting={setting}
+                value={values[setting.key] ?? ''}
+                onChange={(value) => onChange(setting.key, value)}
+              />
             )
           )}
         </div>
       )}
     </form>
+  )
+}
+
+function SettingsModal({
+  open,
+  title,
+  icon,
+  children,
+  onClose,
+}: {
+  open: boolean
+  title: string
+  icon: string
+  children: ReactNode
+  onClose: () => void
+}) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/35 p-4 pt-16 backdrop-blur-sm">
+      <button
+        type="button"
+        aria-label="关闭"
+        className="absolute inset-0 h-full w-full cursor-default"
+        onClick={onClose}
+      />
+      <section className="relative z-10 flex max-h-[calc(100vh-6rem)] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-terminal bg-white shadow-2xl">
+        <div className="flex items-center justify-between gap-3 border-b border-terminal px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Icon icon={icon} className="h-5 w-5 flex-shrink-0 text-cyan" />
+            <h3 className="truncate text-sm font-bold text-text-primary">{title}</h3>
+          </div>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-tertiary"
+            onClick={onClose}
+          >
+            <Icon icon="mdi:close" className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="overflow-y-auto p-4 custom-scrollbar">{children}</div>
+      </section>
+    </div>
+  )
+}
+
+function GithubTokenPoolPanel({
+  pool,
+  input,
+  selectedIds,
+  loading,
+  saving,
+  error,
+  message,
+  onInputChange,
+  onToggle,
+  onRefresh,
+  onSubmit,
+  onEnable,
+  onDisable,
+  onResetToday,
+  onDelete,
+}: {
+  pool: GithubTokenPoolResponse
+  input: string
+  selectedIds: string[]
+  loading: boolean
+  saving: boolean
+  error: string | null
+  message: string | null
+  onInputChange: (value: string) => void
+  onToggle: (id: string) => void
+  onRefresh: () => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onEnable: () => void
+  onDisable: () => void
+  onResetToday: () => void
+  onDelete: () => void
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-2 text-xs text-text-secondary sm:grid-cols-4">
+        <TokenPoolMetric label="总数" value={pool.totalCount} />
+        <TokenPoolMetric label="可用" value={pool.availableCount} tone="success" />
+        <TokenPoolMetric label="使用中" value={pool.inUseCount} tone="info" />
+        <TokenPoolMetric label="今日不可用" value={pool.unavailableTodayCount} tone="danger" />
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          {error}
+        </div>
+      )}
+      {message && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+          {message}
+        </div>
+      )}
+
+      <form onSubmit={onSubmit} className="space-y-2">
+        <label className="block text-xs font-medium text-text-secondary">新增 GitHub Key</label>
+        <textarea
+          className="input-base min-h-28 resize-y text-sm"
+          value={input}
+          placeholder="每行一个 GitHub token，或用空格分隔"
+          onChange={(event) => onInputChange(event.target.value)}
+        />
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" size="sm" variant="outline" disabled={loading} onClick={onRefresh}>
+            刷新
+          </Button>
+          <Button type="submit" size="sm" disabled={saving}>
+            {saving ? '保存中' : '保存到 Redis'}
+          </Button>
+        </div>
+      </form>
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs text-text-secondary">已选 {selectedIds.length} 个</div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" disabled={saving} onClick={onEnable}>
+            启用
+          </Button>
+          <Button type="button" size="sm" variant="outline" disabled={saving} onClick={onDisable}>
+            停用
+          </Button>
+          <Button type="button" size="sm" variant="outline" disabled={saving} onClick={onResetToday}>
+            重置今日状态
+          </Button>
+          <Button type="button" size="sm" variant="outline" disabled={saving} onClick={onDelete}>
+            删除
+          </Button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-terminal">
+        <table className="min-w-full text-left text-xs">
+          <thead className="bg-tertiary text-text-secondary">
+            <tr>
+              <th className="w-10 px-3 py-2"></th>
+              <th className="px-3 py-2">Key</th>
+              <th className="px-3 py-2">状态</th>
+              <th className="px-3 py-2">占用</th>
+              <th className="px-3 py-2">最近使用</th>
+              <th className="px-3 py-2">失败原因</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && pool.tokens.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-3 py-8">
+                  <EmptyState icon="mdi:loading" text="加载中" />
+                </td>
+              </tr>
+            ) : pool.tokens.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-3 py-8">
+                  <EmptyState icon="mdi:key-remove" text="暂无 GitHub Key" />
+                </td>
+              </tr>
+            ) : (
+              pool.tokens.map((token) => (
+                <GithubTokenRow
+                  key={token.id}
+                  token={token}
+                  selected={selectedIds.includes(token.id)}
+                  onToggle={() => onToggle(token.id)}
+                />
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function TokenPoolMetric({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string
+  value: number
+  tone?: 'default' | 'success' | 'info' | 'danger'
+}) {
+  return (
+    <div className="rounded-lg border border-terminal bg-slate-50 px-3 py-2">
+      <div className="text-[11px] text-text-muted">{label}</div>
+      <div
+        className={cn(
+          'mt-1 text-lg font-bold',
+          tone === 'success' && 'text-emerald-700',
+          tone === 'info' && 'text-cyan',
+          tone === 'danger' && 'text-rose-700',
+          tone === 'default' && 'text-text-primary'
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  )
+}
+
+function GithubTokenRow({
+  token,
+  selected,
+  onToggle,
+}: {
+  token: GithubTokenPoolItem
+  selected: boolean
+  onToggle: () => void
+}) {
+  return (
+    <tr className="border-t border-terminal align-top">
+      <td className="px-3 py-2">
+        <input type="checkbox" checked={selected} onChange={onToggle} />
+      </td>
+      <td className="px-3 py-2 font-mono text-text-primary">{token.maskedToken}</td>
+      <td className="px-3 py-2">
+        <div className="flex flex-wrap gap-1">
+          <StatusPill active={token.enabled} label={token.enabled ? '启用' : '停用'} />
+          {token.available && <StatusPill active label="可用" />}
+          {token.unavailableToday && <StatusPill active={false} label="今日不可用" />}
+        </div>
+      </td>
+      <td className="px-3 py-2 text-text-secondary">
+        {token.inUse ? (
+          <div>
+            <div className="font-medium text-cyan">使用中</div>
+            <div className="max-w-40 truncate" title={token.inUseBy}>
+              {token.inUseBy}
+            </div>
+          </div>
+        ) : (
+          '空闲'
+        )}
+      </td>
+      <td className="px-3 py-2 text-text-secondary">{formatDateTime(token.lastUsedAt)}</td>
+      <td className="max-w-72 px-3 py-2 text-text-secondary">
+        <div className="line-clamp-2" title={token.unavailableReason}>
+          {token.unavailableReason || '-'}
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function StatusPill({ active, label }: { active: boolean; label: string }) {
+  return (
+    <span
+      className={cn(
+        'rounded-full border px-2 py-0.5 text-[10px] font-bold',
+        active
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          : 'border-rose-200 bg-rose-50 text-rose-700'
+      )}
+    >
+      {label}
+    </span>
   )
 }
 
@@ -2895,5 +3312,16 @@ function formatDate(value?: string) {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
+  })
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return '-'
+  return new Date(value).toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
   })
 }

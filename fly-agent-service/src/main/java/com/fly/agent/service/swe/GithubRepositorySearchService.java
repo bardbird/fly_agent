@@ -74,14 +74,17 @@ public class GithubRepositorySearchService {
     private final String githubToken;
     private final SweRepoPrecheckService repoPrecheckService;
     private final SweRuntimeSettingsService runtimeSettingsService;
+    private final GithubTokenPoolService githubTokenPoolService;
 
     public GithubRepositorySearchService(
             @Value("${swe.github.token:}") String githubToken,
             SweRepoPrecheckService repoPrecheckService,
-            SweRuntimeSettingsService runtimeSettingsService) {
+            SweRuntimeSettingsService runtimeSettingsService,
+            GithubTokenPoolService githubTokenPoolService) {
         this.githubToken = githubToken;
         this.repoPrecheckService = repoPrecheckService;
         this.runtimeSettingsService = runtimeSettingsService;
+        this.githubTokenPoolService = githubTokenPoolService;
         WebClient.Builder builder = WebClient.builder()
                 .baseUrl(GITHUB_API_BASE_URL)
                 .defaultHeader(HttpHeaders.ACCEPT, "application/vnd.github+json")
@@ -116,7 +119,13 @@ public class GithubRepositorySearchService {
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, response -> response.bodyToMono(String.class)
                         .defaultIfEmpty("")
-                        .map(body -> new BusinessException("GitHub 搜索失败: " + extractGithubErrorMessage(body))))
+                        .map(body -> {
+                            String message = extractGithubErrorMessage(body);
+                            githubTokenPoolService.markCurrentTokenUnavailableIfGithubFailure(
+                                    response.statusCode(),
+                                    message);
+                            return new BusinessException("GitHub 搜索失败: " + message);
+                        }))
                 .bodyToMono(JSONObject.class)
                 .timeout(REQUEST_TIMEOUT)
                 .block();
@@ -138,7 +147,7 @@ public class GithubRepositorySearchService {
             response.setRepositories(items.stream()
                     .map(this::toJsonObject)
                     .map(this::toRepository)
-                    .filter(repository -> !Boolean.FALSE.equals(request.getPrecheckFilter())
+                    .filter(repository -> !Boolean.TRUE.equals(request.getPrecheckFilter())
                             || repoPrecheckService.allows(repository.getFullName()))
                     .toList());
         }

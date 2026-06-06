@@ -1,9 +1,8 @@
 -- Upsert SWE language jobs into an XXL-Job 2.4.x database.
--- Replace @github_token before enabling these jobs. githubToken is required by the handlers.
+-- GitHub keys are managed by the Redis-backed key pool; job params do not include githubToken.
 
 SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 SET @executor_appname = 'fly-agent-executor' COLLATE utf8mb4_0900_ai_ci;
-SET @github_token = 'REPLACE_WITH_GITHUB_TOKEN' COLLATE utf8mb4_0900_ai_ci;
 SET @swe_min_stars = 3000;
 SET @swe_max_stars = 10000;
 SET @sca_daily_repo_limit = 1000;
@@ -50,17 +49,16 @@ JOIN tmp_swe_languages l
 SET j.job_desc = CONCAT('SWE SCA Discovery - ', l.language),
     j.update_time = NOW(),
     j.executor_param = JSON_OBJECT(
-        'githubToken', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(j.executor_param, '$.githubToken')), @github_token),
         'languages', JSON_ARRAY(l.language),
         'minStars', @swe_min_stars,
         'maxStars', @swe_max_stars,
         'dailyRepoLimit', @sca_daily_repo_limit,
         'perRunRepoLimit', @sca_per_run_repo_limit,
         'profileFilterEnabled', true,
-        'minPrimaryLanguageRatio', 0.70,
-        'maxLanguageCount', 4,
-        'maxDirectDependencies', 30,
-        'maxManifestCount', 8,
+        'minPrimaryLanguageRatio', 0.50,
+        'maxLanguageCount', 8,
+        'maxDirectDependencies', 80,
+        'maxManifestCount', 20,
         'maxManifestDownloads', 3,
         'useStarCursor', true
     ),
@@ -78,7 +76,6 @@ JOIN tmp_swe_languages l
 SET j.job_desc = CONCAT('SWE Candidate Backfill - ', l.language),
     j.update_time = NOW(),
     j.executor_param = JSON_OBJECT(
-        'githubToken', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(j.executor_param, '$.githubToken')), @github_token),
         'languages', JSON_ARRAY(l.language),
         'dailyRepoLimit', @candidate_daily_repo_limit,
         'perRunRepoLimit', @candidate_per_run_repo_limit,
@@ -135,17 +132,16 @@ SELECT
     'ROUND',
     'sweRepoScaDiscoveryJob',
     JSON_OBJECT(
-        'githubToken', @github_token,
         'languages', JSON_ARRAY(language),
         'minStars', @swe_min_stars,
         'maxStars', @swe_max_stars,
         'dailyRepoLimit', @sca_daily_repo_limit,
         'perRunRepoLimit', @sca_per_run_repo_limit,
         'profileFilterEnabled', true,
-        'minPrimaryLanguageRatio', 0.70,
-        'maxLanguageCount', 4,
-        'maxDirectDependencies', 30,
-        'maxManifestCount', 8,
+        'minPrimaryLanguageRatio', 0.50,
+        'maxLanguageCount', 8,
+        'maxDirectDependencies', 80,
+        'maxManifestCount', 20,
         'maxManifestDownloads', 3,
         'useStarCursor', true
     ),
@@ -175,17 +171,16 @@ JOIN tmp_swe_languages l
   ON j.job_desc = CONCAT('SWE SCA Discovery - ', l.language)
 SET j.update_time = NOW(),
     j.executor_param = JSON_OBJECT(
-        'githubToken', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(j.executor_param, '$.githubToken')), @github_token),
         'languages', JSON_ARRAY(l.language),
         'minStars', @swe_min_stars,
         'maxStars', @swe_max_stars,
         'dailyRepoLimit', @sca_daily_repo_limit,
         'perRunRepoLimit', @sca_per_run_repo_limit,
         'profileFilterEnabled', true,
-        'minPrimaryLanguageRatio', 0.70,
-        'maxLanguageCount', 4,
-        'maxDirectDependencies', 30,
-        'maxManifestCount', 8,
+        'minPrimaryLanguageRatio', 0.50,
+        'maxLanguageCount', 8,
+        'maxDirectDependencies', 80,
+        'maxManifestCount', 20,
         'maxManifestDownloads', 3,
         'useStarCursor', true
     ),
@@ -235,7 +230,6 @@ SELECT
     'ROUND',
     'sweRepoCandidateBackfillJob',
     JSON_OBJECT(
-        'githubToken', @github_token,
         'languages', JSON_ARRAY(language),
         'dailyRepoLimit', @candidate_daily_repo_limit,
         'perRunRepoLimit', @candidate_per_run_repo_limit,
@@ -273,7 +267,6 @@ JOIN tmp_swe_languages l
   ON j.job_desc = CONCAT('SWE Candidate Backfill - ', l.language)
 SET j.update_time = NOW(),
     j.executor_param = JSON_OBJECT(
-        'githubToken', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(j.executor_param, '$.githubToken')), @github_token),
         'languages', JSON_ARRAY(l.language),
         'dailyRepoLimit', @candidate_daily_repo_limit,
         'perRunRepoLimit', @candidate_per_run_repo_limit,

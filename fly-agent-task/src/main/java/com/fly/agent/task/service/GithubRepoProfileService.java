@@ -165,8 +165,8 @@ public class GithubRepoProfileService {
 
     private int score(RepoProfileDecision decision, ProfileConstraints constraints) {
         int score = 0;
-        double minPrimaryLanguageRatio = constraints == null ? 0.70d : constraints.getMinPrimaryLanguageRatio();
-        int maxDirectDependencies = constraints == null ? 30 : constraints.getMaxDirectDependencies();
+        double minPrimaryLanguageRatio = constraints == null ? 0.50d : constraints.getMinPrimaryLanguageRatio();
+        int maxDirectDependencies = constraints == null ? 80 : constraints.getMaxDirectDependencies();
 
         Double ratio = decision.getPrimaryLanguageRatio();
         if (ratio != null) {
@@ -684,13 +684,13 @@ public class GithubRepoProfileService {
 
         private Boolean enabled = true;
 
-        private double minPrimaryLanguageRatio = 0.70d;
+        private double minPrimaryLanguageRatio = 0.50d;
 
-        private int maxLanguageCount = 4;
+        private int maxLanguageCount = 8;
 
-        private int maxDirectDependencies = 30;
+        private int maxDirectDependencies = 80;
 
-        private int maxManifestCount = 8;
+        private int maxManifestCount = 20;
 
         private int maxManifestDownloads = 3;
     }

@@ -11,6 +11,7 @@ import com.fly.agent.dao.mapper.swe.SweCandidateMapper;
 import com.fly.agent.service.swe.GithubPullCandidateService;
 import com.fly.agent.service.swe.GithubRepositorySearchService;
 import com.fly.agent.service.swe.GithubTokenContext;
+import com.fly.agent.service.swe.GithubTokenPoolService;
 import com.fly.agent.service.swe.SweRepoPrecheckService;
 import com.fly.agent.task.service.GithubRepoProfileService;
 import com.fly.agent.task.service.SweRepoBlacklistService;
@@ -66,6 +67,7 @@ public class SweRepoDiscoveryJob {
     private final GithubRepoProfileService repoProfileService;
     private final SweRepoPrecheckService repoPrecheckService;
     private final SweCandidateMapper candidateMapper;
+    private final GithubTokenPoolService githubTokenPoolService;
 
     /**
      * Imports the repo blacklist from the Excel file.
@@ -160,8 +162,7 @@ public class SweRepoDiscoveryJob {
 
     public String scanRepositories(String param) {
         ScanRequest request = parseScanRequest(param);
-        requireGithubToken(request);
-        return GithubTokenContext.withToken(request.getGithubToken(), () -> scanRepositories(request));
+        return withGithubTokenLease(request, "sweRepoDiscoveryJob", () -> scanRepositories(request));
     }
 
     private String scanRepositories(ScanRequest request) {
@@ -186,8 +187,7 @@ public class SweRepoDiscoveryJob {
 
     public String scanScaAllowedRepositories(String param) {
         ScanRequest request = parseScanRequest(param);
-        requireGithubToken(request);
-        return GithubTokenContext.withToken(request.getGithubToken(), () -> scanScaAllowedRepositories(request));
+        return withGithubTokenLease(request, "sweRepoScaAllowedDiscoveryJob", () -> scanScaAllowedRepositories(request));
     }
 
     private String scanScaAllowedRepositories(ScanRequest request) {
@@ -225,8 +225,7 @@ public class SweRepoDiscoveryJob {
 
     public String scanRepositoriesToSca(String param) {
         ScanRequest request = parseScanRequest(param);
-        requireGithubToken(request);
-        return GithubTokenContext.withToken(request.getGithubToken(), () -> scanRepositoriesToSca(request));
+        return withGithubTokenLease(request, "sweRepoScaDiscoveryJob", () -> scanRepositoriesToSca(request));
     }
 
     private String scanRepositoriesToSca(ScanRequest request) {
@@ -251,8 +250,38 @@ public class SweRepoDiscoveryJob {
 
     public String backfillCandidatesFromSca(String param) {
         ScanRequest request = parseScanRequest(param);
-        requireGithubToken(request);
-        return GithubTokenContext.withToken(request.getGithubToken(), () -> backfillCandidatesFromSca(request));
+        return withGithubTokenLease(request, "sweRepoCandidateBackfillJob", () -> backfillCandidatesFromSca(request));
+    }
+
+    private String withGithubTokenLease(ScanRequest request, String ownerPrefix, Callable<String> action) {
+        if (StringUtils.hasText(request.getGithubToken())) {
+            try {
+                return GithubTokenContext.withToken(request.getGithubToken(), () -> callUnchecked(action));
+            } catch (RuntimeException e) {
+                throw e;
+            }
+        }
+        String owner = ownerPrefix + ":" + String.join(",", request.resolveLanguages());
+        GithubTokenPoolService.TokenLease lease = githubTokenPoolService.acquire(owner);
+        try {
+            request.setGithubToken(lease.getToken());
+            request.setGithubTokenId(lease.getId());
+            return GithubTokenContext.withToken(lease.getId(), lease.getToken(), () -> callUnchecked(action));
+        } finally {
+            request.setGithubToken(null);
+            request.setGithubTokenId(null);
+            githubTokenPoolService.release(lease);
+        }
+    }
+
+    private String callUnchecked(Callable<String> action) {
+        try {
+            return action.call();
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private String backfillCandidatesFromSca(ScanRequest request) {
@@ -378,7 +407,10 @@ public class SweRepoDiscoveryJob {
                 request.getMinStars(),
                 initialMaxStars,
                 request.getScanDate());
-        int remainingDailyRepoLimit = Math.max(request.getRepoLimit() - scaReportsToday, 0);
+        int scaReportsTodayForLanguage = repoScaService.countReposCheckedOnDateForLanguage(
+                language,
+                request.getScanDate());
+        int remainingDailyRepoLimit = Math.max(request.getRepoLimit() - scaReportsTodayForLanguage, 0);
         int remainingRepoLimit = request.resolvePerRunRepoLimit(remainingDailyRepoLimit);
         if (request.isResetCursor()) {
             scanCursorService.reset(language, request.getKeyword(), request.getMinStars(), initialMaxStars);
@@ -390,14 +422,38 @@ public class SweRepoDiscoveryJob {
                 request.getMinStars(),
                 initialMaxStars);
         if (request.isUseStarCursor() && cursor.isExhausted()) {
-            summary.add(skippedSummary(language, request, initialMaxStars, "star_range_exhausted"));
-            return;
+            scanCursorService.restart(
+                    language,
+                    request.getKeyword(),
+                    request.getMinStars(),
+                    initialMaxStars,
+                    "scaOnly restarting previously exhausted cursor");
+            cursor = scanCursorService.getOrCreate(
+                    language,
+                    request.getKeyword(),
+                    request.getMinStars(),
+                    initialMaxStars);
         }
 
         Integer searchMaxStars = request.isUseStarCursor() ? cursor.getCurrentMaxStars() : initialMaxStars;
         if (searchMaxStars != null && searchMaxStars < request.getMinStars()) {
-            summary.add(skippedSummary(language, request, searchMaxStars, "star_range_exhausted"));
-            return;
+            if (request.isUseStarCursor()) {
+                scanCursorService.restart(
+                        language,
+                        request.getKeyword(),
+                        request.getMinStars(),
+                        initialMaxStars,
+                        "scaOnly restarting cursor below minStars, currentMaxStars=" + searchMaxStars);
+                cursor = scanCursorService.getOrCreate(
+                        language,
+                        request.getKeyword(),
+                        request.getMinStars(),
+                        initialMaxStars);
+                searchMaxStars = cursor.getCurrentMaxStars();
+            } else {
+                summary.add(skippedSummary(language, request, searchMaxStars, "star_range_exhausted"));
+                return;
+            }
         }
 
         LanguageScanSummary languageSummary = new LanguageScanSummary();
@@ -408,7 +464,8 @@ public class SweRepoDiscoveryJob {
         languageSummary.setExistingScaReports(existingScaReports);
         languageSummary.setDailyRepoLimit(request.getRepoLimit());
         languageSummary.setPerRunRepoLimit(request.getPerRunRepoLimit());
-        languageSummary.setReposProcessedToday(scaReportsToday);
+        languageSummary.setReposProcessedToday(scaReportsTodayForLanguage);
+        languageSummary.setReposProcessedTodayInScope(scaReportsToday);
         languageSummary.setScanDate(request.getScanDate().toString());
         if (remainingRepoLimit <= 0) {
             languageSummary.setSkippedReason("daily_repo_limit_reached");
@@ -489,38 +546,37 @@ public class SweRepoDiscoveryJob {
             SweRepoScanCursorService.ScanCursor cursor,
             Integer searchMaxStars,
             int remainingRepoLimit) {
-        Integer currentStars = searchMaxStars;
-        if (currentStars == null) {
-            currentStars = findHighestStarAtOrBelow(language, request, initialMaxStars);
+        Integer currentMaxStars = searchMaxStars;
+        if (currentMaxStars == null) {
+            currentMaxStars = findHighestStarAtOrBelow(language, request, initialMaxStars);
         }
-        if (currentStars == null || currentStars < request.getMinStars()) {
-            scanCursorService.advance(
+        if (currentMaxStars == null || currentMaxStars < request.getMinStars()) {
+            scanCursorService.restart(
                     language,
                     request.getKeyword(),
                     request.getMinStars(),
                     initialMaxStars,
-                    null,
                     "scaOnly exhausted: no repositories found in star range");
-            languageSummary.setNextMaxStars(null);
+            languageSummary.setNextMaxStars(initialMaxStars);
+            languageSummary.setSkippedReason("star_range_restarted");
             summary.add(languageSummary);
             return;
         }
 
         int page = Math.max(cursor.getCurrentPage(), 1);
         int scannedPages = 0;
-        int repositoryPages = scaRepositoryPages(remainingRepoLimit);
-        Integer nextCursorStars = currentStars;
+        int repositoryPages = request.getRepositoryPages();
+        Integer nextCursorStars = currentMaxStars;
         int nextCursorPage = page;
         boolean exhausted = false;
 
-        while (languageSummary.getScaCheckedRepos() < remainingRepoLimit
-                && scannedPages < repositoryPages
-                && currentStars >= request.getMinStars()) {
+        while (scannedPages < repositoryPages
+                && currentMaxStars >= request.getMinStars()) {
             GithubRepositorySearchResponse response = repositorySearchService.search(searchRequest(
                     language,
                     request,
-                    currentStars,
-                    currentStars,
+                    request.getMinStars(),
+                    currentMaxStars,
                     page,
                     SCA_SEARCH_PER_PAGE));
             scannedPages++;
@@ -528,81 +584,69 @@ public class SweRepoDiscoveryJob {
                     ? List.of()
                     : response.getRepositories();
             if (repositories.isEmpty()) {
-                currentStars = findHighestStarAtOrBelow(language, request, currentStars - 1);
-                if (currentStars == null || currentStars < request.getMinStars()) {
-                    exhausted = true;
-                    nextCursorStars = null;
-                    nextCursorPage = 1;
-                    break;
-                }
-                page = 1;
-                nextCursorStars = currentStars;
-                nextCursorPage = page;
-                continue;
+                exhausted = true;
+                nextCursorStars = null;
+                nextCursorPage = 1;
+                break;
             }
 
-            boolean pageFullyProcessed = true;
-            for (int index = 0; index < repositories.size(); index++) {
-                if (languageSummary.getScaCheckedRepos() >= remainingRepoLimit) {
-                    pageFullyProcessed = false;
-                    break;
-                }
-                GithubRepositoryDTO repository = repositories.get(index);
+            Integer pageMinSeenStars = null;
+            for (GithubRepositoryDTO repository : repositories) {
                 RepoScanOutcome outcome = processRepositoryToSca(
                         repository,
                         language,
                         request,
-                        currentStars);
+                        initialMaxStars);
+                pageMinSeenStars = minStar(pageMinSeenStars, outcome.getMinSeenStars());
                 languageSummary.add(outcome);
-                if (languageSummary.getScaCheckedRepos() >= remainingRepoLimit
-                        && index < repositories.size() - 1) {
-                    pageFullyProcessed = false;
-                    break;
-                }
-            }
-            if (!pageFullyProcessed) {
-                nextCursorStars = currentStars;
-                nextCursorPage = page;
-                break;
             }
 
-            boolean starBucketComplete = response.getTotalCount() != null
+            boolean searchPageComplete = response.getTotalCount() != null
                     && page * SCA_SEARCH_PER_PAGE >= response.getTotalCount();
-            if (starBucketComplete) {
-                currentStars = findHighestStarAtOrBelow(language, request, currentStars - 1);
-                if (currentStars == null || currentStars < request.getMinStars()) {
-                    exhausted = true;
-                    nextCursorStars = null;
-                    nextCursorPage = 1;
-                    break;
-                }
+            boolean githubSearchPageCapReached = page >= 20;
+            if (pageMinSeenStars != null && pageMinSeenStars < currentMaxStars) {
+                currentMaxStars = pageMinSeenStars;
                 page = 1;
-                nextCursorStars = currentStars;
-                nextCursorPage = page;
-            } else {
+            } else if (!searchPageComplete && !githubSearchPageCapReached) {
                 page++;
-                nextCursorStars = currentStars;
-                nextCursorPage = page;
+            } else {
+                currentMaxStars = currentMaxStars - 1;
+                page = 1;
+            }
+
+            if (currentMaxStars == null || currentMaxStars < request.getMinStars()) {
+                exhausted = true;
+                nextCursorStars = null;
+                nextCursorPage = 1;
+                break;
+            }
+            nextCursorStars = currentMaxStars;
+            nextCursorPage = page;
+
+            if (languageSummary.getScaCheckedRepos() >= remainingRepoLimit) {
+                break;
             }
         }
 
-        String cursorSummary = "scaOnly exactStar found=" + languageSummary.getFoundRepos()
+        String cursorSummary = "scaOnly starRange found=" + languageSummary.getFoundRepos()
                 + ", blacklisted=" + languageSummary.getBlacklistedRepos()
                 + ", skippedExistingScaReports=" + languageSummary.getSkippedExistingScaReports()
                 + ", profileRejected=" + languageSummary.getProfileRejectedRepos()
                 + ", scaRejected=" + languageSummary.getScaRejectedRepos()
                 + ", scaAllowed=" + languageSummary.getScaAllowedRepos()
                 + ", scaChecked=" + languageSummary.getScaCheckedRepos()
+                + ", scannedPages=" + scannedPages
                 + ", currentStars=" + nextCursorStars
                 + ", currentPage=" + nextCursorPage;
         if (exhausted) {
-            scanCursorService.advance(
+            scanCursorService.restart(
                     language,
                     request.getKeyword(),
                     request.getMinStars(),
                     initialMaxStars,
-                    null,
-                    cursorSummary);
+                    cursorSummary + ", exhaustedRestarted=true");
+            nextCursorStars = initialMaxStars;
+            nextCursorPage = 1;
         } else {
             scanCursorService.advanceWithinStar(
                     language,
@@ -679,10 +723,13 @@ public class SweRepoDiscoveryJob {
             }
             return outcomes;
         }
+        String tokenId = GithubTokenContext.currentTokenId();
+        String token = GithubTokenContext.currentToken();
         List<Future<RepoScanOutcome>> futures = new ArrayList<>();
         for (GithubRepositoryDTO repository : repositories) {
             Callable<RepoScanOutcome> task = () -> GithubTokenContext.withToken(
-                    request.getGithubToken(),
+                    tokenId,
+                    token,
                     () -> processRepository(repository, request, scannedReposForLanguage));
             futures.add(repositoryExecutor.submit(task));
         }
@@ -715,10 +762,13 @@ public class SweRepoDiscoveryJob {
             }
             return outcomes;
         }
+        String tokenId = GithubTokenContext.currentTokenId();
+        String token = GithubTokenContext.currentToken();
         List<Future<RepoScanOutcome>> futures = new ArrayList<>();
         for (String repo : repos) {
             Callable<RepoScanOutcome> task = () -> GithubTokenContext.withToken(
-                    request.getGithubToken(),
+                    tokenId,
+                    token,
                     () -> processScaAllowedRepository(repo, request, attemptedRepos));
             futures.add(repositoryExecutor.submit(task));
         }
@@ -751,10 +801,13 @@ public class SweRepoDiscoveryJob {
             }
             return outcomes;
         }
+        String tokenId = GithubTokenContext.currentTokenId();
+        String token = GithubTokenContext.currentToken();
         List<Future<RepoScanOutcome>> futures = new ArrayList<>();
         for (String repo : repos) {
             Callable<RepoScanOutcome> task = () -> GithubTokenContext.withToken(
-                    request.getGithubToken(),
+                    tokenId,
+                    token,
                     () -> processCandidateBackfillRepository(repo, request, attemptedRepos));
             futures.add(repositoryExecutor.submit(task));
         }
@@ -882,6 +935,7 @@ public class SweRepoDiscoveryJob {
         if (!licensePrecheck.allowed()) {
             repoScaService.analyzeRepo(
                     repository,
+                    language,
                     request.getKeyword(),
                     request.getMinStars(),
                     searchMaxStars,
@@ -892,6 +946,7 @@ public class SweRepoDiscoveryJob {
         }
         SweRepoScaService.ScaDecision scaDecision = repoScaService.analyzeRepo(
                 repository,
+                language,
                 request.getKeyword(),
                 request.getMinStars(),
                 searchMaxStars,
@@ -1190,8 +1245,8 @@ public class SweRepoDiscoveryJob {
         request.setRepositoryPages(intValue(json, "repositoryPages", request.getRepositoryPages(), 1, 10));
         request.setRepositoryPerPage(intValue(json, "repositoryPerPage", request.getRepositoryPerPage(), 1, 50));
         request.setRepositoryConcurrency(intValue(json, "repositoryConcurrency", request.getRepositoryConcurrency(), 1, 5));
-        request.setRepoLimit(intValue(json, "repoLimit", request.getRepoLimit(), 1, 1000));
-        request.setRepoLimit(intValue(json, "dailyRepoLimit", request.getRepoLimit(), 1, 1000));
+        request.setRepoLimit(intValue(json, "repoLimit", request.getRepoLimit(), 1, 10000));
+        request.setRepoLimit(intValue(json, "dailyRepoLimit", request.getRepoLimit(), 1, 10000));
         request.setPerRunRepoLimit(optionalPositiveInt(json, "perRunRepoLimit"));
         request.setRepoOffset(intValue(json, "repoOffset", request.getRepoOffset(), 0, Integer.MAX_VALUE));
         request.setPullLimit(intValue(json, "pullLimit", request.getPullLimit(), 1, 50));
@@ -1230,12 +1285,6 @@ public class SweRepoDiscoveryJob {
             request.setBlacklistPath(blacklistPath);
         }
         return request;
-    }
-
-    private void requireGithubToken(ScanRequest request) {
-        if (!StringUtils.hasText(request.getGithubToken())) {
-            throw new IllegalArgumentException("githubToken 为必填任务参数");
-        }
     }
 
     private List<String> parseLanguages(Object value) {
@@ -1350,13 +1399,13 @@ public class SweRepoDiscoveryJob {
 
         private boolean profileFilterEnabled = true;
 
-        private double minPrimaryLanguageRatio = 0.70d;
+        private double minPrimaryLanguageRatio = 0.50d;
 
-        private int maxLanguageCount = 4;
+        private int maxLanguageCount = 8;
 
-        private int maxDirectDependencies = 30;
+        private int maxDirectDependencies = 80;
 
-        private int maxManifestCount = 8;
+        private int maxManifestCount = 20;
 
         private int maxManifestDownloads = 3;
 
@@ -1369,6 +1418,8 @@ public class SweRepoDiscoveryJob {
         private String blacklistPath = SweRepoBlacklistService.DEFAULT_BLACKLIST_PATH;
 
         private String githubToken;
+
+        private String githubTokenId;
 
         private LocalDate scanDate = LocalDate.now();
 
@@ -1511,6 +1562,8 @@ public class SweRepoDiscoveryJob {
         private Integer perRunRepoLimit;
 
         private int reposProcessedToday;
+
+        private int reposProcessedTodayInScope;
 
         private String scanDate;
 

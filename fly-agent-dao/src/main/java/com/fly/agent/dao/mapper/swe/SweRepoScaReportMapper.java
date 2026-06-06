@@ -75,8 +75,8 @@ public interface SweRepoScaReportMapper extends BaseMapper<SweRepoScaReportEntit
             FROM swe_repo_sca_report s
             WHERE s.primary_language = #{language}
               AND s.search_keyword <=> #{keyword}
-              AND (#{minStars} IS NULL OR s.github_stars >= #{minStars})
-              AND (#{maxStars} IS NULL OR s.github_stars <= #{maxStars})
+              AND s.search_min_stars <=> #{minStars}
+              AND s.search_max_stars <=> #{maxStars}
             """)
     int countReposInScanScope(
             @Param("language") String language,
@@ -89,8 +89,8 @@ public interface SweRepoScaReportMapper extends BaseMapper<SweRepoScaReportEntit
             FROM swe_repo_sca_report s
             WHERE s.primary_language = #{language}
               AND s.search_keyword <=> #{keyword}
-              AND (#{minStars} IS NULL OR s.github_stars >= #{minStars})
-              AND (#{maxStars} IS NULL OR s.github_stars <= #{maxStars})
+              AND s.search_min_stars <=> #{minStars}
+              AND s.search_max_stars <=> #{maxStars}
               AND DATE(s.checked_at) = #{scanDate}
             """)
     int countReposCheckedOnDateInScanScope(
@@ -98,6 +98,16 @@ public interface SweRepoScaReportMapper extends BaseMapper<SweRepoScaReportEntit
             @Param("keyword") String keyword,
             @Param("minStars") Integer minStars,
             @Param("maxStars") Integer maxStars,
+            @Param("scanDate") LocalDate scanDate);
+
+    @Select("""
+            SELECT COUNT(1)
+            FROM swe_repo_sca_report s
+            WHERE s.primary_language = #{language}
+              AND DATE(s.checked_at) = #{scanDate}
+            """)
+    int countReposCheckedOnDateForLanguage(
+            @Param("language") String language,
             @Param("scanDate") LocalDate scanDate);
 
     @Select("""

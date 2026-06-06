@@ -136,6 +136,7 @@ public class GithubPullCandidateService {
     private final TransactionTemplate transactionTemplate;
     private final SweRepoPrecheckService repoPrecheckService;
     private final SweRuntimeSettingsService runtimeSettingsService;
+    private final GithubTokenPoolService githubTokenPoolService;
 
     @Autowired
     public GithubPullCandidateService(
@@ -144,13 +145,15 @@ public class GithubPullCandidateService {
             SweTaskMapper taskMapper,
             PlatformTransactionManager transactionManager,
             SweRepoPrecheckService repoPrecheckService,
-            SweRuntimeSettingsService runtimeSettingsService) {
+            SweRuntimeSettingsService runtimeSettingsService,
+            GithubTokenPoolService githubTokenPoolService) {
         this.githubToken = githubToken;
         this.candidateMapper = candidateMapper;
         this.taskMapper = taskMapper;
         this.transactionTemplate = transactionManager == null ? null : new TransactionTemplate(transactionManager);
         this.repoPrecheckService = repoPrecheckService;
         this.runtimeSettingsService = runtimeSettingsService;
+        this.githubTokenPoolService = githubTokenPoolService;
         WebClient.Builder builder = WebClient.builder()
                 .baseUrl(GITHUB_API_BASE_URL)
                 .defaultHeader(HttpHeaders.ACCEPT, "application/vnd.github+json")
@@ -165,7 +168,7 @@ public class GithubPullCandidateService {
             SweCandidateMapper candidateMapper,
             SweTaskMapper taskMapper,
             PlatformTransactionManager transactionManager) {
-        this(githubToken, candidateMapper, taskMapper, transactionManager, null, null);
+        this(githubToken, candidateMapper, taskMapper, transactionManager, null, null, null);
     }
 
     public GithubPullScanResponse scanMergedPulls(
@@ -1297,7 +1300,11 @@ public class GithubPullCandidateService {
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, response -> response.bodyToMono(String.class)
                         .defaultIfEmpty("")
-                        .map(body -> new BusinessException("GitHub PR 扫描失败: " + extractGithubErrorMessage(body))))
+                        .map(body -> {
+                            String message = extractGithubErrorMessage(body);
+                            markCurrentTokenUnavailableIfGithubFailure(response.statusCode(), message);
+                            return new BusinessException("GitHub PR 扫描失败: " + message);
+                        }))
                 .bodyToMono(Object.class)
                 .timeout(Duration.ofSeconds(30))
                 .block();
@@ -1315,7 +1322,11 @@ public class GithubPullCandidateService {
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, response -> response.bodyToMono(String.class)
                         .defaultIfEmpty("")
-                        .map(body -> new BusinessException("GitHub issue fetch failed: " + extractGithubErrorMessage(body))))
+                        .map(body -> {
+                            String message = extractGithubErrorMessage(body);
+                            markCurrentTokenUnavailableIfGithubFailure(response.statusCode(), message);
+                            return new BusinessException("GitHub issue fetch failed: " + message);
+                        }))
                 .bodyToMono(Object.class)
                 .timeout(Duration.ofSeconds(30))
                 .block();
@@ -1363,6 +1374,12 @@ public class GithubPullCandidateService {
         }
         if (StringUtils.hasText(token)) {
             headers.setBearerAuth(token);
+        }
+    }
+
+    private void markCurrentTokenUnavailableIfGithubFailure(HttpStatusCode statusCode, String message) {
+        if (githubTokenPoolService != null) {
+            githubTokenPoolService.markCurrentTokenUnavailableIfGithubFailure(statusCode, message);
         }
     }
 
