@@ -97,7 +97,7 @@ public class Tb20PipelineService {
                 commandDependency("Docker", "构建和运行每个 task 的隔离环境", "docker"),
                 commandDependency("pytest-json-ctrf", "verifier 生成 CTRF 测试报告，通常由 tests/test.sh 使用 uvx 拉取", "python3"),
                 dependency("TB20 production toolkit", "本项目外置脚本边界",
-                        properties.getToolkitRoot(), "scripts/inspect_tb20_dataset.py")
+                        toolkitRoot().toString(), "scripts/inspect_tb20_dataset.py")
         );
     }
 
@@ -127,7 +127,7 @@ public class Tb20PipelineService {
 
         List<String> command = new ArrayList<>();
         command.add(properties.getPython());
-        command.add(Path.of(properties.getToolkitRoot(), "scripts", "inspect_tb20_dataset.py").toString());
+        command.add(toolkitScript("inspect_tb20_dataset.py").toString());
         command.add("--source-root");
         command.add(sourceRoot);
         if (StringUtils.hasText(outputRoot)) {
@@ -162,15 +162,21 @@ public class Tb20PipelineService {
     }
 
     private JSONObject runJsonCommand(List<String> command, Path cwd) {
+        Path outputPath = null;
         try {
+            outputPath = Files.createTempFile("tb20-inspector-", ".json");
             ProcessBuilder builder = new ProcessBuilder(command);
             builder.directory(cwd.toFile());
             builder.redirectErrorStream(true);
+            builder.redirectOutput(outputPath.toFile());
             Process process = builder.start();
             boolean completed = process.waitFor(120, TimeUnit.SECONDS);
-            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             if (!completed) {
                 process.destroyForcibly();
+                process.waitFor(5, TimeUnit.SECONDS);
+            }
+            String output = Files.readString(outputPath, StandardCharsets.UTF_8);
+            if (!completed) {
                 throw new BusinessException("TB 2.0 inspector timeout");
             }
             if (process.exitValue() != 0) {
@@ -182,6 +188,14 @@ public class Tb20PipelineService {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new BusinessException("TB 2.0 inspector interrupted", e);
+        } finally {
+            if (outputPath != null) {
+                try {
+                    Files.deleteIfExists(outputPath);
+                } catch (IOException ignored) {
+                    // Best-effort cleanup for transient command output.
+                }
+            }
         }
     }
 
@@ -239,5 +253,31 @@ public class Tb20PipelineService {
 
     private String firstText(String primary, String fallback) {
         return StringUtils.hasText(primary) ? primary : fallback;
+    }
+
+    private Path toolkitScript(String scriptName) {
+        return toolkitRoot().resolve("scripts").resolve(scriptName);
+    }
+
+    private Path toolkitRoot() {
+        return resolveLocalPath(properties.getToolkitRoot(), "tools/tb20-production");
+    }
+
+    private Path resolveLocalPath(String configuredPath, String fallbackPath) {
+        String text = StringUtils.hasText(configuredPath) ? configuredPath : fallbackPath;
+        Path path = Path.of(text);
+        if (path.isAbsolute()) {
+            return path.normalize();
+        }
+        Path cwd = Path.of(".").toAbsolutePath().normalize();
+        Path current = cwd;
+        while (current != null) {
+            Path candidate = current.resolve(path).normalize();
+            if (Files.exists(candidate)) {
+                return candidate;
+            }
+            current = current.getParent();
+        }
+        return cwd.resolve(path).normalize();
     }
 }

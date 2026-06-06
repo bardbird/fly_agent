@@ -112,6 +112,8 @@ services:
       SWE_AGENT_ROOT: /opt/fly-agent/swe-agent
       SWE_TOOLKIT_ROOT: /app/tools/swe-pro-production
       SWE_PRODUCTION_ROOT: /data/fly-agent/swe-output
+      TB20_TOOLKIT_ROOT: /app/tools/tb20-production
+      TB20_PRODUCTION_ROOT: /data/fly-agent/tb20-output
       SWE_QWEN_BASE_URL: ${SWE_QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       SWE_QWEN_TOKEN: ${SWE_QWEN_TOKEN:-}
       SWE_OPUS_BASE_URL: ${SWE_OPUS_BASE_URL:-https://ai.yiqiu.dev/v1}
@@ -128,6 +130,7 @@ services:
       - "${SERVER_PORT:-8080}:8080"
     volumes:
       - ${SWE_OUTPUT_HOST_DIR:-/data/fly-agent/swe-output}:/data/fly-agent/swe-output
+      - ${TB20_OUTPUT_HOST_DIR:-/data/fly-agent/tb20-output}:/data/fly-agent/tb20-output
       - ${FLY_AGENT_LOG_DIR:-/data/fly-agent/logs}:/app/logs
       - ${SWE_AGENT_HOST_ROOT:-/opt/fly-agent/swe-agent}:/opt/fly-agent/swe-agent:ro
       - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
@@ -177,6 +180,8 @@ services:
       SWE_AGENT_ROOT: /opt/fly-agent/swe-agent
       SWE_TOOLKIT_ROOT: /app/tools/swe-pro-production
       SWE_PRODUCTION_ROOT: /data/fly-agent/swe-output
+      TB20_TOOLKIT_ROOT: /app/tools/tb20-production
+      TB20_PRODUCTION_ROOT: /data/fly-agent/tb20-output
       SWE_QWEN_BASE_URL: ${SWE_QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       SWE_QWEN_TOKEN: ${SWE_QWEN_TOKEN:-}
       SWE_OPUS_BASE_URL: ${SWE_OPUS_BASE_URL:-https://ai.yiqiu.dev/v1}
@@ -195,6 +200,7 @@ services:
       - "${XXL_JOB_EXECUTOR_PORT:-9999}:9999"
     volumes:
       - ${SWE_OUTPUT_HOST_DIR:-/data/fly-agent/swe-output}:/data/fly-agent/swe-output
+      - ${TB20_OUTPUT_HOST_DIR:-/data/fly-agent/tb20-output}:/data/fly-agent/tb20-output
       - ${FLY_AGENT_LOG_DIR:-/data/fly-agent/logs}:/app/logs
       - ${XXL_JOB_LOG_DIR:-/data/fly-agent/logs/xxl-job}:/data/applogs/xxl-job/jobhandler
       - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock

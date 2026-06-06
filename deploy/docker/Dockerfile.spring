@@ -33,13 +33,16 @@ WORKDIR /app
 
 COPY --from=build /tmp/app.jar /app/app.jar
 COPY tools/swe-pro-production /app/tools/swe-pro-production
+COPY tools/tb20-production /app/tools/tb20-production
 
-RUN mkdir -p /data/fly-agent/swe-output /data/applogs/xxl-job/jobhandler /opt/fly-agent/swe-agent /tmp/fly-agent-home /app/logs \
-    && chmod 1777 /tmp/fly-agent-home /data/fly-agent/swe-output /data/applogs/xxl-job/jobhandler /app/logs
+RUN mkdir -p /data/fly-agent/swe-output /data/fly-agent/tb20-output /data/applogs/xxl-job/jobhandler /opt/fly-agent/swe-agent /tmp/fly-agent-home /app/logs \
+    && chmod 1777 /tmp/fly-agent-home /data/fly-agent/swe-output /data/fly-agent/tb20-output /data/applogs/xxl-job/jobhandler /app/logs
 
 ENV JAVA_OPTS="" \
     SWE_TOOLKIT_ROOT=/app/tools/swe-pro-production \
     SWE_PRODUCTION_ROOT=/data/fly-agent/swe-output \
+    TB20_TOOLKIT_ROOT=/app/tools/tb20-production \
+    TB20_PRODUCTION_ROOT=/data/fly-agent/tb20-output \
     SWE_AGENT_ROOT=/opt/fly-agent/swe-agent
 
 EXPOSE 8080 8082 9999
