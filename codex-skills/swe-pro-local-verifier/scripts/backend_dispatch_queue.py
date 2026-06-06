@@ -40,6 +40,9 @@ TASK_SPEC_FILES = [
     "dockerfiles/Dockerfile",
     "runtime_env.json",
 ]
+DEFAULT_CODEX_EXEC_ARGS = [
+    "--dangerously-bypass-approvals-and-sandbox",
+]
 
 TASK_TERMINAL_STATUSES = {"COMPLETED", "DELIVERED"}
 TASK_ACTIVE_STATUSES = {"RUNNING"}
@@ -711,6 +714,7 @@ def codex_command(item: dict[str, Any], args: argparse.Namespace) -> str:
     return " ".join([
         shlex.quote(args.codex_binary),
         "exec",
+        *[shlex.quote(arg) for arg in DEFAULT_CODEX_EXEC_ARGS],
         "--cd",
         shlex.quote(str(ROOT)),
         shlex.quote(prompt),
@@ -722,8 +726,27 @@ def tmux_has_session(session: str) -> bool:
         ["tmux", "has-session", "-t", session],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env=tmux_env(),
         check=False,
     ).returncode == 0
+
+
+def tmux_env() -> dict[str, str]:
+    env = os.environ.copy()
+    term = env.get("TERM")
+    if not term:
+        env["TERM"] = "xterm-256color"
+        return env
+    if shutil.which("infocmp") is None:
+        return env
+    if subprocess.run(
+        ["infocmp", term],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode != 0:
+        env["TERM"] = "xterm-256color"
+    return env
 
 
 def tmux_worker_shell_command(args: argparse.Namespace, worker_index: int) -> str:
@@ -766,6 +789,7 @@ def command_launch_tmux(args: argparse.Namespace) -> int:
     if shutil.which("tmux") is None:
         print("tmux is not installed or not on PATH", file=sys.stderr)
         return 1
+    env = tmux_env()
     session_exists = tmux_has_session(args.session)
     created = 0
     for index in range(1, args.workers + 1):
@@ -774,23 +798,26 @@ def command_launch_tmux(args: argparse.Namespace) -> int:
         if not session_exists and created == 0:
             subprocess.run(
                 ["tmux", "new-session", "-d", "-s", args.session, "-n", window_name, "bash", "-lc", shell_command],
+                env=env,
                 check=True,
             )
             session_exists = True
         else:
             subprocess.run(
                 ["tmux", "new-window", "-t", args.session, "-n", window_name, "bash", "-lc", shell_command],
+                env=env,
                 check=True,
             )
         created += 1
+    attach_prefix = "" if env.get("TERM") == os.environ.get("TERM") else f"TERM={shlex.quote(env.get('TERM', 'xterm-256color'))} "
     print(json.dumps({
         "session": args.session,
         "workers_opened": created,
         "languages": args.languages,
-        "attach_command": f"tmux attach -t {args.session}",
+        "attach_command": f"{attach_prefix}tmux attach -t {args.session}",
     }, ensure_ascii=False, indent=2))
     if args.attach:
-        subprocess.run(["tmux", "attach", "-t", args.session], check=True)
+        subprocess.run(["tmux", "attach", "-t", args.session], env=env, check=True)
     return 0
 
 

@@ -79,6 +79,12 @@ python3 codex-skills/swe-pro-local-verifier/scripts/backend_dispatch_queue.py la
   --languages <language[,language...]>
 ```
 
+`launch-tmux` starts each internal `codex exec` with Codex's sandbox bypass
+enabled. This avoids nested bwrap/network namespace failures such as
+`Failed RTM_NEWADDR: Operation not permitted` when workers run inside an
+already sandboxed host. Do not create or pass a local wrapper for this; the
+dispatcher owns the Codex exec flags.
+
 Run `handoff` only after `logs/docker/validation.json` has `"ok": true`
 and its `task_spec_checksums` match the current task artifacts.
 Model evaluation must also verify that the validation image contains the same
