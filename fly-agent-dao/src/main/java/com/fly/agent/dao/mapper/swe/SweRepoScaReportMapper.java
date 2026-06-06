@@ -102,6 +102,13 @@ public interface SweRepoScaReportMapper extends BaseMapper<SweRepoScaReportEntit
 
     @Select("""
             SELECT COUNT(1)
+            FROM swe_repo_sca_report
+            WHERE repo = #{repo}
+            """)
+    int countByRepo(@Param("repo") String repo);
+
+    @Select("""
+            SELECT COUNT(1)
             FROM swe_repo_sca_report s
             WHERE s.compatibility_status = 'ALLOW'
               AND s.primary_language = #{language}

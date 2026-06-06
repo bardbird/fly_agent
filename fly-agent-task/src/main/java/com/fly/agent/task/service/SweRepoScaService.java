@@ -181,6 +181,11 @@ public class SweRepoScaService {
                 scanDate);
     }
 
+    public boolean hasReport(String repo) {
+        String normalizedRepo = SweRepoBlacklistService.normalizeRepo(repo);
+        return StringUtils.hasText(normalizedRepo) && scaReportMapper.countByRepo(normalizedRepo) > 0;
+    }
+
     public int countCandidateScannedOnDateInScanScope(
             String language,
             String keyword,

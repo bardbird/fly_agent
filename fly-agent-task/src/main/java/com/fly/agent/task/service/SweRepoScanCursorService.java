@@ -36,6 +36,7 @@ public class SweRepoScanCursorService {
         initial.setMinStars(minStars);
         initial.setInitialMaxStars(initialMaxStars);
         initial.setCurrentMaxStars(initialMaxStars);
+        initial.setCurrentPage(1);
         initial.setExhausted(false);
         scanCursorMapper.insertIgnoreInitial(initial);
 
@@ -66,8 +67,32 @@ public class SweRepoScanCursorService {
         entity.setMinStars(minStars);
         entity.setInitialMaxStars(initialMaxStars);
         entity.setCurrentMaxStars(exhausted ? initialMaxStars : nextMaxStars);
+        entity.setCurrentPage(1);
         entity.setLastMinSeenStars(lastMinSeenStars);
         entity.setExhausted(exhausted);
+        entity.setLastSummary(limitSummary(summary));
+        scanCursorMapper.upsertProgress(entity);
+    }
+
+    public void advanceWithinStar(
+            String language,
+            String keyword,
+            int minStars,
+            Integer initialMaxStars,
+            Integer currentStars,
+            int nextPage,
+            String summary) {
+        initializeSchema();
+        SweRepoScanCursorEntity entity = new SweRepoScanCursorEntity();
+        entity.setCursorKey(cursorKey(language, keyword, minStars, initialMaxStars));
+        entity.setLanguage(normalizeLanguage(language));
+        entity.setKeyword(normalizeKeyword(keyword));
+        entity.setMinStars(minStars);
+        entity.setInitialMaxStars(initialMaxStars);
+        entity.setCurrentMaxStars(currentStars);
+        entity.setCurrentPage(Math.max(nextPage, 1));
+        entity.setLastMinSeenStars(currentStars);
+        entity.setExhausted(false);
         entity.setLastSummary(limitSummary(summary));
         scanCursorMapper.upsertProgress(entity);
     }
@@ -85,6 +110,7 @@ public class SweRepoScanCursorService {
         cursor.setMinStars(entity.getMinStars() == null ? 0 : entity.getMinStars());
         cursor.setInitialMaxStars(entity.getInitialMaxStars());
         cursor.setCurrentMaxStars(entity.getCurrentMaxStars());
+        cursor.setCurrentPage(entity.getCurrentPage() == null ? 1 : Math.max(entity.getCurrentPage(), 1));
         cursor.setLastMinSeenStars(entity.getLastMinSeenStars());
         cursor.setExhausted(Boolean.TRUE.equals(entity.getExhausted()));
         cursor.setLastSummary(entity.getLastSummary());
@@ -134,6 +160,8 @@ public class SweRepoScanCursorService {
         private Integer initialMaxStars;
 
         private Integer currentMaxStars;
+
+        private int currentPage;
 
         private Integer lastMinSeenStars;
 

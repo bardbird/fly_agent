@@ -29,6 +29,8 @@ public class SweRepoScanCursorEntity {
 
     private Integer currentMaxStars;
 
+    private Integer currentPage;
+
     private Integer lastMinSeenStars;
 
     private Boolean exhausted;

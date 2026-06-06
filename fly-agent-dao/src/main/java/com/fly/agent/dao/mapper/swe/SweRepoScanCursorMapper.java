@@ -19,6 +19,7 @@ public interface SweRepoScanCursorMapper extends BaseMapper<SweRepoScanCursorEnt
                 min_stars,
                 initial_max_stars,
                 current_max_stars,
+                current_page,
                 exhausted
             ) VALUES (
                 #{entity.cursorKey},
@@ -27,6 +28,7 @@ public interface SweRepoScanCursorMapper extends BaseMapper<SweRepoScanCursorEnt
                 #{entity.minStars},
                 #{entity.initialMaxStars},
                 #{entity.currentMaxStars},
+                #{entity.currentPage},
                 #{entity.exhausted}
             )
             """)
@@ -40,6 +42,7 @@ public interface SweRepoScanCursorMapper extends BaseMapper<SweRepoScanCursorEnt
                 min_stars,
                 initial_max_stars,
                 current_max_stars,
+                current_page,
                 last_min_seen_stars,
                 exhausted,
                 last_summary
@@ -50,12 +53,14 @@ public interface SweRepoScanCursorMapper extends BaseMapper<SweRepoScanCursorEnt
                 #{entity.minStars},
                 #{entity.initialMaxStars},
                 #{entity.currentMaxStars},
+                #{entity.currentPage},
                 #{entity.lastMinSeenStars},
                 #{entity.exhausted},
                 #{entity.lastSummary}
             )
             ON DUPLICATE KEY UPDATE
                 current_max_stars = VALUES(current_max_stars),
+                current_page = VALUES(current_page),
                 last_min_seen_stars = VALUES(last_min_seen_stars),
                 exhausted = VALUES(exhausted),
                 last_summary = VALUES(last_summary),

@@ -416,12 +416,25 @@ public class SweRepoDiscoveryJob {
             return;
         }
 
+        if (request.isUseStarCursor()) {
+            scanLanguageToScaByExactStars(
+                    language,
+                    request,
+                    summary,
+                    languageSummary,
+                    initialMaxStars,
+                    cursor,
+                    searchMaxStars,
+                    remainingRepoLimit);
+            return;
+        }
+
         Integer minSeenStars = null;
         int processedRepos = 0;
         int repositoryPages = scaRepositoryPages(remainingRepoLimit);
         for (int pageOffset = 0; pageOffset < repositoryPages
                 && processedRepos < remainingRepoLimit; pageOffset++) {
-            int page = (request.isUseStarCursor() ? 1 : request.getPage()) + pageOffset;
+            int page = request.getPage() + pageOffset;
             GithubRepositorySearchResponse response = repositorySearchService.search(searchRequest(
                     language,
                     request,
@@ -443,7 +456,7 @@ public class SweRepoDiscoveryJob {
                         repository,
                         language,
                         request,
-                        initialMaxStars);
+                        searchMaxStars);
                 minSeenStars = minStar(minSeenStars, outcome.getMinSeenStars());
                 languageSummary.add(outcome);
             }
@@ -464,6 +477,143 @@ public class SweRepoDiscoveryJob {
                             + ", scaChecked=" + languageSummary.getScaCheckedRepos());
             languageSummary.setNextMaxStars(minSeenStars == null ? null : minSeenStars - 1);
         }
+        summary.add(languageSummary);
+    }
+
+    private void scanLanguageToScaByExactStars(
+            String language,
+            ScanRequest request,
+            ScanSummary summary,
+            LanguageScanSummary languageSummary,
+            Integer initialMaxStars,
+            SweRepoScanCursorService.ScanCursor cursor,
+            Integer searchMaxStars,
+            int remainingRepoLimit) {
+        Integer currentStars = searchMaxStars;
+        if (currentStars == null) {
+            currentStars = findHighestStarAtOrBelow(language, request, initialMaxStars);
+        }
+        if (currentStars == null || currentStars < request.getMinStars()) {
+            scanCursorService.advance(
+                    language,
+                    request.getKeyword(),
+                    request.getMinStars(),
+                    initialMaxStars,
+                    null,
+                    "scaOnly exhausted: no repositories found in star range");
+            languageSummary.setNextMaxStars(null);
+            summary.add(languageSummary);
+            return;
+        }
+
+        int page = Math.max(cursor.getCurrentPage(), 1);
+        int scannedPages = 0;
+        int repositoryPages = scaRepositoryPages(remainingRepoLimit);
+        Integer nextCursorStars = currentStars;
+        int nextCursorPage = page;
+        boolean exhausted = false;
+
+        while (languageSummary.getScaCheckedRepos() < remainingRepoLimit
+                && scannedPages < repositoryPages
+                && currentStars >= request.getMinStars()) {
+            GithubRepositorySearchResponse response = repositorySearchService.search(searchRequest(
+                    language,
+                    request,
+                    currentStars,
+                    currentStars,
+                    page,
+                    SCA_SEARCH_PER_PAGE));
+            scannedPages++;
+            List<GithubRepositoryDTO> repositories = response.getRepositories() == null
+                    ? List.of()
+                    : response.getRepositories();
+            if (repositories.isEmpty()) {
+                currentStars = findHighestStarAtOrBelow(language, request, currentStars - 1);
+                if (currentStars == null || currentStars < request.getMinStars()) {
+                    exhausted = true;
+                    nextCursorStars = null;
+                    nextCursorPage = 1;
+                    break;
+                }
+                page = 1;
+                nextCursorStars = currentStars;
+                nextCursorPage = page;
+                continue;
+            }
+
+            boolean pageFullyProcessed = true;
+            for (int index = 0; index < repositories.size(); index++) {
+                if (languageSummary.getScaCheckedRepos() >= remainingRepoLimit) {
+                    pageFullyProcessed = false;
+                    break;
+                }
+                GithubRepositoryDTO repository = repositories.get(index);
+                RepoScanOutcome outcome = processRepositoryToSca(
+                        repository,
+                        language,
+                        request,
+                        currentStars);
+                languageSummary.add(outcome);
+                if (languageSummary.getScaCheckedRepos() >= remainingRepoLimit
+                        && index < repositories.size() - 1) {
+                    pageFullyProcessed = false;
+                    break;
+                }
+            }
+            if (!pageFullyProcessed) {
+                nextCursorStars = currentStars;
+                nextCursorPage = page;
+                break;
+            }
+
+            boolean starBucketComplete = response.getTotalCount() != null
+                    && page * SCA_SEARCH_PER_PAGE >= response.getTotalCount();
+            if (starBucketComplete) {
+                currentStars = findHighestStarAtOrBelow(language, request, currentStars - 1);
+                if (currentStars == null || currentStars < request.getMinStars()) {
+                    exhausted = true;
+                    nextCursorStars = null;
+                    nextCursorPage = 1;
+                    break;
+                }
+                page = 1;
+                nextCursorStars = currentStars;
+                nextCursorPage = page;
+            } else {
+                page++;
+                nextCursorStars = currentStars;
+                nextCursorPage = page;
+            }
+        }
+
+        String cursorSummary = "scaOnly exactStar found=" + languageSummary.getFoundRepos()
+                + ", blacklisted=" + languageSummary.getBlacklistedRepos()
+                + ", skippedExistingScaReports=" + languageSummary.getSkippedExistingScaReports()
+                + ", profileRejected=" + languageSummary.getProfileRejectedRepos()
+                + ", scaRejected=" + languageSummary.getScaRejectedRepos()
+                + ", scaAllowed=" + languageSummary.getScaAllowedRepos()
+                + ", scaChecked=" + languageSummary.getScaCheckedRepos()
+                + ", currentStars=" + nextCursorStars
+                + ", currentPage=" + nextCursorPage;
+        if (exhausted) {
+            scanCursorService.advance(
+                    language,
+                    request.getKeyword(),
+                    request.getMinStars(),
+                    initialMaxStars,
+                    null,
+                    cursorSummary);
+        } else {
+            scanCursorService.advanceWithinStar(
+                    language,
+                    request.getKeyword(),
+                    request.getMinStars(),
+                    initialMaxStars,
+                    nextCursorStars,
+                    nextCursorPage,
+                    cursorSummary);
+        }
+        languageSummary.setNextMaxStars(nextCursorStars);
         summary.add(languageSummary);
     }
 
@@ -703,6 +853,10 @@ public class SweRepoDiscoveryJob {
         String repo = repository.getFullName();
         outcome.setFoundRepos(1);
         outcome.setMinSeenStars(repository.getStargazersCount());
+        if (repoScaService.hasReport(repo)) {
+            outcome.setSkippedExistingScaReports(1);
+            return outcome;
+        }
 
         SweRepoPrecheckService.RepoPrecheckDecision precheck = repoPrecheckService.check(repo);
         if (!precheck.allowed() && "repo_blacklisted".equals(precheck.reasonCode())) {
@@ -935,10 +1089,20 @@ public class SweRepoDiscoveryJob {
             Integer searchMaxStars,
             int page,
             int perPage) {
+        return searchRequest(language, request, request.getMinStars(), searchMaxStars, page, perPage);
+    }
+
+    private GithubRepositorySearchRequest searchRequest(
+            String language,
+            ScanRequest request,
+            int searchMinStars,
+            Integer searchMaxStars,
+            int page,
+            int perPage) {
         GithubRepositorySearchRequest searchRequest = new GithubRepositorySearchRequest();
         searchRequest.setLanguage(language);
         searchRequest.setKeyword(request.getKeyword());
-        searchRequest.setMinStars(request.getMinStars());
+        searchRequest.setMinStars(searchMinStars);
         searchRequest.setMaxStars(searchMaxStars);
         searchRequest.setPage(page);
         searchRequest.setPerPage(perPage);
@@ -946,6 +1110,27 @@ public class SweRepoDiscoveryJob {
         searchRequest.setOrder("desc");
         searchRequest.setPrecheckFilter(false);
         return searchRequest;
+    }
+
+    private Integer findHighestStarAtOrBelow(String language, ScanRequest request, Integer maxStars) {
+        if (maxStars != null && maxStars < request.getMinStars()) {
+            return null;
+        }
+        GithubRepositorySearchRequest searchRequest = searchRequest(
+                language,
+                request,
+                request.getMinStars(),
+                maxStars,
+                1,
+                1);
+        GithubRepositorySearchResponse response = repositorySearchService.search(searchRequest);
+        List<GithubRepositoryDTO> repositories = response.getRepositories() == null
+                ? List.of()
+                : response.getRepositories();
+        if (repositories.isEmpty()) {
+            return null;
+        }
+        return repositories.get(0).getStargazersCount();
     }
 
     private int scaRepositoryPages(int remainingRepoLimit) {
@@ -1240,6 +1425,8 @@ public class SweRepoDiscoveryJob {
 
         private int existingScaReports;
 
+        private int skippedExistingScaReports;
+
         private List<LanguageScanSummary> languageSummaries = new ArrayList<>();
 
         private void add(LanguageScanSummary languageSummary) {
@@ -1262,6 +1449,7 @@ public class SweRepoDiscoveryJob {
             skippedEnoughRepos += languageSummary.getSkippedEnoughRepos();
             existingCandidates += languageSummary.getExistingCandidates();
             existingScaReports += languageSummary.getExistingScaReports();
+            skippedExistingScaReports += languageSummary.getSkippedExistingScaReports();
         }
     }
 
@@ -1316,6 +1504,8 @@ public class SweRepoDiscoveryJob {
 
         private int existingScaReports;
 
+        private int skippedExistingScaReports;
+
         private int dailyRepoLimit;
 
         private Integer perRunRepoLimit;
@@ -1342,6 +1532,7 @@ public class SweRepoDiscoveryJob {
             skippedDelivered += outcome.getSkippedDelivered();
             skippedEnoughRepos += outcome.getSkippedEnoughRepos();
             existingCandidates += outcome.getExistingCandidates();
+            skippedExistingScaReports += outcome.getSkippedExistingScaReports();
         }
 
         private static LanguageScanSummary skipped(String language, String reason) {
@@ -1390,6 +1581,8 @@ public class SweRepoDiscoveryJob {
         private int skippedEnoughRepos;
 
         private int existingCandidates;
+
+        private int skippedExistingScaReports;
     }
 
     private record RepoScanResult(RepoScanOutcome outcome, int nextPullPage, boolean exhausted) {

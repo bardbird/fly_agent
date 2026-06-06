@@ -16,12 +16,15 @@ import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.UriUtils;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.transport.ProxyProvider;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
@@ -107,14 +110,7 @@ public class GithubRepositorySearchService {
         String query = buildQuery(githubLanguage, request.getKeyword(), minStars, maxStars);
 
         JSONObject payload = webClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/search/repositories")
-                        .queryParam("q", query)
-                        .queryParam("sort", sort)
-                        .queryParam("order", order)
-                        .queryParam("page", page)
-                        .queryParam("per_page", perPage)
-                        .build())
+                .uri(searchUri(query, sort, order, page, perPage))
                 .headers(this::applyOptionalToken)
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve()
@@ -147,6 +143,16 @@ public class GithubRepositorySearchService {
                     .toList());
         }
         return response;
+    }
+
+    private URI searchUri(String query, String sort, String order, int page, int perPage) {
+        String encodedQuery = UriUtils.encodeQueryParam(query, StandardCharsets.UTF_8);
+        return URI.create(GITHUB_API_BASE_URL
+                + "/search/repositories?q=" + encodedQuery
+                + "&sort=" + UriUtils.encodeQueryParam(sort, StandardCharsets.UTF_8)
+                + "&order=" + UriUtils.encodeQueryParam(order, StandardCharsets.UTF_8)
+                + "&page=" + page
+                + "&per_page=" + perPage);
     }
 
     private JSONObject toJsonObject(Object value) {
