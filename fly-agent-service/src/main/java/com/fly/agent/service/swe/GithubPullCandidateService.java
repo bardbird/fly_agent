@@ -493,33 +493,11 @@ public class GithubPullCandidateService {
             headerStyle.setFont(headerFont);
 
             String[] headers = {
-                    "ID",
-                    "Candidate ID",
                     "Repo",
                     "Primary Language",
                     "PR Number",
                     "PR URL",
-                    "Issue URL",
-                    "Title",
-                    "Candidate Status",
-                    "Duplicate Status",
-                    "Score",
-                    "Grade",
-                    "Created At",
-                    "Merged At",
-                    "Updated At",
-                    "Modified At",
-                    "Base Commit",
-                    "Fix Commit",
-                    "Merge Commit",
-                    "Source Files",
-                    "Gold Source Files",
-                    "Gold Total Changed",
-                    "Test Total Changed",
-                    "Test Patch Present",
-                    "Benchmark Status",
-                    "Failed History Status",
-                    "Grade Reason"
+                    "Issue URL"
             };
             Row header = sheet.createRow(0);
             for (int i = 0; i < headers.length; i++) {
@@ -530,8 +508,7 @@ public class GithubPullCandidateService {
                 writeCandidateExportRow(sheet.createRow(i + 1), rows.get(i));
             }
             int[] widths = {
-                    10, 18, 32, 18, 12, 48, 48, 44, 18, 18, 10, 10, 20, 20,
-                    20, 20, 44, 44, 44, 14, 18, 18, 18, 18, 20, 22, 64
+                    36, 20, 12, 56, 56
             };
             for (int i = 0; i < widths.length; i++) {
                 sheet.setColumnWidth(i, widths[i] * 256);
@@ -545,33 +522,11 @@ public class GithubPullCandidateService {
 
     private void writeCandidateExportRow(Row row, SweCandidateEntity candidate) {
         int col = 0;
-        cell(row, col++, candidate.getId());
-        cell(row, col++, candidate.getCandidateId());
         cell(row, col++, candidate.getRepo());
         cell(row, col++, candidate.getPrimaryLanguage());
         cell(row, col++, candidate.getPrNumber());
         cell(row, col++, candidate.getPrUrl());
-        cell(row, col++, candidate.getIssueUrl());
-        cell(row, col++, candidate.getTitle());
-        cell(row, col++, candidate.getCandidateStatus());
-        cell(row, col++, candidate.getDuplicateStatus());
-        cell(row, col++, candidate.getScore());
-        cell(row, col++, candidate.getCandidateGrade());
-        cell(row, col++, dateText(candidate.getCreatedAt()));
-        cell(row, col++, dateText(candidate.getMergedAt()));
-        cell(row, col++, dateText(candidate.getUpdatedAt()));
-        cell(row, col++, dateText(candidate.getModifiedAt()));
-        cell(row, col++, candidate.getBaseCommit());
-        cell(row, col++, candidate.getFixCommit());
-        cell(row, col++, candidate.getMergeCommit());
-        cell(row, col++, candidate.getSourceFiles());
-        cell(row, col++, candidate.getGoldSourceFiles());
-        cell(row, col++, candidate.getGoldTotalChanged());
-        cell(row, col++, candidate.getTestTotalChanged());
-        cell(row, col++, Boolean.TRUE.equals(candidate.getTestPatchPresent()) ? "YES" : "NO");
-        cell(row, col++, candidate.getBenchmarkStatus());
-        cell(row, col++, candidate.getFailedHistoryStatus());
-        cell(row, col, candidate.getGradeReason());
+        cell(row, col, candidate.getIssueUrl());
     }
 
     private void cell(Row row, int col, Number value) {
@@ -584,10 +539,6 @@ public class GithubPullCandidateService {
 
     private void cell(Row row, int col, String value) {
         row.createCell(col).setCellValue(value == null ? "" : value);
-    }
-
-    private String dateText(LocalDateTime value) {
-        return value == null ? "" : value.toString();
     }
 
     private LambdaQueryWrapper<SweCandidateEntity> candidateFilter(
