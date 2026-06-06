@@ -244,6 +244,8 @@ export interface GithubPullCandidate {
   mergeCommit?: string
   mergedAt?: string
   updatedAt?: string
+  createdAt?: string
+  modifiedAt?: string
   primaryLanguage?: string
   secondaryLanguages?: string
   patchFiles?: number

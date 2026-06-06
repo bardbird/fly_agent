@@ -375,6 +375,10 @@ export async function listSweCandidates(params?: {
   perPage?: number
   candidateStatus?: string
   duplicateStatus?: string
+  language?: string
+  dateField?: string
+  dateFrom?: string
+  dateTo?: string
 }): Promise<GithubPullCandidateListResponse> {
   const response = unwrapResult(
     await api.get<ApiResult<GithubPullCandidateListResponse>>('/swe/candidates', { params })
@@ -386,6 +390,21 @@ export async function listSweCandidates(params?: {
     totalPages: response?.totalPages ?? 1,
     candidates: Array.isArray(response?.candidates) ? response.candidates : [],
   }
+}
+
+export async function exportSweCandidates(params?: {
+  candidateStatus?: string
+  duplicateStatus?: string
+  language?: string
+  dateField?: string
+  dateFrom?: string
+  dateTo?: string
+}): Promise<Blob> {
+  const response = await api.get('/swe/candidates/export', {
+    params,
+    responseType: 'blob',
+  })
+  return response.data
 }
 
 export async function listSweAllowedRepos(params?: {

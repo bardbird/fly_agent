@@ -46,6 +46,10 @@ public class GithubPullCandidateDTO {
 
     private String updatedAt;
 
+    private String createdAt;
+
+    private String modifiedAt;
+
     private String primaryLanguage;
 
     private String secondaryLanguages;

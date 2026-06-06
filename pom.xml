@@ -50,6 +50,7 @@
         <lombok.version>1.18.30</lombok.version>
         <hutool.version>5.8.24</hutool.version>
         <fastjson2.version>2.0.44</fastjson2.version>
+        <poi.version>5.2.5</poi.version>
 
         <!-- Test -->
         <junit.version>5.10.1</junit.version>
@@ -129,6 +130,13 @@
                 <groupId>com.alibaba.fastjson2</groupId>
                 <artifactId>fastjson2</artifactId>
                 <version>${fastjson2.version}</version>
+            </dependency>
+
+            <!-- Excel -->
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-ooxml</artifactId>
+                <version>${poi.version}</version>
             </dependency>
 
             <!-- Internal Modules -->

@@ -13,6 +13,7 @@ import {
   disableGithubTokens,
   enableGithubTokens,
   exportSweAllowedRepos,
+  exportSweCandidates,
   getGithubTokenPool,
   getSweModelIoConsole,
   getSweRuntimeSettings,
@@ -90,6 +91,21 @@ const SCA_LANGUAGE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'java', label: 'Java' },
 ]
 
+const CANDIDATE_LANGUAGE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'all', label: '全部语言' },
+  { value: 'unknown', label: 'Unknown' },
+  { value: 'c', label: 'C' },
+  { value: 'cpp', label: 'C++' },
+  { value: 'ruby', label: 'Ruby' },
+  { value: 'rust', label: 'Rust' },
+  { value: 'go', label: 'Go' },
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'php', label: 'PHP' },
+  { value: 'typescript', label: 'TypeScript' },
+  { value: 'python', label: 'Python' },
+  { value: 'java', label: 'Java' },
+]
+
 const STATUS_CLASS: Record<PipelineStatus, string> = {
   CREATED: 'bg-slate-100 text-slate-700 border-slate-200',
   RUNNING: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -155,10 +171,14 @@ export function SwePipelinePage() {
   const [allowedRepoCheckedTo, setAllowedRepoCheckedTo] = useState('')
   const [candidates, setCandidates] = useState<GithubPullCandidate[]>([])
   const [candidateLoading, setCandidateLoading] = useState(false)
+  const [candidateExporting, setCandidateExporting] = useState(false)
   const [candidatePage, setCandidatePage] = useState(1)
   const [candidatePerPage, setCandidatePerPage] = useState(10)
   const [candidateTotal, setCandidateTotal] = useState(0)
   const [candidateTotalPages, setCandidateTotalPages] = useState(1)
+  const [candidateLanguage, setCandidateLanguage] = useState('all')
+  const [candidateCreatedFrom, setCandidateCreatedFrom] = useState('')
+  const [candidateCreatedTo, setCandidateCreatedTo] = useState('')
   const [modelIo, setModelIo] = useState<SweModelIoConsole | null>(null)
   const [modelIoLoading, setModelIoLoading] = useState(false)
   const [modelIoError, setModelIoError] = useState<string | null>(null)
@@ -247,7 +267,14 @@ export function SwePipelinePage() {
   async function refreshCandidates(nextPage = candidatePage, nextPerPage = candidatePerPage) {
     setCandidateLoading(true)
     try {
-      const response = await listSweCandidates({ page: nextPage, perPage: nextPerPage })
+      const response = await listSweCandidates({
+        page: nextPage,
+        perPage: nextPerPage,
+        language: candidateLanguage === 'all' ? undefined : candidateLanguage,
+        dateField: 'created',
+        dateFrom: candidateCreatedFrom || undefined,
+        dateTo: candidateCreatedTo || undefined,
+      })
       setCandidates(response.candidates)
       if (
         response.candidates.length > 0 &&
@@ -263,6 +290,23 @@ export function SwePipelinePage() {
       setError(requestError instanceof Error ? requestError.message : '加载候选列表失败')
     } finally {
       setCandidateLoading(false)
+    }
+  }
+
+  async function handleExportCandidates() {
+    setCandidateExporting(true)
+    try {
+      const blob = await exportSweCandidates({
+        language: candidateLanguage === 'all' ? undefined : candidateLanguage,
+        dateField: 'created',
+        dateFrom: candidateCreatedFrom || undefined,
+        dateTo: candidateCreatedTo || undefined,
+      })
+      downloadBlob(blob, 'swe_candidates.xlsx')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : '导出候选 PR 失败')
+    } finally {
+      setCandidateExporting(false)
     }
   }
 
@@ -886,15 +930,23 @@ export function SwePipelinePage() {
             <CandidateRegistryPanel
               candidates={candidates}
               loading={candidateLoading}
+              exporting={candidateExporting}
               page={candidatePage}
               perPage={candidatePerPage}
               total={candidateTotal}
               totalPages={candidateTotalPages}
+              language={candidateLanguage}
+              createdFrom={candidateCreatedFrom}
+              createdTo={candidateCreatedTo}
               selectedCandidateId={selectedCandidateId}
               onSelectCandidate={setSelectedCandidateId}
-              onRefresh={refreshCandidates}
+              onLanguageChange={setCandidateLanguage}
+              onCreatedFromChange={setCandidateCreatedFrom}
+              onCreatedToChange={setCandidateCreatedTo}
+              onRefresh={() => refreshCandidates(1, candidatePerPage)}
               onPageChange={(page) => refreshCandidates(page, candidatePerPage)}
               onPerPageChange={(perPage) => refreshCandidates(1, perPage)}
+              onExport={handleExportCandidates}
             />
             <CandidateDetailPanel
               candidate={selectedCandidate}
@@ -1905,7 +1957,7 @@ function AllowedRepoRegistryPanel({
             value={language}
             onChange={(event) => onLanguageChange(event.target.value)}
           >
-            {SCA_LANGUAGE_OPTIONS.map((item) => (
+            {CANDIDATE_LANGUAGE_OPTIONS.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
               </option>
@@ -2438,27 +2490,43 @@ function PullCandidateList({
 function CandidateRegistryPanel({
   candidates,
   loading,
+  exporting,
   page,
   perPage,
   total,
   totalPages,
+  language,
+  createdFrom,
+  createdTo,
   selectedCandidateId,
   onSelectCandidate,
+  onLanguageChange,
+  onCreatedFromChange,
+  onCreatedToChange,
   onRefresh,
   onPageChange,
   onPerPageChange,
+  onExport,
 }: {
   candidates: GithubPullCandidate[]
   loading: boolean
+  exporting: boolean
   page: number
   perPage: number
   total: number
   totalPages: number
+  language: string
+  createdFrom: string
+  createdTo: string
   selectedCandidateId: number | null
   onSelectCandidate: (candidateId: number | null) => void
+  onLanguageChange: (language: string) => void
+  onCreatedFromChange: (value: string) => void
+  onCreatedToChange: (value: string) => void
   onRefresh: () => Promise<void>
   onPageChange: (page: number) => Promise<void>
   onPerPageChange: (perPage: number) => Promise<void>
+  onExport: () => Promise<void>
 }) {
   return (
     <div className="rounded-lg border border-terminal bg-white p-3 shadow-sm">
@@ -2467,14 +2535,26 @@ function CandidateRegistryPanel({
           <Icon icon="mdi:database-search-outline" className="h-5 w-5 text-cyan" />
           <h3 className="text-sm font-bold text-text-primary">候选 PR 库</h3>
         </div>
-        <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => onRefresh()}>
-          {loading ? '刷新中' : '刷新'}
-        </Button>
-      </div>
-      <div className="mb-3 grid grid-cols-[minmax(0,1fr)_92px] items-end gap-2">
         <div className="text-xs text-text-muted">
           共 {total.toLocaleString()} 条 · 第 {page} / {totalPages} 页
         </div>
+      </div>
+      <div className="mb-3 grid gap-2 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-medium text-text-secondary">语言</span>
+          <select
+            className="input-base h-9 text-xs"
+            value={language}
+            disabled={loading}
+            onChange={(event) => onLanguageChange(event.target.value)}
+          >
+            {SCA_LANGUAGE_OPTIONS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="block">
           <span className="mb-1 block text-[11px] font-medium text-text-secondary">每页</span>
           <select
@@ -2489,6 +2569,39 @@ function CandidateRegistryPanel({
             <option value={50}>50</option>
           </select>
         </label>
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-medium text-text-secondary">创建开始</span>
+          <input
+            type="date"
+            className="input-base h-9 text-xs"
+            value={createdFrom}
+            disabled={loading}
+            onChange={(event) => onCreatedFromChange(event.target.value)}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-medium text-text-secondary">创建结束</span>
+          <input
+            type="date"
+            className="input-base h-9 text-xs"
+            value={createdTo}
+            disabled={loading}
+            onChange={(event) => onCreatedToChange(event.target.value)}
+          />
+        </label>
+        <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => onRefresh()}>
+          {loading ? '刷新中' : '刷新'}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          disabled={exporting || total === 0}
+          className="inline-flex items-center justify-center gap-2"
+          onClick={() => onExport()}
+        >
+          <Icon icon="mdi:file-excel-outline" className="h-4 w-4" />
+          {exporting ? '导出中' : '导出 Excel'}
+        </Button>
       </div>
       <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1 custom-scrollbar">
         {candidates.length === 0 ? (
@@ -2518,6 +2631,9 @@ function CandidateRegistryPanel({
                     </a>
                     <p className="mt-1 truncate text-[11px] text-text-muted">
                       {candidate.repo} · {candidate.primaryLanguage || 'unknown'}
+                    </p>
+                    <p className="mt-1 text-[11px] text-text-muted">
+                      创建 {formatDate(candidate.createdAt)} · 合并 {formatDate(candidate.mergedAt)}
                     </p>
                   </div>
                   <ScoreBadge grade={candidate.candidateGrade} score={candidate.score} />

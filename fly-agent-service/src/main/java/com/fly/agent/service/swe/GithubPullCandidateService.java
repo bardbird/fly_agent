@@ -13,6 +13,12 @@ import com.fly.agent.dao.entity.swe.SweCandidateEntity;
 import com.fly.agent.dao.entity.swe.SweTaskEntity;
 import com.fly.agent.dao.mapper.swe.SweCandidateMapper;
 import com.fly.agent.dao.mapper.swe.SweTaskMapper;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
@@ -28,6 +34,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.transport.ProxyProvider;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -79,6 +86,7 @@ public class GithubPullCandidateService {
     private static final int MAX_REPO_SIZE_KB = 200_000;
     private static final int MAX_DEPENDENCY_FILES = 1;
     private static final int MAX_DEPENDENCY_CHANGED_LINES = 20;
+    private static final int MAX_CANDIDATE_EXPORT_ROWS = 10_000;
     private static final List<String> NON_SOURCE_SUFFIXES = List.of(".md", ".txt", ".json", ".yaml", ".yml", ".lock", ".sum");
     private static final List<String> GENERATED_NEEDLES = List.of("lock", "vendor/", "generated", "dist/", "locale", "i18n", "snapshot");
     private static final List<String> UPLOAD_TERMS = List.of(
@@ -443,6 +451,145 @@ public class GithubPullCandidateService {
         return response;
     }
 
+    public byte[] exportCandidateExcel(
+            String candidateStatus,
+            String duplicateStatus,
+            String language,
+            String dateField,
+            String dateFrom,
+            String dateTo,
+            Integer minScore,
+            Integer minGoldSourceFiles,
+            Integer maxGoldSourceFiles,
+            Integer minGoldLines,
+            Integer maxGoldLines,
+            Boolean testPatchPresent,
+            Boolean qualifiedOnly,
+            Boolean excludeTasked) {
+        LambdaQueryWrapper<SweCandidateEntity> wrapper = candidateFilter(
+                candidateStatus,
+                duplicateStatus,
+                language,
+                dateField,
+                dateFrom,
+                dateTo,
+                minScore,
+                minGoldSourceFiles,
+                maxGoldSourceFiles,
+                minGoldLines,
+                maxGoldLines,
+                testPatchPresent,
+                qualifiedOnly,
+                excludeTasked)
+                .orderByDesc(SweCandidateEntity::getCreatedAt)
+                .orderByDesc(SweCandidateEntity::getId)
+                .last("LIMIT " + MAX_CANDIDATE_EXPORT_ROWS);
+        List<SweCandidateEntity> rows = candidateMapper.selectList(wrapper);
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("candidates");
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+
+            String[] headers = {
+                    "ID",
+                    "Candidate ID",
+                    "Repo",
+                    "Primary Language",
+                    "PR Number",
+                    "PR URL",
+                    "Issue URL",
+                    "Title",
+                    "Candidate Status",
+                    "Duplicate Status",
+                    "Score",
+                    "Grade",
+                    "Created At",
+                    "Merged At",
+                    "Updated At",
+                    "Modified At",
+                    "Base Commit",
+                    "Fix Commit",
+                    "Merge Commit",
+                    "Source Files",
+                    "Gold Source Files",
+                    "Gold Total Changed",
+                    "Test Total Changed",
+                    "Test Patch Present",
+                    "Benchmark Status",
+                    "Failed History Status",
+                    "Grade Reason"
+            };
+            Row header = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+                header.getCell(i).setCellStyle(headerStyle);
+            }
+            for (int i = 0; i < rows.size(); i++) {
+                writeCandidateExportRow(sheet.createRow(i + 1), rows.get(i));
+            }
+            int[] widths = {
+                    10, 18, 32, 18, 12, 48, 48, 44, 18, 18, 10, 10, 20, 20,
+                    20, 20, 44, 44, 44, 14, 18, 18, 18, 18, 20, 22, 64
+            };
+            for (int i = 0; i < widths.length; i++) {
+                sheet.setColumnWidth(i, widths[i] * 256);
+            }
+            workbook.write(output);
+            return output.toByteArray();
+        } catch (IOException e) {
+            throw new BusinessException("候选 PR Excel 导出失败", e);
+        }
+    }
+
+    private void writeCandidateExportRow(Row row, SweCandidateEntity candidate) {
+        int col = 0;
+        cell(row, col++, candidate.getId());
+        cell(row, col++, candidate.getCandidateId());
+        cell(row, col++, candidate.getRepo());
+        cell(row, col++, candidate.getPrimaryLanguage());
+        cell(row, col++, candidate.getPrNumber());
+        cell(row, col++, candidate.getPrUrl());
+        cell(row, col++, candidate.getIssueUrl());
+        cell(row, col++, candidate.getTitle());
+        cell(row, col++, candidate.getCandidateStatus());
+        cell(row, col++, candidate.getDuplicateStatus());
+        cell(row, col++, candidate.getScore());
+        cell(row, col++, candidate.getCandidateGrade());
+        cell(row, col++, dateText(candidate.getCreatedAt()));
+        cell(row, col++, dateText(candidate.getMergedAt()));
+        cell(row, col++, dateText(candidate.getUpdatedAt()));
+        cell(row, col++, dateText(candidate.getModifiedAt()));
+        cell(row, col++, candidate.getBaseCommit());
+        cell(row, col++, candidate.getFixCommit());
+        cell(row, col++, candidate.getMergeCommit());
+        cell(row, col++, candidate.getSourceFiles());
+        cell(row, col++, candidate.getGoldSourceFiles());
+        cell(row, col++, candidate.getGoldTotalChanged());
+        cell(row, col++, candidate.getTestTotalChanged());
+        cell(row, col++, Boolean.TRUE.equals(candidate.getTestPatchPresent()) ? "YES" : "NO");
+        cell(row, col++, candidate.getBenchmarkStatus());
+        cell(row, col++, candidate.getFailedHistoryStatus());
+        cell(row, col, candidate.getGradeReason());
+    }
+
+    private void cell(Row row, int col, Number value) {
+        if (value == null) {
+            row.createCell(col).setBlank();
+            return;
+        }
+        row.createCell(col).setCellValue(value.doubleValue());
+    }
+
+    private void cell(Row row, int col, String value) {
+        row.createCell(col).setCellValue(value == null ? "" : value);
+    }
+
+    private String dateText(LocalDateTime value) {
+        return value == null ? "" : value.toString();
+    }
+
     private LambdaQueryWrapper<SweCandidateEntity> candidateFilter(
             String candidateStatus,
             String duplicateStatus,
@@ -767,6 +914,8 @@ public class GithubPullCandidateService {
         dto.setMergeCommit(entity.getMergeCommit());
         dto.setMergedAt(entity.getMergedAt() == null ? null : entity.getMergedAt().toString());
         dto.setUpdatedAt(entity.getUpdatedAt() == null ? null : entity.getUpdatedAt().toString());
+        dto.setCreatedAt(entity.getCreatedAt() == null ? null : entity.getCreatedAt().toString());
+        dto.setModifiedAt(entity.getModifiedAt() == null ? null : entity.getModifiedAt().toString());
         dto.setPrimaryLanguage(entity.getPrimaryLanguage());
         dto.setSecondaryLanguages(entity.getSecondaryLanguages());
         dto.setPatchFiles(entity.getPatchFiles());

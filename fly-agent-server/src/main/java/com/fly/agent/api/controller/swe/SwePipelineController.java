@@ -198,6 +198,48 @@ public class SwePipelineController {
                 excludeTasked));
     }
 
+    @GetMapping(
+            value = "/candidates/export",
+            produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    public ResponseEntity<byte[]> exportCandidates(
+            @RequestParam(value = "candidateStatus", required = false) String candidateStatus,
+            @RequestParam(value = "duplicateStatus", required = false) String duplicateStatus,
+            @RequestParam(value = "language", required = false) String language,
+            @RequestParam(value = "dateField", required = false) String dateField,
+            @RequestParam(value = "dateFrom", required = false) String dateFrom,
+            @RequestParam(value = "dateTo", required = false) String dateTo,
+            @RequestParam(value = "minScore", required = false) Integer minScore,
+            @RequestParam(value = "minGoldSourceFiles", required = false) Integer minGoldSourceFiles,
+            @RequestParam(value = "maxGoldSourceFiles", required = false) Integer maxGoldSourceFiles,
+            @RequestParam(value = "minGoldLines", required = false) Integer minGoldLines,
+            @RequestParam(value = "maxGoldLines", required = false) Integer maxGoldLines,
+            @RequestParam(value = "testPatchPresent", required = false) Boolean testPatchPresent,
+            @RequestParam(value = "qualifiedOnly", required = false) Boolean qualifiedOnly,
+            @RequestParam(value = "excludeTasked", required = false) Boolean excludeTasked) {
+        byte[] body = githubPullCandidateService.exportCandidateExcel(
+                candidateStatus,
+                duplicateStatus,
+                language,
+                dateField,
+                dateFrom,
+                dateTo,
+                minScore,
+                minGoldSourceFiles,
+                maxGoldSourceFiles,
+                minGoldLines,
+                maxGoldLines,
+                testPatchPresent,
+                qualifiedOnly,
+                excludeTasked);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                        .filename("swe_candidates.xlsx")
+                        .build()
+                        .toString())
+                .body(body);
+    }
+
     @PostMapping("/tasks")
     public Result<SweTaskDTO> createTask(@Valid @RequestBody SweTaskCreateRequest request) {
         return Result.ok(swePipelineService.createTask(request));
