@@ -1,175 +1,223 @@
 ---
 name: tb20-dataset-production
-description: Use this skill to batch produce Terminal-Bench 2.0 source tasks from existing instruction.md inputs through a rigorous AI-agent production workflow. It creates no placeholder tasks and provides only filesystem/state gates for intent analysis, design review, implementation, oracle positive control, negative controls, source audit, and source packaging. It does not run Harbor agents or collect agent-logs; use tb20-batch-execution-delivery for execution delivery.
+description: Use this skill to produce Terminal-Bench 2.0 dataset source material from stable, licensed domain channels. It focuses on the core production stage from brief/spec input to demo-grade instruction.md and test-generation-brief.md. It must use fixed domain source channels, source evidence, license evidence, material dossiers, and problem cards; it must not invent tasks from keyword search or generate placeholder tasks. Use tb20-batch-execution-delivery only after full datasets exist.
 ---
 
 # TB2.0 Dataset Production
 
-This skill is for producing TB2.0 source datasets from `instruction.md` inputs. `instruction.md` is the task-intent input, not a magic one-line prompt. A real AI coding agent must perform the production work, write the task files, and leave evidence for each gate.
-
-## Boundary
-
-Use this skill for:
-
-- batch ingesting existing `instruction.md` files
-- preparing per-task production packets for an AI coding agent
-- producing or repairing source task files
-- enforcing AI-agent review evidence and execution-proof gates before handoff
-- packaging a clean source dataset without `agent-logs/`
-
-Do not use this skill for:
-
-- one-shot prompt generation of tasks
-- hardcoded or enumerated fake task generation
-- placeholder scaffold creation
-- Harbor rollout, model execution, or delivery log collection
-
-Use `tb20-batch-execution-delivery` after this skill passes `SOURCE_AUDIT`.
-
-## Source Contract
-
-The source dataset must match the client demo contract:
+This skill currently owns the core production stage. The controllable workflow must be driven by scripts or backend APIs:
 
 ```text
-README.md
-README_zh.md
-easy/<task-name>/
-medium/<task-name>/
-hard/<task-name>/
+brief/spec input -> source-backed material acquisition -> problem-card -> instruction.md -> test-generation-brief.md
 ```
 
-Each task must contain:
+It does not run Harbor, solve tasks, collect `agent-logs/`, or pretend a script can judge semantic task quality.
 
-```text
-task.toml
-instruction.md
-environment/Dockerfile
-solution/solve.sh
-tests/test.sh
-tests/test_outputs.py
-```
+## Runtime Control
 
-`agent-logs/` is forbidden during dataset production. Execution delivery creates it from real Harbor runs.
-
-## Production Route
-
-1. `init`: create a production workspace and target dataset root.
-2. `ingest-instruction`: copy each input `instruction.md` into the target task path and create a production packet.
-3. AI agent production: run Codex, Claude Code, or another capable coding agent against the production packet. The agent must write the source task files and the required evidence files.
-4. `source-audit`: enforce source layout, metadata consistency, no placeholders, verifier shape, solution shape, and all production evidence.
-5. `package`: copy the clean source dataset only after `SOURCE_AUDIT` passes.
-6. Handoff the packaged source dataset to `tb20-batch-execution-delivery`.
-
-There is intentionally no `scaffold` command. A placeholder task is worse than no task because it can enter batch execution and create false confidence.
-
-## Required Evidence
-
-For every task, the production agent must write these files under the workspace evidence directory shown in the production packet:
-
-```text
-01-intent-analysis.md
-02-test-design.md
-03-test-review.md
-04-implementation-review.md
-05-oracle-positive.md
-06-negative-controls.md
-07-final-review.md
-```
-
-Evidence expectations:
-
-- `01-intent-analysis.md`: objective, constraints, underspecified points, minimal assumptions, and whether the instruction blocks truthful production.
-- `02-test-design.md`: natural-language derivation from instruction to verifier: intended behavior, observable outputs, edge cases, ambiguity handling, anti-cheat strategy, and why each test is necessary.
-- `03-test-review.md`: independent critique of the test design: missing behavior, overfitting, false positives, false negatives, hardcoding risks, and required revisions.
-- `04-implementation-review.md`: environment, fixtures, solution approach, verifier approach, and dependency choices.
-- `05-oracle-positive.md`: exact reference-solution/verifier commands and observed pass output.
-- `06-negative-controls.md`: plausible wrong solution or failure mode and observed verifier rejection.
-- `07-final-review.md`: source contract, intent alignment, reviewer concerns resolved, oracle pass, negative control failure, no placeholders, and execution handoff readiness.
-
-If intent is insufficient, mark the task BLOCKED in `01-intent-analysis.md`; do not invent facts.
-
-## Test Design Process
-
-The skill does not claim a hardcoded schema can create rigorous tests. The production agent must do the reasoning:
-
-1. Extract the true user intent and constraints from `instruction.md`.
-2. Identify ambiguity and either make a minimal defensible assumption or block production.
-3. Design tests before implementation, including normal behavior, edge cases, and plausible wrong approaches.
-4. Run an independent AI-agent review of the test design and revise until the review has no unresolved material objections.
-5. Implement verifier and reference solution.
-6. Prove the reference solution passes.
-7. Prove at least one plausible wrong solution fails.
-
-`source-audit` cannot judge semantic excellence by itself. It only blocks tasks that lack the required agent reasoning trail, real command evidence, or clean source contract.
-
-## Commands
-
-Bootstrap once:
+Use the script entrypoint for every controllable step. The script starts Codex as the skill executor for the AI-heavy production step, then enforces file and quality gates.
 
 ```bash
 SKILL_DIR=/path/to/tb20-dataset-production
-"$SKILL_DIR/scripts/bootstrap_runtime.sh"
+"$SKILL_DIR/.venv/bin/python" "$SKILL_DIR/scripts/tb20_dataset.py" prepare-instruction \
+  --workspace <workspace> \
+  --output-root <candidate-output-root> \
+  --domain software-engineering \
+  --source-channel github-pr-mining \
+  --brief-file <brief.md> \
+  --channel-config '{"allowedForTaskGeneration":true,"sourceName":"...","sourceUrl":"...","license":"MIT","termsUrl":"...","adapterType":"codex","codexBinary":"codex","codexSkillSyncMode":"symlink","codexModel":"..."}'
 ```
 
-Create a production workspace:
+Exit code contract:
 
-```bash
-"$SKILL_DIR/.venv/bin/python" "$SKILL_DIR/scripts/tb20_dataset.py" init \
-  --workspace <production-workspace> \
-  --dataset-root <dataset-root>
-```
+- `0`: required files are present and pass the instruction/test-brief gate.
+- `2`: controlled block; evidence is written and production must not proceed.
+- any other non-zero code: script/runtime failure.
 
-Batch ingest instructions:
+Default execution uses `codex exec` with the real Codex skill discovery path. The script synchronizes this skill into `$CODEX_HOME/skills/tb20-dataset-production` (or `~/.codex/skills/tb20-dataset-production`), writes `codex-contract.json` and `codex-request.md`, then starts a new Codex process whose request explicitly uses `$tb20-dataset-production`. The script still decides PASS/BLOCKED/FAIL from produced files and gate evidence.
 
-```bash
-"$SKILL_DIR/.venv/bin/python" "$SKILL_DIR/scripts/tb20_dataset.py" ingest-instruction \
-  --workspace <production-workspace> \
-  --difficulty easy \
-  --instruction <path/to/instruction.md>
-```
+## Fixed Domains
 
-The command writes a production packet under:
+Only these production domains are allowed:
 
 ```text
-<production-workspace>/production-packets/
+software-engineering
+system-administration
+security
+data-science
+scientific-computing
+file-operations
+web-network-services
+distributed-systems
+performance-optimization
+algorithms-and-formats
 ```
 
-Give each packet to a real coding agent. The script does not pretend to solve the production task.
+Do not create an eleventh domain without an explicit user request.
 
-Audit before handoff:
+## Source Channel Rule
 
-```bash
-"$SKILL_DIR/.venv/bin/python" "$SKILL_DIR/scripts/tb20_dataset.py" source-audit \
-  --workspace <production-workspace>
+Do not start from keyword search. Start from the selected domain and its stable source channel.
+
+Allowed acquisition modes:
+
+- official API
+- official bulk dump or archive
+- official Git repository clone
+- official package/source mirror
+- clearly licensed dataset catalog
+
+Rejected by default:
+
+- search engine scraping
+- random webpage scraping
+- unlicensed GitHub repositories
+- blog/StackOverflow content as task source text
+- paid or separate-license benchmarks
+- no-license, non-commercial, research-only, or no-derivatives content
+
+Default license allowlist:
+
+```text
+MIT
+BSD-2-Clause
+BSD-3-Clause
+Apache-2.0
+ISC
+CC0
+CC-BY-4.0
+public-domain
+US-government-public-data
 ```
 
-Package only after audit passes:
+GPL/LGPL/MPL sources may be studied, but do not copy code/tests into deliverables unless the downstream license obligations are intentionally accepted.
 
-```bash
-"$SKILL_DIR/.venv/bin/python" "$SKILL_DIR/scripts/tb20_dataset.py" package \
-  --workspace <production-workspace> \
-  --output <source-delivery-root>
+## Channel Matrix
+
+Use these channels as the first implementation target:
+
+| Domain | Stable source channels | Mining purpose |
+|---|---|---|
+| `software-engineering` | GitHub API, GH Archive, Software Heritage, Libraries.io | PR/issue/test-diff grounded bugfix, feature, regression, parser/CLI subset |
+| `system-administration` | Debian source packages, Debian Policy, Linux man-pages, systemd/Kubernetes repos | service config, logs, packages, permissions, processes |
+| `security` | NVD API, CVE cvelistV5, CWE, Exploit-DB, Vulhub | defensive reproduction, log forensics, weak config detection, protocol/crypto misuse |
+| `data-science` | UCI ML Repository, OpenML, data.gov metadata, limited Common Crawl discovery | cleaning, validation, aggregation, schema conversion, statistical reports |
+| `scientific-computing` | Netlib, NIST StRD, SuiteSparse Matrix Collection, SciPy/NumPy tests | numerical algorithms, matrix/signal problems, tolerance-driven verification |
+| `file-operations` | GNU coreutils, libarchive, rsync, Debian archive docs, POSIX specs | traversal, archive/checksum, sync, backup retention, mtime/permission semantics |
+| `web-network-services` | RFC Editor, IANA registries, W3C/WHATWG specs, curl/Apache/Nginx docs | HTTP/DNS/TLS/metrics/server behavior and protocol boundaries |
+| `distributed-systems` | CNCF Landscape, Kubernetes/etcd/Prometheus/Kafka/Redis/RabbitMQ docs/tests, Jepsen analyses | consistency, retry, leader election, queue semantics, recovery, config failure |
+| `performance-optimization` | LLVM test-suite, Google Benchmark, Phoronix Test Suite, open NAS/PolyBench-style suites | algorithmic/caching/IO/concurrency performance tasks |
+| `algorithms-and-formats` | RFC/IANA specs, Netlib, Rosetta Code, CP-algorithms, zlib/png/sqlite/libarchive specs/repos | parsers, encoders/decoders, binary formats, checksums, graph/format algorithms |
+
+## Required Outputs
+
+For each candidate task, produce a workspace with:
+
+```text
+source.json
+license.txt
+acquisition.log
+materials.md
+problem-card.md
+instruction.md
+test-generation-brief.md
 ```
 
-## Difficulty Policy
+`source.json` must include:
 
-Use the demo-aligned policy:
+```json
+{
+  "domain": "software-engineering",
+  "source_channel": "github-pr-mining",
+  "acquisition_method": "GitHub REST API + git clone",
+  "source_name": "",
+  "source_url": "",
+  "license": "",
+  "license_url": "",
+  "terms_url": "",
+  "redistribution_risk": "low|medium|high",
+  "allowed_for_task_generation": true
+}
+```
 
-- `easy`: expert 15-30 minutes, junior around 75 minutes; direct tool/algorithm, crisp IO.
-- `medium`: expert 35-45 minutes, junior 150-210 minutes; multi-step realistic engineering workflow.
-- `hard`: expert 480-600 minutes, junior 2400-3000 minutes; paper/standard-level implementation, binary/protocol/adversarial analysis, or deep systems work.
+If the license or terms cannot be established, stop with `allowed_for_task_generation=false`.
 
-`task.toml` metadata must keep `difficulty`, `expert_time_estimate_min`, and `junior_time_estimate_min` consistent with the task directory and design evidence.
+## Instruction Standard
+
+`instruction.md` must be demo-grade: a test writer should not need to guess the core task semantics.
+
+Use this structure:
+
+```markdown
+# <Task Title>
+
+## Context
+## Files Available
+## Task
+## Input Format
+## Required Output
+## Behavioral Requirements
+## Edge Cases
+## Constraints
+## Examples
+## Success Criteria
+```
+
+Required clarity:
+
+- exact `/app` paths
+- file formats and schemas
+- output types, sorting, precision, tolerance, and newline rules
+- allowed and forbidden actions
+- edge cases that should drive tests
+- success criteria that can become verifier assertions
+
+Do not leak hidden answers or copy upstream implementation code.
+
+## Test Generation Brief
+
+`test-generation-brief.md` is the handoff to the later test stage. It must contain:
+
+```text
+Observable outputs
+Fixture plan
+Normal behavior tests
+Boundary tests
+Adversarial/wrong-solution tests
+Old behavior preservation tests, if applicable
+Hidden-test strategy
+Wrong implementations to reject
+```
+
+This brief must be traceable to `materials.md`, `problem-card.md`, and `instruction.md`.
+
+## Software Engineering Mining
+
+For `software-engineering`, do not use GitHub keyword search. Use event/repo structure:
+
+```text
+repo allowlist/license check
+-> merged PRs
+-> PRs with tests changed
+-> PRs with source + tests changed
+-> linked issue or explicit PR problem statement
+-> diff size and dependency reproducibility filter
+-> parent commit checkout
+-> problem-card
+-> instruction.md
+```
+
+Use PR tests and issue/PR descriptions as behavior anchors; use fix diff only to estimate complexity and avoid leaking solution details.
 
 ## Reporting
 
-Report only evidence-backed status:
+Report:
 
 ```text
-Workspace: <production-workspace>
-Dataset root: <dataset-root>
-Tasks: <count>
-Source audit: PASS/FAIL
-Evidence: <production-workspace>/evidence/
-Next: tb20-batch-execution-delivery
+Domain:
+Source channel:
+Workspace:
+Instruction:
+Test brief:
+Blocked reason, if any:
 ```

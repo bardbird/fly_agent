@@ -6,9 +6,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -193,6 +195,9 @@ def cmd_init(args: argparse.Namespace) -> int:
         "sourceRoot": str(args.source_root.resolve()),
         "outputRoot": str(args.output_root.resolve()),
         "harborCli": harbor,
+        "dockerRegistryMirrors": args.docker_registry_mirrors,
+        "aptMirror": args.apt_mirror,
+        "pythonIndexUrl": args.python_index_url,
         "stages": [],
     }
     (workspace / "evidence").mkdir(parents=True, exist_ok=True)
@@ -242,8 +247,18 @@ def cmd_run(args: argparse.Namespace) -> int:
     harbor = state["harborCli"]
     jobs_dir = (args.jobs_dir or workspace / "jobs").resolve()
     jobs_dir.mkdir(parents=True, exist_ok=True)
-    results = []
-    for task in selected_tasks(root, args.task):
+    tasks = selected_tasks(root, args.task)
+    max_workers = max(1, min(args.concurrency, len(tasks) or 1))
+    env = os.environ.copy()
+    if state.get("dockerRegistryMirrors"):
+        env["TB20_DOCKER_REGISTRY_MIRRORS"] = state["dockerRegistryMirrors"]
+    if state.get("aptMirror"):
+        env["TB20_APT_MIRROR"] = state["aptMirror"]
+    if state.get("pythonIndexUrl"):
+        env["PIP_INDEX_URL"] = state["pythonIndexUrl"]
+        env["UV_INDEX_URL"] = state["pythonIndexUrl"]
+
+    def run_one(task: Path) -> dict:
         rel = task.relative_to(root).as_posix()
         name = safe_name(rel)
         command = [harbor, "run", "-p", str(task), "-a", args.agent, "--jobs-dir", str(jobs_dir), "--job-name", name, "--yes"]
@@ -254,12 +269,33 @@ def cmd_run(args: argparse.Namespace) -> int:
         with log_path.open("w", encoding="utf-8") as log:
             log.write("$ " + " ".join(command) + "\n")
             started = now()
-            proc = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, text=True)
+            proc = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, text=True, env=env)
             finished = now()
-        results.append({"task": rel, "jobName": name, "exitCode": proc.returncode, "startedAt": started, "finishedAt": finished, "log": str(log_path)})
-        if proc.returncode != 0 and args.fail_fast:
-            break
-    evidence = {"agent": args.agent, "models": args.model, "jobsDir": str(jobs_dir), "results": results}
+        return {"task": rel, "jobName": name, "exitCode": proc.returncode, "startedAt": started, "finishedAt": finished, "log": str(log_path)}
+
+    results = []
+    if args.fail_fast or max_workers == 1:
+        for task in tasks:
+            item = run_one(task)
+            results.append(item)
+            if item["exitCode"] != 0 and args.fail_fast:
+                break
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(run_one, task): task for task in tasks}
+            for future in as_completed(futures):
+                results.append(future.result())
+    results.sort(key=lambda item: item["task"])
+    evidence = {
+        "agent": args.agent,
+        "models": args.model,
+        "jobsDir": str(jobs_dir),
+        "concurrency": max_workers,
+        "dockerRegistryMirrors": state.get("dockerRegistryMirrors", ""),
+        "aptMirror": state.get("aptMirror", ""),
+        "pythonIndexUrl": state.get("pythonIndexUrl", ""),
+        "results": results,
+    }
     path = write_json(workspace / "evidence/run.json", evidence)
     ok = bool(results) and all(item["exitCode"] == 0 for item in results)
     record(workspace, "RUN", "PASS" if ok else "FAIL", path if ok else None)
@@ -365,6 +401,9 @@ def main() -> int:
     init.add_argument("--source-root", required=True, type=Path)
     init.add_argument("--output-root", required=True, type=Path)
     init.add_argument("--harbor")
+    init.add_argument("--docker-registry-mirrors", default="")
+    init.add_argument("--apt-mirror", default="")
+    init.add_argument("--python-index-url", default="")
     init.set_defaults(func=cmd_init)
 
     deps = sub.add_parser("deps")
@@ -381,6 +420,7 @@ def main() -> int:
     run.add_argument("--task", action="append", default=[])
     run.add_argument("--agent", default="claude-code")
     run.add_argument("--model", action="append", default=[])
+    run.add_argument("--concurrency", type=int, default=1)
     run.add_argument("--jobs-dir", type=Path)
     run.add_argument("--fail-fast", action="store_true")
     run.set_defaults(func=cmd_run)

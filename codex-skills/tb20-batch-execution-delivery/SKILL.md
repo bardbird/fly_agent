@@ -76,7 +76,10 @@ SKILL_DIR=/path/to/tb20-batch-execution-delivery
 "$SKILL_DIR/.venv/bin/python" "$SKILL_DIR/scripts/tb20_execute.py" init \
   --workspace <workspace> \
   --source-root <dataset-root> \
-  --output-root <delivery-root>
+  --output-root <delivery-root> \
+  --docker-registry-mirrors <mirror-list> \
+  --apt-mirror <apt-mirror-url> \
+  --python-index-url <python-index-url>
 
 "$SKILL_DIR/.venv/bin/python" "$SKILL_DIR/scripts/tb20_execute.py" deps --workspace <workspace>
 "$SKILL_DIR/.venv/bin/python" "$SKILL_DIR/scripts/tb20_execute.py" inspect --workspace <workspace>
@@ -84,7 +87,8 @@ SKILL_DIR=/path/to/tb20-batch-execution-delivery
 "$SKILL_DIR/.venv/bin/python" "$SKILL_DIR/scripts/tb20_execute.py" run \
   --workspace <workspace> \
   --agent claude-code \
-  --model <model>
+  --model <model> \
+  --concurrency 1
 
 "$SKILL_DIR/.venv/bin/python" "$SKILL_DIR/scripts/tb20_execute.py" collect --workspace <workspace>
 "$SKILL_DIR/.venv/bin/python" "$SKILL_DIR/scripts/tb20_execute.py" package --workspace <workspace>

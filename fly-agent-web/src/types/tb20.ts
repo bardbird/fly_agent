@@ -5,6 +5,80 @@ export interface Tb20ApiResult<T> {
   timestamp: number
 }
 
+export type Tb20Domain =
+  | 'software-engineering'
+  | 'system-administration'
+  | 'security'
+  | 'data-science'
+  | 'scientific-computing'
+  | 'file-operations'
+  | 'web-network-services'
+  | 'distributed-systems'
+  | 'performance-optimization'
+  | 'algorithms-and-formats'
+
+export interface Tb20ConfigRequest {
+  scope: 'dataset-production' | 'batch-execution-delivery'
+  values?: Record<string, unknown>
+}
+
+export interface Tb20ConfigResponse {
+  scope: string
+  values: Record<string, string>
+}
+
+export interface Tb20DatasetRunRequest {
+  domain: Tb20Domain
+  sourceChannel: string
+  brief?: string
+  outputRoot?: string
+  workspaceRoot?: string
+  channelConfig?: Record<string, unknown>
+}
+
+export interface Tb20ExecutionRunRequest {
+  sourceRoot: string
+  outputRoot?: string
+  workspaceRoot?: string
+  agent?: string
+  model?: string
+  concurrency?: number
+  failFast?: boolean
+  taskPaths?: string[]
+  executionConfig?: Record<string, unknown>
+}
+
+export interface Tb20RunStage {
+  code: string
+  name: string
+  status: string
+  note?: string
+}
+
+export interface Tb20RunArtifact {
+  name: string
+  role: string
+  path: string
+  present: boolean
+}
+
+export interface Tb20Run {
+  runId: string
+  kind: 'DATASET_PRODUCTION' | 'BATCH_EXECUTION_DELIVERY'
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'BLOCKED' | string
+  skillName: string
+  workspace: string
+  outputRoot: string
+  logPath?: string
+  command: string[]
+  stages: Tb20RunStage[]
+  artifacts: Tb20RunArtifact[]
+  startedAt?: string
+  finishedAt?: string
+  exitCode?: number
+  errorMessage?: string
+}
+
 export interface Tb20DependencyStatus {
   name: string
   role: string
@@ -55,44 +129,6 @@ export interface Tb20Task {
   difficulty?: string
   category?: string
   tags: string[]
-  expertTimeEstimateMin?: number
-  juniorTimeEstimateMin?: number
-  dockerImage?: string
-  cpu?: number
-  memory?: string
-  storage?: string
-  lineCounts?: {
-    instruction?: number
-    tests?: number
-    solution?: number
-  }
-  environmentFileCount?: number
-  testCount?: number
-  passedTestCount?: number
-  failedTestCount?: number
-  reward?: string | number
-  agentName?: string
-  modelName?: string
-  trajectorySchema?: string
-  trajectorySteps?: number
-  agentElapsedSec?: number
-  promptTokens?: number
-  completionTokens?: number
-  cachedTokens?: number
-  contentChecksum?: string
-}
-
-export interface Tb20Summary {
-  taskCount?: number
-  compliantTaskCount?: number
-  rewardOneCount?: number
-  totalTests?: number
-  totalTrajectorySteps?: number
-  totalPromptTokens?: number
-  totalCompletionTokens?: number
-  totalCachedTokens?: number
-  difficultyDistribution?: Record<string, number>
-  categoryDistribution?: Record<string, number>
 }
 
 export interface Tb20PipelineResponse {
@@ -101,7 +137,7 @@ export interface Tb20PipelineResponse {
   outputRoot?: string
   manifestPath?: string
   deliveryIndexPath?: string
-  summary: Tb20Summary
+  summary: Record<string, unknown>
   tasks: Tb20Task[]
   dependencies: Tb20DependencyStatus[]
 }

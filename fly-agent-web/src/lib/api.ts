@@ -22,9 +22,14 @@ import type {
 import type {
   Tb20ApiResult,
   Tb20Blueprint,
+  Tb20ConfigRequest,
+  Tb20ConfigResponse,
+  Tb20DatasetRunRequest,
   Tb20DependencyStatus,
+  Tb20ExecutionRunRequest,
   Tb20InspectRequest,
   Tb20PipelineResponse,
+  Tb20Run,
   Tb20Task,
 } from '@/types/tb20'
 
@@ -522,6 +527,76 @@ export async function runTb20Batch(data: Tb20InspectRequest): Promise<Tb20Pipeli
       })
     )
   )
+}
+
+function normalizeTb20Run(run: Tb20Run | null | undefined): Tb20Run {
+  return {
+    runId: run?.runId ?? '',
+    kind: run?.kind ?? 'DATASET_PRODUCTION',
+    status: run?.status ?? 'RUNNING',
+    skillName: run?.skillName ?? '',
+    workspace: run?.workspace ?? '',
+    outputRoot: run?.outputRoot ?? '',
+    logPath: run?.logPath,
+    command: Array.isArray(run?.command) ? run.command : [],
+    stages: Array.isArray(run?.stages) ? run.stages : [],
+    artifacts: Array.isArray(run?.artifacts) ? run.artifacts : [],
+    startedAt: run?.startedAt,
+    finishedAt: run?.finishedAt,
+    exitCode: run?.exitCode,
+    errorMessage: run?.errorMessage,
+  }
+}
+
+export async function getTb20Config(data: Tb20ConfigRequest): Promise<Tb20ConfigResponse> {
+  const response = unwrapTb20Result(
+    await api.post<Tb20ApiResult<Tb20ConfigResponse>>('/tb20/config/get', data)
+  )
+  return {
+    scope: response?.scope ?? data.scope,
+    values: response?.values ?? {},
+  }
+}
+
+export async function saveTb20Config(data: Tb20ConfigRequest): Promise<Tb20ConfigResponse> {
+  const response = unwrapTb20Result(
+    await api.post<Tb20ApiResult<Tb20ConfigResponse>>('/tb20/config/save', data)
+  )
+  return {
+    scope: response?.scope ?? data.scope,
+    values: response?.values ?? {},
+  }
+}
+
+export async function startTb20DatasetRun(data: Tb20DatasetRunRequest): Promise<Tb20Run> {
+  return normalizeTb20Run(
+    unwrapTb20Result(await api.post<Tb20ApiResult<Tb20Run>>('/tb20/dataset-runs/start', data, {
+      timeout: 120000,
+    }))
+  )
+}
+
+export async function startTb20ExecutionRun(data: Tb20ExecutionRunRequest): Promise<Tb20Run> {
+  return normalizeTb20Run(
+    unwrapTb20Result(await api.post<Tb20ApiResult<Tb20Run>>('/tb20/execution-runs/start', data, {
+      timeout: 120000,
+    }))
+  )
+}
+
+export async function listTb20Runs(): Promise<Tb20Run[]> {
+  const runs = unwrapTb20Result(await api.post<Tb20ApiResult<Tb20Run[]>>('/tb20/runs/list', {}))
+  return Array.isArray(runs) ? runs.map(normalizeTb20Run) : []
+}
+
+export async function getTb20Run(runId: string): Promise<Tb20Run> {
+  return normalizeTb20Run(
+    unwrapTb20Result(await api.post<Tb20ApiResult<Tb20Run>>('/tb20/runs/detail', { runId }))
+  )
+}
+
+export async function getTb20RunLog(runId: string): Promise<string> {
+  return unwrapTb20Result(await api.post<Tb20ApiResult<string>>('/tb20/runs/log', { runId }))
 }
 
 export type { Tb20Task }

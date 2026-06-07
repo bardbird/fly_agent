@@ -52,37 +52,35 @@ public class Tb20PipelineService {
         response.setRequiredTaskFiles(new ArrayList<>(REQUIRED_TASK_FILES));
         response.setOptionalDeliveryLogs(new ArrayList<>(OPTIONAL_DELIVERY_LOGS));
         response.setStages(List.of(
-                stage("TOPIC_DESIGN", "选题与能力点设计", "AI辅助，人工/专家门禁", "单体/批量", "Claude Code + domain skill",
-                        "领域、难度、能力标签、约束", "task brief", "题目真实、有区分度、无敏感/版权风险"),
-                stage("TASK_SCAFFOLD", "TB 2.0 目录骨架生成", "可自动化", "单体/批量", "脚本",
-                        "task brief", "task.toml/instruction/environment/tests/solution skeleton", "标准文件齐全"),
-                stage("REFERENCE_SOLUTION", "参考解构建", "AI辅助，必须验证", "单体/批量", "Claude Code / Codex / skill",
-                        "题面和环境", "solution/solve.sh", "oracle 可通过 verifier"),
-                stage("TEST_CONSTRUCTION", "公开与隐藏测试构建", "AI辅助，人工门禁", "单体/批量", "Claude Code + pytest skill",
-                        "题面、参考解、投机路径清单", "tests/test.sh + tests/test_outputs.py", "参考解通过，空解/投机解失败"),
+                stage("SOURCE_CHANNEL", "领域与素材渠道选择", "后端配置驱动", "单体/批量", "脚本 + source adapter",
+                        "固定领域、固定渠道、许可证策略", "source.json/license.txt", "渠道合法且可复现"),
+                stage("MATERIAL_ACQUISITION", "素材采集与问题挖掘", "脚本优先", "单体/批量", "source adapter",
+                        "source.json", "materials.md/problem-card.md", "素材来源稳定、问题真实"),
+                stage("INSTRUCTION_PRODUCTION", "instruction.md 生产", "脚本/后端接口控制", "单体/批量", "tb20-dataset-production",
+                        "materials/problem-card", "instruction.md/test-generation-brief.md", "达到 demo 级可测性标准"),
                 stage("HARBOR_VERIFY", "Harbor/TB 2.0 运行验收", "可自动化", "单体/批量", "Harbor",
                         "标准 task", "reward、CTRF、trajectory", "reward=1 且重跑稳定"),
                 stage("DIFFICULTY_CALIBRATION", "多模型难度校准", "可批量，结论需复核", "批量", "Harbor + models",
                         "任务集", "通过率、耗时、token、失败类型", "easy/medium/hard 分布合理"),
                 stage("DELIVERY_PACKAGE", "标准化交付包产出", "可自动化", "单体/批量", "脚本",
                         "任务目录和日志", "delivery_manifest.json + task package", "结构、checksum、reward、报告齐全"),
-                stage("FINAL_AUDIT", "最终质检审计", "AI辅助，人工门禁", "单体/批量", "review skill + Claude Code",
+                stage("FINAL_AUDIT", "最终质检审计", "脚本证据审计", "单体/批量", "audit script",
                         "交付包", "审计报告", "无占位符、无泄漏、无不可复现依赖")
         ));
         response.setNonAutomatableBoundaries(List.of(
-                "领域选题价值判断不能完全自动化，只能由模型生成候选并由专家/审计规则筛选",
+                "领域选题必须从固定渠道和 source adapter 进入，禁止关键词搜索式造题",
                 "hard 任务的算法、协议、逆向、系统语义正确性不能只靠模型自证",
                 "参考解是否合理体现 expert path 需要代码审查和运行证据",
-                "hidden tests、抗 hardcode、抗读取测试文件的设计需要人工或独立 reviewer agent 复核",
+                "hidden tests、抗 hardcode、抗读取测试文件的设计必须由后续测试阶段单独控制",
                 "难度分层最终要用多模型通过率和人工解释共同确认",
                 "版权、许可证、敏感信息、外部依赖可复现性必须保留最终门禁"
         ));
         response.setAiScaleOutControls(List.of(
-                "页面单体触发：针对一个 task brief/目录启动 Claude Code 或 skill 生成/修复/审计",
+                "页面单体触发：后端调用结构化脚本命令控制流程",
                 "页面批量触发：对任务池逐个排队执行，不在后台无限自发生产",
-                "每个 AI 产物必须落盘为 instruction、solution、tests 或 audit report，并进入 verifier",
-                "Claude Code/Codex 只能代替编辑和初审，不能跳过 oracle reward、dummy failure、hidden-test review",
-                "批量模式必须记录 prompt、模型、版本、输入 brief、输出 diff 和失败原因"
+                "每个产物必须落盘为 source、materials、problem-card、instruction 或 test brief",
+                "能用脚本和后端接口控制的阶段必须由脚本和接口控制",
+                "批量模式必须记录结构化参数、命令、输出目录和失败原因"
         ));
         response.setDependencies(checkDependencies(harborRoot, terminalBenchRoot));
         return response;
