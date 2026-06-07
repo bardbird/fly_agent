@@ -206,6 +206,7 @@ public class SweScaReportService {
         }
         String normalized = language.trim().toLowerCase();
         return switch (normalized) {
+            case "cc", "cpp", "cxx", "cplusplus" -> "c++";
             case "ts" -> "typescript";
             case "js" -> "javascript";
             default -> normalized;

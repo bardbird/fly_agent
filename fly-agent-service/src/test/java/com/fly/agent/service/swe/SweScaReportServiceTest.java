@@ -3,14 +3,17 @@ package com.fly.agent.service.swe;
 import com.fly.agent.common.dto.swe.SweScaReportGenerateRequest;
 import com.fly.agent.common.dto.swe.SweScaReportGenerateResponse;
 import com.fly.agent.common.exception.BusinessException;
+import com.fly.agent.dao.mapper.swe.SweRepoScaReportMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentMatchers;
 import org.mockito.ArgumentCaptor;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -19,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -135,6 +139,33 @@ class SweScaReportServiceTest {
         request.setPackagePath(packagePath.toString());
 
         assertThrows(BusinessException.class, () -> service.generate(request));
+    }
+
+    @Test
+    void listAllowedReposNormalizesCppLanguageAlias() {
+        SweRepoScaReportMapper scaReportMapper = mock(SweRepoScaReportMapper.class);
+        when(scaReportMapper.countAllowedRepoReports(eq("c++"), any(), any(), any())).thenReturn(0L);
+        when(scaReportMapper.selectAllowedRepoReports(eq("c++"), any(), any(), any(), eq(20), eq(0)))
+                .thenReturn(List.of());
+        SweScaReportService service = new SweScaReportService(
+                new SweProperties(),
+                mock(SweCommandRunner.class),
+                scaReportMapper);
+
+        service.listAllowedRepos(1, 20, "cpp", null, null, null);
+
+        verify(scaReportMapper).countAllowedRepoReports(
+                eq("c++"),
+                isNull(),
+                ArgumentMatchers.<LocalDateTime>isNull(),
+                ArgumentMatchers.<LocalDateTime>isNull());
+        verify(scaReportMapper).selectAllowedRepoReports(
+                eq("c++"),
+                isNull(),
+                ArgumentMatchers.<LocalDateTime>isNull(),
+                ArgumentMatchers.<LocalDateTime>isNull(),
+                eq(20),
+                eq(0));
     }
 
     @Test

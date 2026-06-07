@@ -1957,7 +1957,7 @@ function AllowedRepoRegistryPanel({
             value={language}
             onChange={(event) => onLanguageChange(event.target.value)}
           >
-            {CANDIDATE_LANGUAGE_OPTIONS.map((item) => (
+            {SCA_LANGUAGE_OPTIONS.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
               </option>
@@ -2548,7 +2548,7 @@ function CandidateRegistryPanel({
             disabled={loading}
             onChange={(event) => onLanguageChange(event.target.value)}
           >
-            {SCA_LANGUAGE_OPTIONS.map((item) => (
+            {CANDIDATE_LANGUAGE_OPTIONS.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
               </option>
