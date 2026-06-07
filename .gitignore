@@ -103,3 +103,4 @@ pnpm-debug.log*
 /tools/SWE-agent/
 /.swe-ai/
 __pycache__/
+/codex-skills/*/.venv/

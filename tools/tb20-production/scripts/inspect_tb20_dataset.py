@@ -30,6 +30,29 @@ REQUIRED_TASK_FILES = [
     "tests/test_outputs.py",
 ]
 
+CLEAN_TASK_FILES = [
+    "task.toml",
+    "instruction.md",
+]
+
+CLEAN_TASK_DIRS = [
+    "environment",
+    "solution",
+    "tests",
+]
+
+CLEAN_AGENT_LOG_FILES = [
+    "agent-logs/run.json",
+    "agent-logs/trajectory.json",
+    "agent-logs/verifier/ctrf.json",
+    "agent-logs/verifier/reward.txt",
+]
+
+CLEAN_ROOT_FILES = [
+    "README.md",
+    "README_zh.md",
+]
+
 OPTIONAL_LOG_FILES = [
     "agent-logs/run.json",
     "agent-logs/trajectory.json",
@@ -249,14 +272,63 @@ def summarize(tasks: list[dict]) -> dict:
     }
 
 
-def write_manifest(output_root: Path, source_root: Path, tasks: list[dict], copy_tasks: bool) -> dict:
+def copy_clean_tree(source: Path, dest: Path) -> None:
+    def ignore(_dir: str, names: list[str]) -> set[str]:
+        return {name for name in names if name == ".DS_Store" or name == "__pycache__"}
+
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(source, dest, ignore=ignore)
+
+
+def copy_clean_task(source: Path, dest: Path) -> None:
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    for rel in CLEAN_TASK_FILES:
+        src = source / rel
+        if src.is_file():
+            target = dest / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, target)
+    for rel in CLEAN_TASK_DIRS:
+        src = source / rel
+        if src.is_dir():
+            copy_clean_tree(src, dest / rel)
+    for rel in CLEAN_AGENT_LOG_FILES:
+        src = source / rel
+        if src.is_file():
+            target = dest / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, target)
+
+
+def copy_clean_delivery(output_root: Path, source_root: Path, tasks: list[dict]) -> None:
     output_root.mkdir(parents=True, exist_ok=True)
+    for stale in ["delivery_manifest.json", "delivery_index.md"]:
+        path = output_root / stale
+        if path.exists():
+            path.unlink()
+    stale_tasks = output_root / "tasks"
+    if stale_tasks.exists():
+        shutil.rmtree(stale_tasks)
+    for name in CLEAN_ROOT_FILES:
+        src = source_root / name
+        if src.is_file():
+            shutil.copy2(src, output_root / name)
+    for item in tasks:
+        copy_clean_task(Path(item["absolutePath"]), output_root / item["relativePath"])
+
+
+def write_manifest(evidence_root: Path, output_root: Path | None, source_root: Path, tasks: list[dict], copy_tasks: bool) -> dict:
+    evidence_root.mkdir(parents=True, exist_ok=True)
     manifest = {
         "schema": "fly-agent.tb20.delivery-manifest.v1",
         "createdAt": datetime.now(timezone.utc).isoformat(),
         "sourceRoot": str(source_root.resolve()),
-        "outputRoot": str(output_root.resolve()),
+        "outputRoot": str(output_root.resolve()) if output_root else None,
         "copyTasks": copy_tasks,
+        "deliveryFormat": "clean",
         "standard": "Terminal-Bench 2.0",
         "requiredExternalDependencies": [
             {"name": "Terminal-Bench 2.0", "role": "task standard and benchmark target"},
@@ -276,7 +348,7 @@ def write_manifest(output_root: Path, source_root: Path, tasks: list[dict], copy
             "版权、许可证、敏感信息和交付风险复核",
         ],
     }
-    (output_root / "delivery_manifest.json").write_text(
+    (evidence_root / "delivery_manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
@@ -285,7 +357,7 @@ def write_manifest(output_root: Path, source_root: Path, tasks: list[dict], copy
         "# Terminal-Bench 2.0 Delivery Index",
         "",
         f"- Source: `{source_root.resolve()}`",
-        f"- Output: `{output_root.resolve()}`",
+        f"- Output: `{output_root.resolve() if output_root else ''}`",
         f"- Tasks: {manifest['summary']['taskCount']}",
         f"- Compliant: {manifest['summary']['compliantTaskCount']}",
         f"- Reward=1: {manifest['summary']['rewardOneCount']}",
@@ -301,16 +373,8 @@ def write_manifest(output_root: Path, source_root: Path, tasks: list[dict], copy
             f"{item.get('reward') or ''} | {item.get('trajectorySchema') or ''} | "
             f"{'OK' if item['standardCompliant'] else 'MISSING'} |"
         )
-    (output_root / "delivery_index.md").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (evidence_root / "delivery_index.md").write_text("\n".join(rows) + "\n", encoding="utf-8")
 
-    if copy_tasks:
-        task_root = output_root / "tasks"
-        if task_root.exists():
-            shutil.rmtree(task_root)
-        for item in tasks:
-            source = Path(item["absolutePath"])
-            dest = task_root / item["relativePath"]
-            shutil.copytree(source, dest)
     return manifest
 
 
@@ -318,6 +382,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Inspect real Terminal-Bench 2.0 task data.")
     parser.add_argument("--source-root", required=True, type=Path)
     parser.add_argument("--output-root", type=Path)
+    parser.add_argument("--evidence-root", type=Path)
     parser.add_argument("--task", action="append", default=[], help="Relative task path for single/batch selection.")
     parser.add_argument("--copy-tasks", action="store_true")
     args = parser.parse_args()
@@ -337,7 +402,17 @@ def main() -> int:
         "tasks": tasks,
     }
     if args.output_root:
-        result["manifest"] = write_manifest(args.output_root.expanduser().resolve(), source_root, tasks, args.copy_tasks)
+        output_root = args.output_root.expanduser().resolve()
+        if args.copy_tasks:
+            copy_clean_delivery(output_root, source_root, tasks)
+        evidence_root = args.evidence_root.expanduser().resolve() if args.evidence_root else output_root.parent / f"{output_root.name}-evidence"
+        result["manifest"] = write_manifest(evidence_root, output_root, source_root, tasks, args.copy_tasks)
+        result["deliveryRoot"] = str(output_root)
+        result["evidenceRoot"] = str(evidence_root)
+    elif args.evidence_root:
+        evidence_root = args.evidence_root.expanduser().resolve()
+        result["manifest"] = write_manifest(evidence_root, None, source_root, tasks, args.copy_tasks)
+        result["evidenceRoot"] = str(evidence_root)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
