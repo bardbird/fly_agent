@@ -1,0 +1,42 @@
+{
+  "jobsDir": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-hardfix/jobs",
+  "results": [
+    {
+      "task": "hard/tzif-forensics-hard",
+      "ok": true,
+      "searchRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-hardfix/jobs/hard__tzif-forensics-hard",
+      "artifacts": [
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-hardfix/jobs/hard__tzif-forensics-hard/tzif-forensics-hard__NUrooc2/result.json",
+          "dest": "agent-logs/run.json",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-hardfix/jobs/hard__tzif-forensics-hard/tzif-forensics-hard__NUrooc2/agent/trajectory.json",
+          "dest": "agent-logs/trajectory.json",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-hardfix/jobs/hard__tzif-forensics-hard/tzif-forensics-hard__NUrooc2/agent/claude-code.txt",
+          "dest": "agent-logs/claude-code.txt",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-hardfix/jobs/hard__tzif-forensics-hard/tzif-forensics-hard__NUrooc2/verifier/reward.txt",
+          "dest": "agent-logs/verifier/reward.txt",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-hardfix/jobs/hard__tzif-forensics-hard/tzif-forensics-hard__NUrooc2/verifier/test-stdout.txt",
+          "dest": "agent-logs/verifier/ctrf.json",
+          "copied": true,
+          "valid": true
+        }
+      ]
+    }
+  ]
+}

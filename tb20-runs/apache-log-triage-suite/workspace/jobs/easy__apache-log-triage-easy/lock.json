@@ -1,0 +1,75 @@
+{
+    "schema_version": 1,
+    "created_at": "2026-06-09T14:03:00.327636Z",
+    "harbor": {
+        "version": "0.13.1",
+        "is_editable": false
+    },
+    "invocation": [
+        "/home/ubuntu/tb20-runtime/.venv/bin/harbor",
+        "run",
+        "-p",
+        "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/source/easy/apache-log-triage-easy",
+        "-a",
+        "claude-code",
+        "--jobs-dir",
+        "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs",
+        "--job-name",
+        "easy__apache-log-triage-easy",
+        "--yes",
+        "--force-build",
+        "--no-delete",
+        "-m",
+        "opus4.7"
+    ],
+    "n_concurrent_trials": 4,
+    "retry": {
+        "max_retries": 0,
+        "exclude_exceptions": [
+            "RewardFileNotFoundError",
+            "RewardFileEmptyError",
+            "VerifierOutputParseError",
+            "AgentTimeoutError",
+            "VerifierTimeoutError"
+        ],
+        "wait_multiplier": 1.0,
+        "min_wait_sec": 1.0,
+        "max_wait_sec": 60.0
+    },
+    "trials": [
+        {
+            "task": {
+                "name": "apache-log-triage-easy",
+                "type": "local",
+                "digest": "sha256:92aeabf75762a07685ca6844cd5dca174342f0cf532ea36491ff36b7cefed83c",
+                "path": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/source/easy/apache-log-triage-easy"
+            },
+            "timeout_multiplier": 1.0,
+            "agent": {
+                "name": "claude-code",
+                "model_name": "opus4.7",
+                "skills": [],
+                "extra_allowed_hosts": [],
+                "kwargs": {},
+                "env": {},
+                "mcp_servers": []
+            },
+            "skills": [],
+            "environment": {
+                "type": "docker",
+                "force_build": true,
+                "delete": false,
+                "cpu_enforcement_policy": "auto",
+                "memory_enforcement_policy": "auto",
+                "extra_docker_compose": [],
+                "env": {},
+                "kwargs": {},
+                "extra_allowed_hosts": []
+            },
+            "verifier": {
+                "env": {},
+                "disable": false
+            }
+        }
+    ]
+}

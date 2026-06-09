@@ -1,0 +1,75 @@
+{
+    "schema_version": 1,
+    "created_at": "2026-06-09T14:23:06.295281Z",
+    "harbor": {
+        "version": "0.13.1",
+        "is_editable": false
+    },
+    "invocation": [
+        "/home/ubuntu/tb20-runtime/.venv/bin/harbor",
+        "run",
+        "-p",
+        "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/source/easy/tzif-forensics-easy",
+        "-a",
+        "claude-code",
+        "--jobs-dir",
+        "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-opus/jobs",
+        "--job-name",
+        "easy__tzif-forensics-easy",
+        "--yes",
+        "--force-build",
+        "--no-delete",
+        "-m",
+        "claude-opus-4-7"
+    ],
+    "n_concurrent_trials": 4,
+    "retry": {
+        "max_retries": 0,
+        "exclude_exceptions": [
+            "RewardFileEmptyError",
+            "VerifierTimeoutError",
+            "AgentTimeoutError",
+            "RewardFileNotFoundError",
+            "VerifierOutputParseError"
+        ],
+        "wait_multiplier": 1.0,
+        "min_wait_sec": 1.0,
+        "max_wait_sec": 60.0
+    },
+    "trials": [
+        {
+            "task": {
+                "name": "tzif-forensics-easy",
+                "type": "local",
+                "digest": "sha256:a25377b5829287173c91a620c1590d37f12722c28f30b9d20ad96ffd1cf7eead",
+                "path": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/source/easy/tzif-forensics-easy"
+            },
+            "timeout_multiplier": 1.0,
+            "agent": {
+                "name": "claude-code",
+                "model_name": "claude-opus-4-7",
+                "skills": [],
+                "extra_allowed_hosts": [],
+                "kwargs": {},
+                "env": {},
+                "mcp_servers": []
+            },
+            "skills": [],
+            "environment": {
+                "type": "docker",
+                "force_build": true,
+                "delete": false,
+                "cpu_enforcement_policy": "auto",
+                "memory_enforcement_policy": "auto",
+                "extra_docker_compose": [],
+                "env": {},
+                "kwargs": {},
+                "extra_allowed_hosts": []
+            },
+            "verifier": {
+                "env": {},
+                "disable": false
+            }
+        }
+    ]
+}

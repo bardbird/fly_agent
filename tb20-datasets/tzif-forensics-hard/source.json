@@ -1,0 +1,12 @@
+{
+  "domain": "algorithms-and-formats",
+  "source_channel": "official-specification-and-official-source-archive",
+  "acquisition_method": "RFC 8536 format review plus IANA Time Zone Database public-domain source review",
+  "source_name": "TZif time zone information format and IANA Time Zone Database",
+  "source_url": "https://www.rfc-editor.org/rfc/rfc8536.html",
+  "license": "public-domain",
+  "license_url": "https://data.iana.org/time-zones/tz-link.html",
+  "terms_url": "https://www.iana.org/help/licensing-terms",
+  "redistribution_risk": "low",
+  "allowed_for_task_generation": true
+}

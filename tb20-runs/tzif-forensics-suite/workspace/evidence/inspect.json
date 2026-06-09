@@ -1,0 +1,46 @@
+{
+  "sourceRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/source",
+  "taskCount": 3,
+  "tasks": [
+    {
+      "relativePath": "easy/tzif-forensics-easy",
+      "difficultyPathOk": true,
+      "missing": [],
+      "logsValid": {
+        "runJson": true,
+        "trajectoryJson": true,
+        "ctrfJson": true,
+        "rewardTxt": true
+      },
+      "contractOk": true,
+      "checksum": "a25377b5829287173c91a620c1590d37f12722c28f30b9d20ad96ffd1cf7eead"
+    },
+    {
+      "relativePath": "hard/tzif-forensics-hard",
+      "difficultyPathOk": true,
+      "missing": [],
+      "logsValid": {
+        "runJson": true,
+        "trajectoryJson": true,
+        "ctrfJson": true,
+        "rewardTxt": true
+      },
+      "contractOk": true,
+      "checksum": "7a669e312dc6cd62fd6dea77d2feb3c68c171ad0506f7c565cb4bfba37f5ad51"
+    },
+    {
+      "relativePath": "medium/tzif-forensics-medium",
+      "difficultyPathOk": true,
+      "missing": [],
+      "logsValid": {
+        "runJson": true,
+        "trajectoryJson": true,
+        "ctrfJson": true,
+        "rewardTxt": true
+      },
+      "contractOk": true,
+      "checksum": "2f24adfecdb7e442c88df5715f0ad87d1549f7973d59f96aaec83b572d5d9f1e"
+    }
+  ],
+  "problems": []
+}

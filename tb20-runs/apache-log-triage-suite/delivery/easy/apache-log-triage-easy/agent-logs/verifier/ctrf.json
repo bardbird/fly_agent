@@ -1,0 +1,17 @@
+{
+  "results": {
+    "summary": {
+      "tests": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0
+    },
+    "tests": [
+      {
+        "name": "verifier",
+        "status": "failed",
+        "message": "Traceback (most recent call last):\n  File \"/tests/test_outputs.py\", line 31, in <module>\n    main()\n    ~~~~^^\n  File \"/tests/test_outputs.py\", line 8, in main\n    assert output.exists(), \"/app/report.json was not created\"\n           ~~~~~~~~~~~~~^^\nAssertionError: /app/report.json was not created\n"
+      }
+    ]
+  }
+}

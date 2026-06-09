@@ -114,8 +114,6 @@ export interface Tb20InspectRequest {
   outputRoot?: string
   taskPaths?: string[]
   copyTasks?: boolean
-  harborRoot?: string
-  terminalBenchRoot?: string
 }
 
 export interface Tb20Task {

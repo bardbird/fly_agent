@@ -1,0 +1,21 @@
+{
+  "agent": "claude-code",
+  "models": [
+    "claude-opus-4-7"
+  ],
+  "jobsDir": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-hardfix/jobs",
+  "concurrency": 1,
+  "dockerRegistryMirrors": "",
+  "aptMirror": "",
+  "pythonIndexUrl": "",
+  "results": [
+    {
+      "task": "hard/tzif-forensics-hard",
+      "jobName": "hard__tzif-forensics-hard",
+      "exitCode": 0,
+      "startedAt": "2026-06-09T14:49:57.871453+00:00",
+      "finishedAt": "2026-06-09T14:51:20.145322+00:00",
+      "log": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-hardfix/evidence/runs/hard__tzif-forensics-hard.log"
+    }
+  ]
+}

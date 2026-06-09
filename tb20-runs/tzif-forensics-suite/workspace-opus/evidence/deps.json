@@ -1,0 +1,14 @@
+{
+  "harbor": "/home/ubuntu/tb20-runtime/.venv/bin/harbor",
+  "harborHelp": {
+    "exitCode": 0,
+    "stdout": "Usage: harbor [OPTIONS] COMMAND [ARGS]...                                      \n                                                                                \n╭─ Options ────────────────────────────────────────────────────────────────────╮\n│ --version             -v                                                     │\n│ --install-completion            Install completion for the current shell.    │\n│ --show-completion               Show completion for the current shell, to    │\n│                                 copy it or customize the installation.       │\n│ --help                -h        Show this message and exit.                  │\n╰──────────────────────────────────────────────────────────────────────────────╯\n╭─ Commands ───────────────────────────────────────────────────────────────────╮\n│ check        Check task quality against a rubric.                            │\n│ analyze      Analyze trial trajectories.                                     │\n│ init         Initialize a new task or dataset.                               │\n│ run          Start a job. Alias for `harbor job start`.                      │\n│ publish      Publish tasks and datasets to the Harbor registry.              │\n│ upload       Upload job results to the Harbor platform.                      │\n│ add          Add tasks or datasets to a dataset.toml.                        │\n│ download     Download a task or dataset.                                     │\n│ remove       Remove tasks from a dataset.toml.                               │\n│ sync         Update task digests in a dataset manifest.                      │\n│ view         Start web server to browse trajectory files.                    │\n│ adapter      Manage adapters.                                                │\n│ task         Manage tasks.                                                   │\n│ dataset      Manage datasets.                                                │\n│ job          Manage jobs.                                                    │\n│ trial        Manage trials.                                                  │\n│ cache        Manage Harbor cache.                                            │\n│ plugins      Manage job plugins.                                             │\n│ auth         Manage authentication.                                          │\n│ leaderboard  Manage leaderboards.                                            │\n╰──────────────────────────────────────────────────────────────────────────────╯",
+    "stderr": ""
+  },
+  "dockerPresent": true,
+  "dockerInfo": {
+    "exitCode": 0,
+    "stdout": "\"29.5.2\"",
+    "stderr": ""
+  }
+}

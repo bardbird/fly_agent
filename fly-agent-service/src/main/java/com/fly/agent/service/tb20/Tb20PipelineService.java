@@ -47,7 +47,7 @@ public class Tb20PipelineService {
 
     private final Tb20Properties properties;
 
-    public Tb20BlueprintResponse blueprint(String harborRoot, String terminalBenchRoot) {
+    public Tb20BlueprintResponse blueprint() {
         Tb20BlueprintResponse response = new Tb20BlueprintResponse();
         response.setRequiredTaskFiles(new ArrayList<>(REQUIRED_TASK_FILES));
         response.setOptionalDeliveryLogs(new ArrayList<>(OPTIONAL_DELIVERY_LOGS));
@@ -82,18 +82,19 @@ public class Tb20PipelineService {
                 "能用脚本和后端接口控制的阶段必须由脚本和接口控制",
                 "批量模式必须记录结构化参数、命令、输出目录和失败原因"
         ));
-        response.setDependencies(checkDependencies(harborRoot, terminalBenchRoot));
+        response.setDependencies(checkDependencies());
         return response;
     }
 
-    public List<Tb20DependencyStatusDTO> checkDependencies(String harborRoot, String terminalBenchRoot) {
+    public List<Tb20DependencyStatusDTO> checkDependencies() {
         return List.of(
-                dependency("Terminal-Bench 2.0", "标准任务集合和评测目标",
-                        firstText(terminalBenchRoot, properties.getTerminalBenchRoot()), "README.md"),
-                dependency("Harbor", "TB 2.0 官方推荐 runner/harness",
-                        firstText(harborRoot, properties.getHarborRoot()), "README.md"),
+                commandDependency("Python", "创建 toolkit runtime venv 并执行 TB20 脚本", properties.getPython()),
+                commandDependency("Codex", "tb20-dataset-production 的 AI-heavy adapter", "codex"),
+                cliDependency("Terminal-Bench CLI", "通过 pip install terminal-bench 提供的 TB2.0 CLI",
+                        List.of(runtimeVenvCommand("tb"), "tb", "terminal-bench")),
+                cliDependency("Harbor CLI", "通过 pip install harbor 提供的 runner/harness",
+                        List.of(runtimeVenvCommand("harbor"), "harbor")),
                 commandDependency("Docker", "构建和运行每个 task 的隔离环境", "docker"),
-                commandDependency("pytest-json-ctrf", "verifier 生成 CTRF 测试报告，通常由 tests/test.sh 使用 uvx 拉取", "python3"),
                 dependency("TB20 production toolkit", "本项目外置脚本边界",
                         toolkitRoot().toString(), "scripts/inspect_tb20_dataset.py")
         );
@@ -151,7 +152,7 @@ public class Tb20PipelineService {
         response.setOutputRoot(outputRoot);
         response.setSummary(raw.getJSONObject("summary") == null ? new JSONObject() : raw.getJSONObject("summary"));
         response.setTasks(raw.getJSONArray("tasks") == null ? new JSONArray() : raw.getJSONArray("tasks"));
-        response.setDependencies(checkDependencies(request.getHarborRoot(), request.getTerminalBenchRoot()));
+        response.setDependencies(checkDependencies());
         if (StringUtils.hasText(outputRoot)) {
             response.setManifestPath(Path.of(outputRoot, "delivery_manifest.json").toString());
             response.setDeliveryIndexPath(Path.of(outputRoot, "delivery_index.md").toString());
@@ -238,6 +239,48 @@ public class Tb20PipelineService {
         try {
             Process process = new ProcessBuilder(command, "--version").redirectErrorStream(true).start();
             boolean completed = process.waitFor(5, TimeUnit.SECONDS);
+            dto.setPresent(completed && process.exitValue() == 0);
+            dto.setStatus(Boolean.TRUE.equals(dto.getPresent()) ? "READY" : "CHECK_FAILED");
+            dto.setNote(Boolean.TRUE.equals(dto.getPresent()) ? "命令可执行" : "命令检查失败");
+        } catch (Exception e) {
+            dto.setPresent(false);
+            dto.setStatus("MISSING");
+            dto.setNote(e.getMessage());
+        }
+        return dto;
+    }
+
+    private Tb20DependencyStatusDTO cliDependency(String name, String role, List<String> candidates) {
+        for (String candidate : candidates) {
+            Tb20DependencyStatusDTO dto = probeCli(name, role, candidate);
+            if (Boolean.TRUE.equals(dto.getPresent())) {
+                return dto;
+            }
+        }
+        Tb20DependencyStatusDTO dto = new Tb20DependencyStatusDTO();
+        dto.setName(name);
+        dto.setRole(role);
+        dto.setConfiguredPath(String.join(" | ", candidates));
+        dto.setPresent(false);
+        dto.setStatus("MISSING");
+        dto.setNote("命令不可用；请先运行 tools/tb20-production/scripts/bootstrap_runtime.sh 或 pip install terminal-bench harbor");
+        return dto;
+    }
+
+    private String runtimeVenvCommand(String command) {
+        return Path.of(properties.getRuntimeVenv()).resolve("bin").resolve(command).toString();
+    }
+
+    private Tb20DependencyStatusDTO probeCli(String name, String role, String command) {
+        Tb20DependencyStatusDTO dto = new Tb20DependencyStatusDTO();
+        dto.setName(name);
+        dto.setRole(role);
+        dto.setConfiguredPath(command);
+        Path resolved = resolveLocalPath(command, command);
+        List<String> invocation = Files.isExecutable(resolved) ? List.of(resolved.toString(), "--help") : List.of(command, "--help");
+        try {
+            Process process = new ProcessBuilder(invocation).redirectErrorStream(true).start();
+            boolean completed = process.waitFor(10, TimeUnit.SECONDS);
             dto.setPresent(completed && process.exitValue() == 0);
             dto.setStatus(Boolean.TRUE.equals(dto.getPresent()) ? "READY" : "CHECK_FAILED");
             dto.setNote(Boolean.TRUE.equals(dto.getPresent()) ? "命令可执行" : "命令检查失败");

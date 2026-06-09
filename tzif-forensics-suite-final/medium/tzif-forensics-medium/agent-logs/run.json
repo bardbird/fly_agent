@@ -1,0 +1,111 @@
+{
+    "id": "a31b52cc-a54a-4ed6-bfb0-89980793ce89",
+    "task_name": "terminal-bench/tzif-forensics-medium",
+    "trial_name": "tzif-forensics-medium__BZou4Ti",
+    "trial_uri": "file:///home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-opus/jobs/medium__tzif-forensics-medium/tzif-forensics-medium__BZou4Ti",
+    "task_id": {
+        "path": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/source/medium/tzif-forensics-medium"
+    },
+    "source": null,
+    "task_checksum": "ec5b6987879ddbc2dcdd76ae4b76514b1d87f955046b85721d7c61df9b70079d",
+    "config": {
+        "task": {
+            "path": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/source/medium/tzif-forensics-medium",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": null
+        },
+        "trial_name": "tzif-forensics-medium__BZou4Ti",
+        "trials_dir": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-opus/jobs/medium__tzif-forensics-medium",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "claude-code",
+            "import_path": null,
+            "model_name": "claude-opus-4-7",
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "env": {},
+            "mcp_servers": []
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": true,
+            "delete": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "env": {},
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "env": {},
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "job_id": "ba6ce136-035e-4e94-881f-1a00206d4caa"
+    },
+    "agent_info": {
+        "name": "claude-code",
+        "version": "2.1.169",
+        "model_info": {
+            "name": "claude-opus-4-7",
+            "provider": null
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 171249,
+        "n_cache_tokens": 67194,
+        "n_output_tokens": 1656,
+        "cost_usd": 0.7250845,
+        "rollout_details": null,
+        "metadata": null
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-06-09T14:25:22.520848Z",
+    "finished_at": "2026-06-09T14:26:19.736873Z",
+    "environment_setup": {
+        "started_at": "2026-06-09T14:25:22.527514Z",
+        "finished_at": "2026-06-09T14:25:24.010695Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-06-09T14:25:24.010749Z",
+        "finished_at": "2026-06-09T14:25:34.703923Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-06-09T14:25:34.704038Z",
+        "finished_at": "2026-06-09T14:26:08.482312Z"
+    },
+    "verifier": {
+        "started_at": "2026-06-09T14:26:08.782938Z",
+        "finished_at": "2026-06-09T14:26:09.036541Z"
+    },
+    "step_results": null
+}

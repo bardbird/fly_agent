@@ -471,12 +471,9 @@ function normalizeTb20Response(response: Tb20PipelineResponse): Tb20PipelineResp
   }
 }
 
-export async function getTb20Blueprint(params?: {
-  harborRoot?: string
-  terminalBenchRoot?: string
-}): Promise<Tb20Blueprint> {
+export async function getTb20Blueprint(): Promise<Tb20Blueprint> {
   const response = unwrapTb20Result(
-    await api.get<Tb20ApiResult<Tb20Blueprint>>('/tb20/blueprint', { params })
+    await api.get<Tb20ApiResult<Tb20Blueprint>>('/tb20/blueprint')
   )
   return {
     ...response,
@@ -493,12 +490,9 @@ export async function getTb20Blueprint(params?: {
   }
 }
 
-export async function checkTb20Dependencies(params?: {
-  harborRoot?: string
-  terminalBenchRoot?: string
-}): Promise<Tb20DependencyStatus[]> {
+export async function checkTb20Dependencies(): Promise<Tb20DependencyStatus[]> {
   const response = unwrapTb20Result(
-    await api.get<Tb20ApiResult<Tb20DependencyStatus[]>>('/tb20/dependencies/check', { params })
+    await api.get<Tb20ApiResult<Tb20DependencyStatus[]>>('/tb20/dependencies/check')
   )
   return Array.isArray(response) ? response : []
 }

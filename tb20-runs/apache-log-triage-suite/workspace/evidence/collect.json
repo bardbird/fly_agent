@@ -1,0 +1,116 @@
+{
+  "jobsDir": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs",
+  "results": [
+    {
+      "task": "easy/apache-log-triage-easy",
+      "ok": true,
+      "searchRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/easy__apache-log-triage-easy",
+      "artifacts": [
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/easy__apache-log-triage-easy/apache-log-triage-easy__FFue8Mg/result.json",
+          "dest": "agent-logs/run.json",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/easy__apache-log-triage-easy/apache-log-triage-easy__FFue8Mg/agent/trajectory.json",
+          "dest": "agent-logs/trajectory.json",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/easy__apache-log-triage-easy/apache-log-triage-easy__FFue8Mg/agent/claude-code.txt",
+          "dest": "agent-logs/claude-code.txt",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/easy__apache-log-triage-easy/apache-log-triage-easy__FFue8Mg/verifier/reward.txt",
+          "dest": "agent-logs/verifier/reward.txt",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/easy__apache-log-triage-easy/apache-log-triage-easy__FFue8Mg/verifier/test-stdout.txt",
+          "dest": "agent-logs/verifier/ctrf.json",
+          "copied": true,
+          "valid": true
+        }
+      ]
+    },
+    {
+      "task": "hard/apache-log-triage-hard",
+      "ok": true,
+      "searchRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/hard__apache-log-triage-hard",
+      "artifacts": [
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/hard__apache-log-triage-hard/apache-log-triage-hard__v7sj3HF/result.json",
+          "dest": "agent-logs/run.json",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/hard__apache-log-triage-hard/apache-log-triage-hard__v7sj3HF/agent/trajectory.json",
+          "dest": "agent-logs/trajectory.json",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/hard__apache-log-triage-hard/apache-log-triage-hard__v7sj3HF/agent/claude-code.txt",
+          "dest": "agent-logs/claude-code.txt",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/hard__apache-log-triage-hard/apache-log-triage-hard__v7sj3HF/verifier/reward.txt",
+          "dest": "agent-logs/verifier/reward.txt",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/hard__apache-log-triage-hard/apache-log-triage-hard__v7sj3HF/verifier/test-stdout.txt",
+          "dest": "agent-logs/verifier/ctrf.json",
+          "copied": true,
+          "valid": true
+        }
+      ]
+    },
+    {
+      "task": "medium/apache-log-triage-medium",
+      "ok": true,
+      "searchRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/medium__apache-log-triage-medium",
+      "artifacts": [
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/medium__apache-log-triage-medium/apache-log-triage-medium__wDJcG7E/result.json",
+          "dest": "agent-logs/run.json",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/medium__apache-log-triage-medium/apache-log-triage-medium__wDJcG7E/agent/trajectory.json",
+          "dest": "agent-logs/trajectory.json",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/medium__apache-log-triage-medium/apache-log-triage-medium__wDJcG7E/agent/claude-code.txt",
+          "dest": "agent-logs/claude-code.txt",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/medium__apache-log-triage-medium/apache-log-triage-medium__wDJcG7E/verifier/reward.txt",
+          "dest": "agent-logs/verifier/reward.txt",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs/medium__apache-log-triage-medium/apache-log-triage-medium__wDJcG7E/verifier/test-stdout.txt",
+          "dest": "agent-logs/verifier/ctrf.json",
+          "copied": true,
+          "valid": true
+        }
+      ]
+    }
+  ]
+}

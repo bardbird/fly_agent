@@ -1,0 +1,12 @@
+{
+  "domain": "web-network-services",
+  "source_channel": "official-git-repository",
+  "acquisition_method": "Official Apache HTTP Server documentation and source repository review",
+  "source_name": "Apache HTTP Server documentation: Log Files",
+  "source_url": "https://httpd.apache.org/docs/current/logs.html",
+  "license": "Apache-2.0",
+  "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
+  "terms_url": "https://www.apache.org/foundation/policies/",
+  "redistribution_risk": "low",
+  "allowed_for_task_generation": true
+}

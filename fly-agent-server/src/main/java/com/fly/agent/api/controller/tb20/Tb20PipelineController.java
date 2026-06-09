@@ -20,7 +20,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -38,17 +37,13 @@ public class Tb20PipelineController {
     private final Tb20RunService tb20RunService;
 
     @GetMapping("/blueprint")
-    public Result<Tb20BlueprintResponse> blueprint(
-            @RequestParam(value = "harborRoot", required = false) String harborRoot,
-            @RequestParam(value = "terminalBenchRoot", required = false) String terminalBenchRoot) {
-        return Result.ok(tb20PipelineService.blueprint(harborRoot, terminalBenchRoot));
+    public Result<Tb20BlueprintResponse> blueprint() {
+        return Result.ok(tb20PipelineService.blueprint());
     }
 
     @GetMapping("/dependencies/check")
-    public Result<List<Tb20DependencyStatusDTO>> checkDependencies(
-            @RequestParam(value = "harborRoot", required = false) String harborRoot,
-            @RequestParam(value = "terminalBenchRoot", required = false) String terminalBenchRoot) {
-        return Result.ok(tb20PipelineService.checkDependencies(harborRoot, terminalBenchRoot));
+    public Result<List<Tb20DependencyStatusDTO>> checkDependencies() {
+        return Result.ok(tb20PipelineService.checkDependencies());
     }
 
     @PostMapping("/inspect")

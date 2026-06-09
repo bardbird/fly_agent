@@ -1,0 +1,17 @@
+{
+  "results": {
+    "summary": {
+      "tests": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0
+    },
+    "tests": [
+      {
+        "name": "verifier",
+        "status": "failed",
+        "message": "Traceback (most recent call last):\n  File \"/tests/test_outputs.py\", line 10, in <module>\n    assert index[\"invalid_zones\"] == [{\"path\": \"Etc/Broken\", \"reason\": \"truncated TZif data block\"}]\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n"
+      }
+    ]
+  }
+}

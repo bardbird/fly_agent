@@ -42,8 +42,6 @@ const CHANNELS: Record<Tb20Domain, string[]> = {
   'algorithms-and-formats': ['rfc-iana', 'netlib', 'rosetta-code', 'cp-algorithms', 'format-spec-repos'],
 }
 
-const DEFAULT_SOURCE_ROOT = '/Users/liuyifei/Downloads/terminal_bench_2.0_demo_20260528'
-
 export function Tb20PipelinePage() {
   const [tab, setTab] = useState<WorkspaceTab>('dataset')
   const [datasetConfig, setDatasetConfig] = useState<Record<string, string>>({})
@@ -51,7 +49,7 @@ export function Tb20PipelinePage() {
   const [domain, setDomain] = useState<Tb20Domain>('software-engineering')
   const [sourceChannel, setSourceChannel] = useState('github-pr-mining')
   const [brief, setBrief] = useState('')
-  const [sourceRoot, setSourceRoot] = useState(DEFAULT_SOURCE_ROOT)
+  const [sourceRoot, setSourceRoot] = useState('')
   const [taskPaths, setTaskPaths] = useState('')
   const [activeRun, setActiveRun] = useState<Tb20Run | null>(null)
   const [runs, setRuns] = useState<Tb20Run[]>([])
@@ -87,6 +85,9 @@ export function Tb20PipelinePage() {
       }
       if (dataset.values.defaultSourceChannel) {
         setSourceChannel(String(dataset.values.defaultSourceChannel))
+      }
+      if (execution.values.sourceRoot) {
+        setSourceRoot(String(execution.values.sourceRoot))
       }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : '加载 TB20 配置失败')
@@ -262,7 +263,10 @@ export function Tb20PipelinePage() {
               loading={loading}
               onConfigChange={setExecutionConfig}
               onSave={() => saveConfig('batch-execution-delivery', executionConfig)}
-              onSourceRootChange={setSourceRoot}
+              onSourceRootChange={(value) => {
+                setSourceRoot(value)
+                setExecutionConfig((current) => ({ ...current, sourceRoot: value }))
+              }}
               onTaskPathsChange={setTaskPaths}
               onStart={startExecution}
             />

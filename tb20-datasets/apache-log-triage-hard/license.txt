@@ -1,0 +1,5 @@
+Apache HTTP Server documentation and source materials are published by the Apache Software Foundation under the Apache License, Version 2.0.
+
+This benchmark task does not copy Apache implementation code. It uses the public log-format behavior described by Apache HTTP Server documentation as task background.
+
+License URL: https://www.apache.org/licenses/LICENSE-2.0

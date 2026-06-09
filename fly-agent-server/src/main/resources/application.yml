@@ -103,8 +103,7 @@ swe:
 
 tb20:
   toolkit-root: ${TB20_TOOLKIT_ROOT:tools/tb20-production}
-  production-root: ${TB20_PRODUCTION_ROOT:tb20-output}
+  production-root: ${TB20_PRODUCTION_ROOT:/home/ubuntu/tb20-output}
+  runtime-venv: ${TB20_RUNTIME_VENV:/home/ubuntu/tb20-runtime/.venv}
   python: ${TB20_PYTHON:python3}
-  default-source-root: ${TB20_SOURCE_ROOT:/Users/liuyifei/Downloads/terminal_bench_2.0_demo_20260528}
-  harbor-root: ${HARBOR_ROOT:/Users/liuyifei/Liu/hub/harbor}
-  terminal-bench-root: ${TERMINAL_BENCH_ROOT:/Users/liuyifei/Liu/hub/terminal-bench-main}
+  default-source-root: ${TB20_SOURCE_ROOT:}

@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/tests/test_outputs.py", line 46, in <module>
+    main()
+    ~~~~^^
+  File "/tests/test_outputs.py", line 10, in main
+    assert csv_path.exists(), "/app/reports/traffic_summary.csv was not created"
+           ~~~~~~~~~~~~~~~^^
+AssertionError: /app/reports/traffic_summary.csv was not created

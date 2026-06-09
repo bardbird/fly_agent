@@ -176,8 +176,8 @@ public class Tb20RunService {
 
     private List<String> datasetCommand(Tb20DatasetRunRequest request, Path workspace, String outputRoot) {
         List<String> command = new ArrayList<>();
-        command.add(resolveLocalPath("codex-skills/tb20-dataset-production/.venv/bin/python", properties.getPython()).toString());
-        command.add(resolveLocalPath("codex-skills/tb20-dataset-production/scripts/tb20_dataset.py", "codex-skills/tb20-dataset-production/scripts/tb20_dataset.py").toString());
+        command.add(runtimePython().toString());
+        command.add(toolkitScript("tb20_dataset.py").toString());
         command.add("prepare-instruction");
         command.add("--workspace");
         command.add(workspace.toString());
@@ -195,8 +195,8 @@ public class Tb20RunService {
     }
 
     private List<String> executionShellCommand(Tb20ExecutionRunRequest request, Path workspace, String outputRoot) {
-        Path python = resolveLocalPath("codex-skills/tb20-batch-execution-delivery/.venv/bin/python", properties.getPython());
-        Path script = resolveLocalPath("codex-skills/tb20-batch-execution-delivery/scripts/tb20_execute.py", "codex-skills/tb20-batch-execution-delivery/scripts/tb20_execute.py");
+        Path python = runtimePython();
+        Path script = toolkitScript("tb20_execute.py");
         List<String> cmd = new ArrayList<>();
         cmd.add("bash");
         cmd.add("-lc");
@@ -350,6 +350,19 @@ public class Tb20RunService {
 
     private Path projectRoot() {
         return resolveLocalPath(".", ".");
+    }
+
+    private Path toolkitScript(String scriptName) {
+        return toolkitRoot().resolve("scripts").resolve(scriptName);
+    }
+
+    private Path toolkitRoot() {
+        return resolveLocalPath(properties.getToolkitRoot(), "tools/tb20-production");
+    }
+
+    private Path runtimePython() {
+        Path python = Path.of(properties.getRuntimeVenv()).resolve("bin/python");
+        return Files.isExecutable(python) ? python : resolveLocalPath(properties.getPython(), properties.getPython());
     }
 
     private Path resolveLocalPath(String configuredPath, String fallbackPath) {

@@ -1,0 +1,37 @@
+{
+  "agent": "claude-code",
+  "models": [
+    "claude-opus-4-7"
+  ],
+  "jobsDir": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-opus/jobs",
+  "concurrency": 1,
+  "dockerRegistryMirrors": "",
+  "aptMirror": "",
+  "pythonIndexUrl": "",
+  "results": [
+    {
+      "task": "easy/tzif-forensics-easy",
+      "jobName": "easy__tzif-forensics-easy",
+      "exitCode": 0,
+      "startedAt": "2026-06-09T14:23:05.683088+00:00",
+      "finishedAt": "2026-06-09T14:23:57.662367+00:00",
+      "log": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-opus/evidence/runs/easy__tzif-forensics-easy.log"
+    },
+    {
+      "task": "hard/tzif-forensics-hard",
+      "jobName": "hard__tzif-forensics-hard",
+      "exitCode": 0,
+      "startedAt": "2026-06-09T14:23:57.662576+00:00",
+      "finishedAt": "2026-06-09T14:25:20.357323+00:00",
+      "log": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-opus/evidence/runs/hard__tzif-forensics-hard.log"
+    },
+    {
+      "task": "medium/tzif-forensics-medium",
+      "jobName": "medium__tzif-forensics-medium",
+      "exitCode": 0,
+      "startedAt": "2026-06-09T14:25:20.357563+00:00",
+      "finishedAt": "2026-06-09T14:26:20.027813+00:00",
+      "log": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace-opus/evidence/runs/medium__tzif-forensics-medium.log"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "sourceRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/source",
+  "taskCount": 3,
+  "tasks": [
+    {
+      "relativePath": "easy/apache-log-triage-easy",
+      "difficultyPathOk": true,
+      "missing": [],
+      "logsValid": {
+        "runJson": true,
+        "trajectoryJson": true,
+        "ctrfJson": true,
+        "rewardTxt": true
+      },
+      "contractOk": true,
+      "checksum": "92aeabf75762a07685ca6844cd5dca174342f0cf532ea36491ff36b7cefed83c"
+    },
+    {
+      "relativePath": "hard/apache-log-triage-hard",
+      "difficultyPathOk": true,
+      "missing": [],
+      "logsValid": {
+        "runJson": true,
+        "trajectoryJson": true,
+        "ctrfJson": true,
+        "rewardTxt": true
+      },
+      "contractOk": true,
+      "checksum": "e8b1b05ed0b41f0197a704bf5fee5664670f9640ec657f4e77e8c02a343ce292"
+    },
+    {
+      "relativePath": "medium/apache-log-triage-medium",
+      "difficultyPathOk": true,
+      "missing": [],
+      "logsValid": {
+        "runJson": true,
+        "trajectoryJson": true,
+        "ctrfJson": true,
+        "rewardTxt": true
+      },
+      "contractOk": true,
+      "checksum": "0b5a107d3f457a4707f74398576e6a4543ea0653f0c823c207a9a87d536a109c"
+    }
+  ],
+  "problems": []
+}

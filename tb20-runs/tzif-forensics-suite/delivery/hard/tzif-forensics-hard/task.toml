@@ -1,0 +1,41 @@
+schema_version = "1.1"
+artifacts = []
+
+[task]
+name = "terminal-bench/tzif-forensics-hard"
+description = "Audit a mixed TZif bundle, detect corrupt and duplicate zones, and classify local timestamps around DST gaps and folds."
+keywords = ["tzif", "zoneinfo", "binary-format", "timezone", "algorithms-and-formats"]
+[[task.authors]]
+name = "Codex"
+email = "codex@example.com"
+
+[metadata]
+author_name = "Codex"
+author_email = "codex@example.com"
+difficulty = "hard"
+category = "algorithms-and-formats"
+tags = ["tzif", "zoneinfo", "binary", "timezone"]
+expert_time_estimate_min = 55.0
+junior_time_estimate_min = 240.0
+
+[verifier]
+timeout_sec = 900.0
+
+[agent]
+timeout_sec = 900.0
+
+[environment]
+build_timeout_sec = 600.0
+docker_image = "tb20/tzif-forensics-hard:local"
+cpus = 1
+memory_mb = 2048
+storage_mb = 4096
+gpus = 0
+allow_internet = true
+mcp_servers = []
+
+[verifier.env]
+
+[environment.env]
+
+[solution.env]

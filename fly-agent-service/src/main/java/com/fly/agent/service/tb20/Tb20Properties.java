@@ -14,13 +14,11 @@ public class Tb20Properties {
 
     private String toolkitRoot = "tools/tb20-production";
 
-    private String productionRoot = "tb20-output";
+    private String productionRoot = "/home/ubuntu/tb20-output";
+
+    private String runtimeVenv = "/home/ubuntu/tb20-runtime/.venv";
 
     private String python = "python3";
 
-    private String defaultSourceRoot = "/Users/liuyifei/Downloads/terminal_bench_2.0_demo_20260528";
-
-    private String harborRoot = "";
-
-    private String terminalBenchRoot = "";
+    private String defaultSourceRoot = "";
 }

@@ -1,0 +1,41 @@
+schema_version = "1.1"
+artifacts = []
+
+[task]
+name = "terminal-bench/apache-log-triage-medium"
+description = "Analyze current and rotated Apache combined access logs and produce deterministic CSV and JSON reports."
+keywords = ["apache", "http", "logs", "gzip", "csv", "web-network-services"]
+[[task.authors]]
+name = "Codex"
+email = "codex@example.com"
+
+[metadata]
+author_name = "Codex"
+author_email = "codex@example.com"
+difficulty = "medium"
+category = "web-network-services"
+tags = ["apache", "logs", "gzip", "csv", "json"]
+expert_time_estimate_min = 20.0
+junior_time_estimate_min = 90.0
+
+[verifier]
+timeout_sec = 600.0
+
+[agent]
+timeout_sec = 600.0
+
+[environment]
+build_timeout_sec = 300.0
+docker_image = "tb20/apache-log-triage-medium:local"
+cpus = 1
+memory_mb = 1024
+storage_mb = 2048
+gpus = 0
+allow_internet = true
+mcp_servers = []
+
+[verifier.env]
+
+[environment.env]
+
+[solution.env]

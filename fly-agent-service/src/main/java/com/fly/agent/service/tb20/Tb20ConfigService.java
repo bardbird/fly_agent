@@ -9,6 +9,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 @Service
 @RequiredArgsConstructor
 public class Tb20ConfigService {
@@ -16,6 +19,7 @@ public class Tb20ConfigService {
     private static final String REDIS_KEY = "fly-agent:tb20:config";
 
     private final StringRedisTemplate redisTemplate;
+    private final Tb20Properties properties;
 
     public Tb20ConfigResponse get(Tb20ConfigRequest request) {
         String scope = normalizeScope(request.getScope());
@@ -46,9 +50,10 @@ public class Tb20ConfigService {
 
     private JSONObject defaultValues(String scope) {
         JSONObject values = new JSONObject();
+        Path productionRoot = productionRoot();
         if ("dataset-production".equals(scope)) {
-            values.put("workspaceRoot", "tb20-output/dataset-production-runs");
-            values.put("outputRoot", "tb20-output/dataset-source");
+            values.put("workspaceRoot", productionRoot.resolve("dataset-production-runs").toString());
+            values.put("outputRoot", productionRoot.resolve("dataset-source").toString());
             values.put("defaultDomain", "software-engineering");
             values.put("defaultSourceChannel", "github-pr-mining");
             values.put("githubApiBase", "https://api.github.com");
@@ -70,14 +75,41 @@ public class Tb20ConfigService {
             values.put("maxCandidates", "20");
             return values;
         }
-        values.put("workspaceRoot", "tb20-output/execution-runs");
-        values.put("outputRoot", "tb20-output/delivery");
+        values.put("workspaceRoot", productionRoot.resolve("execution-runs").toString());
+        values.put("outputRoot", productionRoot.resolve("delivery").toString());
+        values.put("sourceRoot", firstText(properties.getDefaultSourceRoot(), ""));
         values.put("agent", "claude-code");
         values.put("concurrency", "1");
         values.put("failFast", "false");
         values.put("dockerRegistryMirrors", "");
         values.put("aptMirror", "");
-        values.put("pythonIndexUrl", "");
+        values.put("pythonIndexUrl", "https://pypi.tuna.tsinghua.edu.cn/simple");
         return values;
+    }
+
+    private Path productionRoot() {
+        return resolveLocalPath(properties.getProductionRoot(), "tb20-output");
+    }
+
+    private Path resolveLocalPath(String configuredPath, String fallbackPath) {
+        String text = StringUtils.hasText(configuredPath) ? configuredPath : fallbackPath;
+        Path path = Path.of(text);
+        if (path.isAbsolute()) {
+            return path.normalize();
+        }
+        Path cwd = Path.of(".").toAbsolutePath().normalize();
+        Path current = cwd;
+        while (current != null) {
+            Path candidate = current.resolve(path).normalize();
+            if (Files.exists(candidate)) {
+                return candidate;
+            }
+            current = current.getParent();
+        }
+        return cwd.resolve(path).normalize();
+    }
+
+    private String firstText(String primary, String fallback) {
+        return StringUtils.hasText(primary) ? primary.trim() : fallback;
     }
 }

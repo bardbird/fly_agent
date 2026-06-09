@@ -1,0 +1,73 @@
+{
+  "schema_version": "ATIF-v1.2",
+  "session_id": "887e9096-9110-45dc-93fa-cff04451b95a",
+  "agent": {
+    "name": "claude-code",
+    "version": "2.1.169",
+    "model_name": "<synthetic>",
+    "extra": {
+      "cwds": [
+        "/app"
+      ],
+      "git_branches": [
+        "HEAD"
+      ]
+    }
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-06-09T14:20:25.276Z",
+      "source": "user",
+      "message": "# TZif Forensics: Header and Transition Inventory\n\n## Context\nYou are analyzing a compiled zoneinfo file in TZif format. The file is synthetic, but it follows the TZif layout used by IANA-style time-zone data.\n\n## Files Available\n- `/app/zones/Example/Factory`: input TZif v1 file.\n- `/app/report.json`: output file you must create.\n\n## Task\nParse the TZif file directly. Do not use `/usr/share/zoneinfo`, `zoneinfo.ZoneInfo`, `zdump`, or any other system time-zone database as the source of truth.\n\n## Input Format\nThe input is a binary TZif file with:\n- magic `TZif`\n- a version byte\n- six big-endian 32-bit count fields\n- transition times\n- transition type indexes\n- local-time type records\n- NUL-terminated abbreviations\n\n## Required Output\nWrite `/app/report.json` as UTF-8 JSON with a trailing newline and these keys:\n- `version`\n- `timecnt`\n- `typecnt`\n- `abbreviations`\n- `transitions`\n\n`transitions` must be an array of objects with:\n- `utc`: UTC timestamp in `YYYY-MM-DDTHH:MM:SSZ`\n- `offset`: signed offset seconds east of UTC\n- `is_dst`: boolean\n- `abbreviation`: string\n\n## Behavioral Requirements\n- Decode all integer fields as big-endian.\n- Resolve each transition's type index into its offset, DST flag, and abbreviation.\n- Preserve transition order from the file.\n- Sort `abbreviations` by first appearance in the type table.\n\n## Edge Cases\n- Offsets may be negative.\n- Abbreviations are NUL-terminated inside a shared string table.\n- The file is binary; text splitting is not acceptable.\n\n## Constraints\n- Do not modify `/app/zones/Example/Factory`.\n- Do not require network access for the task logic.\n\n## Examples\nA transition whose type has offset `-14400`, DST flag `1`, and abbreviation `EDT` must emit `\"offset\": -14400`, `\"is_dst\": true`, and `\"abbreviation\": \"EDT\"`.\n\n## Success Criteria\nThe verifier checks binary parsing, counts, transition ordering, abbreviation resolution, valid JSON, and trailing newline.\n",
+      "extra": {
+        "is_sidechain": false
+      }
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-06-09T14:20:25.970Z",
+      "source": "agent",
+      "model_name": "<synthetic>",
+      "message": "API Error: 400 The supported API model names are deepseek-v4-pro or deepseek-v4-flash, but you passed opus4.7.",
+      "metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "cached_tokens": 0,
+        "extra": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": null,
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": null,
+          "iterations": null,
+          "speed": null
+        }
+      },
+      "extra": {
+        "stop_reason": "stop_sequence",
+        "stop_sequence": "",
+        "cwd": "/app",
+        "is_sidechain": false
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 0,
+    "total_completion_tokens": 0,
+    "total_cached_tokens": 0,
+    "total_cost_usd": 0.0,
+    "total_steps": 2,
+    "extra": {
+      "total_cache_creation_input_tokens": 0,
+      "total_cache_read_input_tokens": 0
+    }
+  }
+}

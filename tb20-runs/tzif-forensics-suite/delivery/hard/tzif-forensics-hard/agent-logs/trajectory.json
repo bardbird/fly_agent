@@ -1,0 +1,73 @@
+{
+  "schema_version": "ATIF-v1.2",
+  "session_id": "40f68e78-d575-43df-a2d8-5b8e125fe939",
+  "agent": {
+    "name": "claude-code",
+    "version": "2.1.169",
+    "model_name": "<synthetic>",
+    "extra": {
+      "cwds": [
+        "/app"
+      ],
+      "git_branches": [
+        "HEAD"
+      ]
+    }
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-06-09T14:20:52.325Z",
+      "source": "user",
+      "message": "# TZif Forensics: Zone Bundle Audit and Local-Time Ambiguity Report\n\n## Context\nA deployment bundle contains compiled TZif files from multiple declared zones. Some entries are aliases, and one entry is corrupt. You must audit the bundle and classify local wall-clock timestamps around DST transitions.\n\n## Files Available\n- `/app/bundle/`: directory containing candidate TZif files.\n- `/app/manifest.csv`: declared path and role for each bundle file.\n- `/app/local-events.csv`: local timestamp classification requests.\n- `/app/audit/zone_index.json`: JSON output you must create.\n- `/app/audit/local_time_report.csv`: CSV output you must create.\n\n## Task\nParse all manifest entries directly from `/app/bundle`, audit validity and duplicate content, then classify each local timestamp in `/app/local-events.csv`.\n\n## Input Format\n`manifest.csv` has:\n\n```text\npath,declared_role\n```\n\n`local-events.csv` has:\n\n```text\nid,zone,local_time\n```\n\n`local_time` uses `YYYY-MM-DDTHH:MM:SS` and has no timezone suffix.\n\n## Required Output\nCreate `/app/audit/zone_index.json` with these keys:\n- `valid_zones`: sorted list of parseable manifest paths\n- `invalid_zones`: array of objects with `path` and `reason`, sorted by path\n- `duplicate_groups`: array of arrays; each inner array contains paths with identical file bytes, sorted lexicographically; include only groups of size at least two\n- `version_counts`: object mapping TZif version strings to counts among valid zones\n\nCreate `/app/audit/local_time_report.csv` with exact header:\n\n```text\nid,zone,local_time,classification,candidate_utc,offsets\n```\n\n`classification` must be one of:\n- `valid`\n- `nonexistent`\n- `ambiguous`\n- `invalid-zone`\n\nFor `valid`, `candidate_utc` is the single matching UTC timestamp and `offsets` is the selected offset.\n\nFor `ambiguous`, `candidate_utc` contains both UTC candidates separated by `|`, sorted ascending, and `offsets` contains both offsets separated by `|`, sorted by matching UTC candidate.\n\nFor `nonexistent` and `invalid-zone`, both `candidate_utc` and `offsets` must be empty.\n\n## Behavioral Requirements\n- Parse TZif v2 using the 64-bit block.\n- Skip corrupt TZif files in the index without aborting the whole audit.\n- Detect duplicate files by byte-for-byte SHA-256 equality.\n- Classify local timestamps by testing possible offsets from the zone's type table and round-tripping through the UTC transition table.\n- Preserve input row order in `local_time_report.csv`.\n\n## Edge Cases\n- Spring-forward gaps create nonexistent local times.\n- Fall-back folds create ambiguous local times.\n- Alias zones may be byte-identical to canonical zones.\n- Corrupt files may contain a valid prefix but truncated data.\n\n## Constraints\n- Do not use Python `zoneinfo`, `date`, `zdump`, or `/usr/share/zoneinfo`.\n- Do not modify `/app/bundle`, `/app/manifest.csv`, or `/app/local-events.csv`.\n- Do not require network access for task logic.\n\n## Examples\nA local time during the spring-forward skipped hour must be classified as `nonexistent`; a repeated fall-back hour must be `ambiguous`.\n\n## Success Criteria\nThe verifier checks corrupt-file handling, duplicate grouping, v2 parsing, gap/fold classification, CSV formatting, JSON formatting, sort rules, and trailing newlines.\n",
+      "extra": {
+        "is_sidechain": false
+      }
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-06-09T14:20:52.981Z",
+      "source": "agent",
+      "model_name": "<synthetic>",
+      "message": "API Error: 400 The supported API model names are deepseek-v4-pro or deepseek-v4-flash, but you passed opus4.7.",
+      "metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "cached_tokens": 0,
+        "extra": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": null,
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": null,
+          "iterations": null,
+          "speed": null
+        }
+      },
+      "extra": {
+        "stop_reason": "stop_sequence",
+        "stop_sequence": "",
+        "cwd": "/app",
+        "is_sidechain": false
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 0,
+    "total_completion_tokens": 0,
+    "total_cached_tokens": 0,
+    "total_cost_usd": 0.0,
+    "total_steps": 2,
+    "extra": {
+      "total_cache_creation_input_tokens": 0,
+      "total_cache_read_input_tokens": 0
+    }
+  }
+}

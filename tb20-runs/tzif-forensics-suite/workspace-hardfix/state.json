@@ -1,0 +1,66 @@
+{
+  "schema": "tb20-batch-execution-delivery.v1",
+  "createdAt": "2026-06-09T14:49:57.087297+00:00",
+  "sourceRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/source",
+  "outputRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/delivery-hardfix",
+  "harborCli": "/home/ubuntu/tb20-runtime/.venv/bin/harbor",
+  "dockerRegistryMirrors": "",
+  "aptMirror": "",
+  "pythonIndexUrl": "",
+  "stages": [
+    {
+      "stage": "DEPS",
+      "status": "PASS",
+      "evidence": "evidence/deps.json",
+      "recordedAt": "2026-06-09T14:49:57.760849+00:00"
+    },
+    {
+      "stage": "INSPECT",
+      "status": "PASS",
+      "evidence": "evidence/inspect.json",
+      "recordedAt": "2026-06-09T14:49:57.809311+00:00"
+    },
+    {
+      "stage": "RUN",
+      "status": "PASS",
+      "evidence": "evidence/run.json",
+      "recordedAt": "2026-06-09T14:51:20.145674+00:00"
+    },
+    {
+      "stage": "COLLECT",
+      "status": "PASS",
+      "evidence": "evidence/collect.json",
+      "recordedAt": "2026-06-09T14:51:20.195235+00:00"
+    },
+    {
+      "stage": "PACKAGE",
+      "status": "PASS",
+      "evidence": "evidence/package.json",
+      "recordedAt": "2026-06-09T14:51:46.135173+00:00"
+    },
+    {
+      "stage": "AUDIT",
+      "status": "PASS",
+      "evidence": "evidence/audit.json",
+      "recordedAt": "2026-06-09T14:51:46.176482+00:00"
+    },
+    {
+      "stage": "INSPECT",
+      "status": "PASS",
+      "evidence": "evidence/inspect.json",
+      "recordedAt": "2026-06-09T15:03:25.156054+00:00"
+    },
+    {
+      "stage": "PACKAGE",
+      "status": "PASS",
+      "evidence": "evidence/package.json",
+      "recordedAt": "2026-06-09T15:03:34.017980+00:00"
+    },
+    {
+      "stage": "AUDIT",
+      "status": "PASS",
+      "evidence": "evidence/audit.json",
+      "recordedAt": "2026-06-09T15:03:34.059310+00:00"
+    }
+  ]
+}

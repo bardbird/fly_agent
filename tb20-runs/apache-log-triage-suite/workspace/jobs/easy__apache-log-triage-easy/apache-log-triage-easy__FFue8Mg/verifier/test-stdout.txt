@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/tests/test_outputs.py", line 31, in <module>
+    main()
+    ~~~~^^
+  File "/tests/test_outputs.py", line 8, in main
+    assert output.exists(), "/app/report.json was not created"
+           ~~~~~~~~~~~~~^^
+AssertionError: /app/report.json was not created

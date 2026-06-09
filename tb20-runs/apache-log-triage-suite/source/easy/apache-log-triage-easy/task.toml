@@ -1,0 +1,41 @@
+schema_version = "1.1"
+artifacts = []
+
+[task]
+name = "terminal-bench/apache-log-triage-easy"
+description = "Parse a small Apache Common Log Format access log and produce a deterministic JSON traffic report."
+keywords = ["apache", "http", "logs", "parsing", "web-network-services"]
+[[task.authors]]
+name = "Codex"
+email = "codex@example.com"
+
+[metadata]
+author_name = "Codex"
+author_email = "codex@example.com"
+difficulty = "easy"
+category = "web-network-services"
+tags = ["apache", "logs", "json"]
+expert_time_estimate_min = 10.0
+junior_time_estimate_min = 45.0
+
+[verifier]
+timeout_sec = 300.0
+
+[agent]
+timeout_sec = 300.0
+
+[environment]
+build_timeout_sec = 300.0
+docker_image = "tb20/apache-log-triage-easy:local"
+cpus = 1
+memory_mb = 1024
+storage_mb = 2048
+gpus = 0
+allow_internet = true
+mcp_servers = []
+
+[verifier.env]
+
+[environment.env]
+
+[solution.env]

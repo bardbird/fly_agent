@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+/audit/
+/report.json
+/conversions.csv

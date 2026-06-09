@@ -1,0 +1,7 @@
+The task is synthetic and does not copy IANA tzdb source files or implementation code.
+
+Behavior is based on the public TZif binary file format described by RFC 8536 and the public-domain IANA Time Zone Database ecosystem.
+
+Primary references:
+- https://www.rfc-editor.org/rfc/rfc8536.html
+- https://data.iana.org/time-zones/tz-link.html

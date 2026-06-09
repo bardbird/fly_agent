@@ -15,11 +15,14 @@ It does not run Harbor, solve tasks, collect `agent-logs/`, or pretend a script 
 
 ## Runtime Control
 
-Use the script entrypoint for every controllable step. The script starts Codex as the skill executor for the AI-heavy production step, then enforces file and quality gates.
+This installable skill is for Codex execution and guidance only. System and backend entrypoints live outside the skill directory under `tools/tb20-production/scripts`.
+
+Use the toolkit script entrypoint for every controllable system step. The script starts Codex as the skill executor for the AI-heavy production step, then enforces file and quality gates.
 
 ```bash
-SKILL_DIR=/path/to/tb20-dataset-production
-"$SKILL_DIR/.venv/bin/python" "$SKILL_DIR/scripts/tb20_dataset.py" prepare-instruction \
+TOOLKIT_DIR=/path/to/tools/tb20-production
+TB20_VENV=/home/ubuntu/tb20-runtime/.venv
+"$TB20_VENV/bin/python" "$TOOLKIT_DIR/scripts/tb20_dataset.py" prepare-instruction \
   --workspace <workspace> \
   --output-root <candidate-output-root> \
   --domain software-engineering \
@@ -35,6 +38,8 @@ Exit code contract:
 - any other non-zero code: script/runtime failure.
 
 Default execution uses `codex exec` with the real Codex skill discovery path. The script synchronizes this skill into `$CODEX_HOME/skills/tb20-dataset-production` (or `~/.codex/skills/tb20-dataset-production`), writes `codex-contract.json` and `codex-request.md`, then starts a new Codex process whose request explicitly uses `$tb20-dataset-production`. The script still decides PASS/BLOCKED/FAIL from produced files and gate evidence.
+
+When this skill is invoked by a request that points to `codex-contract.json`, that Codex process is already inside the script-controlled executor stage. In that mode, do not invoke `tb20_dataset.py` again and do not start another Codex process. Read the contract, perform the source-backed production work, and write the required files directly to the contract output root so the parent script can run its gates.
 
 ## Fixed Domains
 
@@ -91,6 +96,25 @@ US-government-public-data
 ```
 
 GPL/LGPL/MPL sources may be studied, but do not copy code/tests into deliverables unless the downstream license obligations are intentionally accepted.
+
+## Competitive Sample Standard
+
+When the task is meant as a client-facing bid or demo sample, do not choose a scenario that is close to official Terminal-Bench examples or common web-server/logging demos unless the user explicitly asks for that domain.
+
+Prefer scenarios with:
+
+- a formal, stable specification or public-domain/open-license canonical dataset
+- realistic terminal work beyond simple text aggregation
+- binary formats, protocol edge cases, recovery, validation, numerical tolerances, schedulers, parsers, or multi-file audits
+- a clear difficulty gradient where `easy`, `medium`, and `hard` test different capabilities rather than larger copies of the same task
+- hidden-test potential that does not rely on brittle exact fixture answers
+
+Avoid:
+
+- Nginx/Apache setup tasks that resemble official demos
+- generic access-log counting unless it is only a small subcomponent of a larger scenario
+- tasks where a one-screen script or obvious grep pipeline solves all three difficulties
+- invented domains without source/license grounding
 
 ## Channel Matrix
 
@@ -167,12 +191,14 @@ Required clarity:
 
 - exact `/app` paths
 - file formats and schemas
-- output types, sorting, precision, tolerance, and newline rules
+- output types, sorting, precision, tolerance, units, accepted equivalent renderings, and newline rules
 - allowed and forbidden actions
 - edge cases that should drive tests
 - success criteria that can become verifier assertions
 
 Do not leak hidden answers or copy upstream implementation code.
+
+If a verifier will require an exact string, unit, timestamp rendering, error-code spelling, or offset format, that exact requirement must appear in `instruction.md`. If the instruction only asks for a semantic value, the verifier must accept semantically equivalent renderings or the instruction must be tightened before evaluation.
 
 ## Test Generation Brief
 
@@ -190,6 +216,18 @@ Wrong implementations to reject
 ```
 
 This brief must be traceable to `materials.md`, `problem-card.md`, and `instruction.md`.
+
+## Verifier Quality Rules
+
+The verifier must check externally specified behavior, not an internal reference parser's incidental wording. In particular:
+
+- Do not require exact exception or error-reason strings unless the task explicitly specifies them.
+- Accept equivalent units or formats when the instruction permits them; otherwise update the instruction first.
+- Use focused assertions that reveal behavior gaps: corrupt input handling, boundary transitions, duplicate detection, sort order, precision/tolerance, and trailing-newline rules.
+- Run the oracle solution before any agent evaluation and fix verifier/spec mismatches immediately.
+- Keep task data synthetic or source-grounded; do not copy upstream fixtures unless the license and redistribution risk are intentionally accepted.
+
+For Docker image tags in shell commands, always brace variables in zsh-compatible contexts, for example `"repo/task-${difficulty}:local"`, not `"repo/task-$difficulty:local"`. zsh treats `$name:modifier` specially and can silently create wrong tags.
 
 ## Software Engineering Mining
 

@@ -20,8 +20,4 @@ public class Tb20InspectRequest {
     private List<String> taskPaths = new ArrayList<>();
 
     private Boolean copyTasks = false;
-
-    private String harborRoot;
-
-    private String terminalBenchRoot;
 }

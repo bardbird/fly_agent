@@ -1,0 +1,37 @@
+{
+  "agent": "claude-code",
+  "models": [
+    "opus4.7"
+  ],
+  "jobsDir": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/jobs",
+  "concurrency": 1,
+  "dockerRegistryMirrors": "",
+  "aptMirror": "",
+  "pythonIndexUrl": "",
+  "results": [
+    {
+      "task": "easy/apache-log-triage-easy",
+      "jobName": "easy__apache-log-triage-easy",
+      "exitCode": 0,
+      "startedAt": "2026-06-09T14:02:59.720876+00:00",
+      "finishedAt": "2026-06-09T14:03:27.056111+00:00",
+      "log": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/evidence/runs/easy__apache-log-triage-easy.log"
+    },
+    {
+      "task": "hard/apache-log-triage-hard",
+      "jobName": "hard__apache-log-triage-hard",
+      "exitCode": 0,
+      "startedAt": "2026-06-09T14:03:27.056327+00:00",
+      "finishedAt": "2026-06-09T14:03:54.296667+00:00",
+      "log": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/evidence/runs/hard__apache-log-triage-hard.log"
+    },
+    {
+      "task": "medium/apache-log-triage-medium",
+      "jobName": "medium__apache-log-triage-medium",
+      "exitCode": 0,
+      "startedAt": "2026-06-09T14:03:54.296878+00:00",
+      "finishedAt": "2026-06-09T14:04:20.958420+00:00",
+      "log": "/home/ubuntu/gitee/fly_agent/tb20-runs/apache-log-triage-suite/workspace/evidence/runs/medium__apache-log-triage-medium.log"
+    }
+  ]
+}

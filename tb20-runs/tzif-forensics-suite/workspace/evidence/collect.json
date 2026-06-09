@@ -1,0 +1,116 @@
+{
+  "jobsDir": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs",
+  "results": [
+    {
+      "task": "easy/tzif-forensics-easy",
+      "ok": true,
+      "searchRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/easy__tzif-forensics-easy",
+      "artifacts": [
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/easy__tzif-forensics-easy/tzif-forensics-easy__HvgBL3o/result.json",
+          "dest": "agent-logs/run.json",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/easy__tzif-forensics-easy/tzif-forensics-easy__HvgBL3o/agent/trajectory.json",
+          "dest": "agent-logs/trajectory.json",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/easy__tzif-forensics-easy/tzif-forensics-easy__HvgBL3o/agent/claude-code.txt",
+          "dest": "agent-logs/claude-code.txt",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/easy__tzif-forensics-easy/tzif-forensics-easy__HvgBL3o/verifier/reward.txt",
+          "dest": "agent-logs/verifier/reward.txt",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/easy__tzif-forensics-easy/tzif-forensics-easy__HvgBL3o/verifier/test-stdout.txt",
+          "dest": "agent-logs/verifier/ctrf.json",
+          "copied": true,
+          "valid": true
+        }
+      ]
+    },
+    {
+      "task": "hard/tzif-forensics-hard",
+      "ok": true,
+      "searchRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/hard__tzif-forensics-hard",
+      "artifacts": [
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/hard__tzif-forensics-hard/tzif-forensics-hard__GKgdpg8/result.json",
+          "dest": "agent-logs/run.json",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/hard__tzif-forensics-hard/tzif-forensics-hard__GKgdpg8/agent/trajectory.json",
+          "dest": "agent-logs/trajectory.json",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/hard__tzif-forensics-hard/tzif-forensics-hard__GKgdpg8/agent/claude-code.txt",
+          "dest": "agent-logs/claude-code.txt",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/hard__tzif-forensics-hard/tzif-forensics-hard__GKgdpg8/verifier/reward.txt",
+          "dest": "agent-logs/verifier/reward.txt",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/hard__tzif-forensics-hard/tzif-forensics-hard__GKgdpg8/verifier/test-stdout.txt",
+          "dest": "agent-logs/verifier/ctrf.json",
+          "copied": true,
+          "valid": true
+        }
+      ]
+    },
+    {
+      "task": "medium/tzif-forensics-medium",
+      "ok": true,
+      "searchRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/medium__tzif-forensics-medium",
+      "artifacts": [
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/medium__tzif-forensics-medium/tzif-forensics-medium__6JKcGah/result.json",
+          "dest": "agent-logs/run.json",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/medium__tzif-forensics-medium/tzif-forensics-medium__6JKcGah/agent/trajectory.json",
+          "dest": "agent-logs/trajectory.json",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/medium__tzif-forensics-medium/tzif-forensics-medium__6JKcGah/agent/claude-code.txt",
+          "dest": "agent-logs/claude-code.txt",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/medium__tzif-forensics-medium/tzif-forensics-medium__6JKcGah/verifier/reward.txt",
+          "dest": "agent-logs/verifier/reward.txt",
+          "copied": true,
+          "valid": true
+        },
+        {
+          "source": "/home/ubuntu/gitee/fly_agent/tb20-runs/tzif-forensics-suite/workspace/jobs/medium__tzif-forensics-medium/tzif-forensics-medium__6JKcGah/verifier/test-stdout.txt",
+          "dest": "agent-logs/verifier/ctrf.json",
+          "copied": true,
+          "valid": true
+        }
+      ]
+    }
+  ]
+}
