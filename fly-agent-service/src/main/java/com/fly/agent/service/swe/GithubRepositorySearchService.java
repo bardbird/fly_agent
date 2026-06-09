@@ -26,6 +26,7 @@ import java.net.URI;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -110,7 +111,12 @@ public class GithubRepositorySearchService {
         int perPage = request.getPerPage() == null ? DEFAULT_PER_PAGE : Math.min(Math.max(request.getPerPage(), 1), MAX_PER_PAGE);
         String sort = normalizeSort(request.getSort());
         String order = normalizeOrder(request.getOrder());
-        String query = buildQuery(githubLanguage, request.getKeyword(), minStars, maxStars);
+        LocalDate pushedFrom = parseOptionalDate(request.getPushedFrom(), "pushedFrom");
+        LocalDate pushedTo = parseOptionalDate(request.getPushedTo(), "pushedTo");
+        if (pushedFrom != null && pushedTo != null && pushedTo.isBefore(pushedFrom)) {
+            throw new BusinessException("pushedTo 不能早于 pushedFrom");
+        }
+        String query = buildQuery(githubLanguage, request.getKeyword(), minStars, maxStars, pushedFrom, pushedTo);
 
         JSONObject payload = webClient.get()
                 .uri(searchUri(query, sort, order, page, perPage))
@@ -141,6 +147,8 @@ public class GithubRepositorySearchService {
         response.setIncompleteResults(payload.getBoolean("incomplete_results"));
         response.setPage(page);
         response.setPerPage(perPage);
+        response.setPushedFrom(pushedFrom == null ? null : pushedFrom.toString());
+        response.setPushedTo(pushedTo == null ? null : pushedTo.toString());
 
         JSONArray items = payload.getJSONArray("items");
         if (items != null) {
@@ -189,7 +197,13 @@ public class GithubRepositorySearchService {
         return "asc".equalsIgnoreCase(order.trim()) ? "asc" : DEFAULT_ORDER;
     }
 
-    private String buildQuery(String githubLanguage, String keyword, int minStars, Integer maxStars) {
+    private String buildQuery(
+            String githubLanguage,
+            String keyword,
+            int minStars,
+            Integer maxStars,
+            LocalDate pushedFrom,
+            LocalDate pushedTo) {
         StringBuilder query = new StringBuilder();
         if (StringUtils.hasText(keyword)) {
             query.append(keyword.trim()).append(' ');
@@ -200,8 +214,30 @@ public class GithubRepositorySearchService {
         } else {
             query.append("stars:").append(minStars).append("..").append(maxStars).append(' ');
         }
+        if (pushedFrom != null || pushedTo != null) {
+            query.append("pushed:");
+            if (pushedFrom == null) {
+                query.append("<=").append(pushedTo);
+            } else if (pushedTo == null) {
+                query.append(">=").append(pushedFrom);
+            } else {
+                query.append(pushedFrom).append("..").append(pushedTo);
+            }
+            query.append(' ');
+        }
         query.append("archived:false");
         return query.toString();
+    }
+
+    private LocalDate parseOptionalDate(String value, String fieldName) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(value.trim());
+        } catch (Exception e) {
+            throw new BusinessException(fieldName + " 日期格式必须为 yyyy-MM-dd");
+        }
     }
 
     private String extractGithubErrorMessage(String body) {

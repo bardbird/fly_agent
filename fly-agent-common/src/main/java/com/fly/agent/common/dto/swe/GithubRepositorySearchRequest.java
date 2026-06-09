@@ -18,6 +18,10 @@ public class GithubRepositorySearchRequest {
 
     private Integer maxStars;
 
+    private String pushedFrom;
+
+    private String pushedTo;
+
     private Integer page = 1;
 
     private Integer perPage = 20;

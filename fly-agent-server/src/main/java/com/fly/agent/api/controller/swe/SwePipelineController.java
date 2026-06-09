@@ -107,6 +107,8 @@ public class SwePipelineController {
             @RequestParam(value = "keyword", required = false) String keyword,
             @RequestParam(value = "minStars", required = false) Integer minStars,
             @RequestParam(value = "maxStars", required = false) Integer maxStars,
+            @RequestParam(value = "pushedFrom", required = false) String pushedFrom,
+            @RequestParam(value = "pushedTo", required = false) String pushedTo,
             @RequestParam(value = "page", required = false) Integer page,
             @RequestParam(value = "perPage", required = false) Integer perPage,
             @RequestParam(value = "sort", required = false) String sort,
@@ -116,6 +118,8 @@ public class SwePipelineController {
         request.setKeyword(keyword);
         request.setMinStars(minStars);
         request.setMaxStars(maxStars);
+        request.setPushedFrom(pushedFrom);
+        request.setPushedTo(pushedTo);
         request.setPage(page);
         request.setPerPage(perPage);
         request.setSort(sort);

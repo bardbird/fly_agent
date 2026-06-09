@@ -23,5 +23,9 @@ public class GithubRepositorySearchResponse {
 
     private Integer perPage;
 
+    private String pushedFrom;
+
+    private String pushedTo;
+
     private List<GithubRepositoryDTO> repositories = new ArrayList<>();
 }

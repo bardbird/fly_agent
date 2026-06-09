@@ -58,6 +58,7 @@ public class SweRepoDiscoveryJob {
             "java");
     private static final int SCA_SEARCH_PER_PAGE = 50;
     private static final int MAX_REPOSITORY_SEARCH_PAGES = 10;
+    private static final int DEFAULT_PUSHED_LOOKBACK_YEARS = 3;
 
     private final GithubRepositorySearchService repositorySearchService;
     private final GithubPullCandidateService pullCandidateService;
@@ -240,7 +241,9 @@ public class SweRepoDiscoveryJob {
         ScanSummary summary = new ScanSummary();
         summary.setLanguages(request.resolveLanguages());
         for (String language : request.resolveLanguages()) {
-            scanLanguageToSca(language, request, summary);
+            for (PushedTimeSlice pushedTimeSlice : activePushedTimeSlices(language, request)) {
+                scanLanguageToSca(language, request, summary, pushedTimeSlice);
+            }
         }
 
         String message = JSON.toJSONString(summary);
@@ -391,11 +394,16 @@ public class SweRepoDiscoveryJob {
         summary.add(languageSummary);
     }
 
-    private void scanLanguageToSca(String language, ScanRequest request, ScanSummary summary) {
+    private void scanLanguageToSca(
+            String language,
+            ScanRequest request,
+            ScanSummary summary,
+            PushedTimeSlice pushedTimeSlice) {
         Integer initialMaxStars = request.getMaxStars();
         if (request.getStartStars() != null) {
             initialMaxStars = request.getStartStars();
         }
+        String cursorKeyword = cursorKeyword(request, pushedTimeSlice);
         int existingScaReports = repoScaService.countReposInScanScope(
                 language,
                 request.getKeyword(),
@@ -413,24 +421,24 @@ public class SweRepoDiscoveryJob {
         int remainingDailyRepoLimit = Math.max(request.getRepoLimit() - scaReportsTodayForLanguage, 0);
         int remainingRepoLimit = request.resolvePerRunRepoLimit(remainingDailyRepoLimit);
         if (request.isResetCursor()) {
-            scanCursorService.reset(language, request.getKeyword(), request.getMinStars(), initialMaxStars);
+            scanCursorService.reset(language, cursorKeyword, request.getMinStars(), initialMaxStars);
         }
 
         SweRepoScanCursorService.ScanCursor cursor = scanCursorService.getOrCreate(
                 language,
-                request.getKeyword(),
+                cursorKeyword,
                 request.getMinStars(),
                 initialMaxStars);
         if (request.isUseStarCursor() && cursor.isExhausted()) {
             scanCursorService.restart(
                     language,
-                    request.getKeyword(),
+                    cursorKeyword,
                     request.getMinStars(),
                     initialMaxStars,
                     "scaOnly restarting previously exhausted cursor");
             cursor = scanCursorService.getOrCreate(
                     language,
-                    request.getKeyword(),
+                    cursorKeyword,
                     request.getMinStars(),
                     initialMaxStars);
         }
@@ -440,13 +448,13 @@ public class SweRepoDiscoveryJob {
             if (request.isUseStarCursor()) {
                 scanCursorService.restart(
                         language,
-                        request.getKeyword(),
+                        cursorKeyword,
                         request.getMinStars(),
                         initialMaxStars,
                         "scaOnly restarting cursor below minStars, currentMaxStars=" + searchMaxStars);
                 cursor = scanCursorService.getOrCreate(
                         language,
-                        request.getKeyword(),
+                        cursorKeyword,
                         request.getMinStars(),
                         initialMaxStars);
                 searchMaxStars = cursor.getCurrentMaxStars();
@@ -461,6 +469,8 @@ public class SweRepoDiscoveryJob {
         languageSummary.setMinStars(request.getMinStars());
         languageSummary.setMaxStars(searchMaxStars);
         languageSummary.setCursorKey(cursor.getCursorKey());
+        languageSummary.setPushedFrom(pushedTimeSlice.from() == null ? null : pushedTimeSlice.from().toString());
+        languageSummary.setPushedTo(pushedTimeSlice.to() == null ? null : pushedTimeSlice.to().toString());
         languageSummary.setExistingScaReports(existingScaReports);
         languageSummary.setDailyRepoLimit(request.getRepoLimit());
         languageSummary.setPerRunRepoLimit(request.getPerRunRepoLimit());
@@ -482,7 +492,9 @@ public class SweRepoDiscoveryJob {
                     initialMaxStars,
                     cursor,
                     searchMaxStars,
-                    remainingRepoLimit);
+                    remainingRepoLimit,
+                    pushedTimeSlice,
+                    cursorKeyword);
             return;
         }
 
@@ -497,7 +509,8 @@ public class SweRepoDiscoveryJob {
                     request,
                     searchMaxStars,
                     page,
-                    SCA_SEARCH_PER_PAGE));
+                    SCA_SEARCH_PER_PAGE,
+                    pushedTimeSlice));
             List<GithubRepositoryDTO> repositories = response.getRepositories() == null
                     ? List.of()
                     : response.getRepositories();
@@ -522,7 +535,7 @@ public class SweRepoDiscoveryJob {
         if (request.isUseStarCursor()) {
             scanCursorService.advance(
                     language,
-                    request.getKeyword(),
+                    cursorKeyword,
                     request.getMinStars(),
                     initialMaxStars,
                     minSeenStars,
@@ -545,15 +558,17 @@ public class SweRepoDiscoveryJob {
             Integer initialMaxStars,
             SweRepoScanCursorService.ScanCursor cursor,
             Integer searchMaxStars,
-            int remainingRepoLimit) {
+            int remainingRepoLimit,
+            PushedTimeSlice pushedTimeSlice,
+            String cursorKeyword) {
         Integer currentMaxStars = searchMaxStars;
         if (currentMaxStars == null) {
-            currentMaxStars = findHighestStarAtOrBelow(language, request, initialMaxStars);
+            currentMaxStars = findHighestStarAtOrBelow(language, request, initialMaxStars, pushedTimeSlice);
         }
         if (currentMaxStars == null || currentMaxStars < request.getMinStars()) {
             scanCursorService.restart(
                     language,
-                    request.getKeyword(),
+                    cursorKeyword,
                     request.getMinStars(),
                     initialMaxStars,
                     "scaOnly exhausted: no repositories found in star range");
@@ -578,7 +593,8 @@ public class SweRepoDiscoveryJob {
                     request.getMinStars(),
                     currentMaxStars,
                     page,
-                    SCA_SEARCH_PER_PAGE));
+                    SCA_SEARCH_PER_PAGE,
+                    pushedTimeSlice));
             scannedPages++;
             List<GithubRepositoryDTO> repositories = response.getRepositories() == null
                     ? List.of()
@@ -641,7 +657,7 @@ public class SweRepoDiscoveryJob {
         if (exhausted) {
             scanCursorService.restart(
                     language,
-                    request.getKeyword(),
+                    cursorKeyword,
                     request.getMinStars(),
                     initialMaxStars,
                     cursorSummary + ", exhaustedRestarted=true");
@@ -650,7 +666,7 @@ public class SweRepoDiscoveryJob {
         } else {
             scanCursorService.advanceWithinStar(
                     language,
-                    request.getKeyword(),
+                    cursorKeyword,
                     request.getMinStars(),
                     initialMaxStars,
                     nextCursorStars,
@@ -1135,7 +1151,7 @@ public class SweRepoDiscoveryJob {
             ScanRequest request,
             Integer searchMaxStars,
             int page) {
-        return searchRequest(language, request, searchMaxStars, page, request.getRepositoryPerPage());
+        return searchRequest(language, request, searchMaxStars, page, request.getRepositoryPerPage(), PushedTimeSlice.NONE);
     }
 
     private GithubRepositorySearchRequest searchRequest(
@@ -1144,7 +1160,17 @@ public class SweRepoDiscoveryJob {
             Integer searchMaxStars,
             int page,
             int perPage) {
-        return searchRequest(language, request, request.getMinStars(), searchMaxStars, page, perPage);
+        return searchRequest(language, request, searchMaxStars, page, perPage, PushedTimeSlice.NONE);
+    }
+
+    private GithubRepositorySearchRequest searchRequest(
+            String language,
+            ScanRequest request,
+            Integer searchMaxStars,
+            int page,
+            int perPage,
+            PushedTimeSlice pushedTimeSlice) {
+        return searchRequest(language, request, request.getMinStars(), searchMaxStars, page, perPage, pushedTimeSlice);
     }
 
     private GithubRepositorySearchRequest searchRequest(
@@ -1154,11 +1180,24 @@ public class SweRepoDiscoveryJob {
             Integer searchMaxStars,
             int page,
             int perPage) {
+        return searchRequest(language, request, searchMinStars, searchMaxStars, page, perPage, PushedTimeSlice.NONE);
+    }
+
+    private GithubRepositorySearchRequest searchRequest(
+            String language,
+            ScanRequest request,
+            int searchMinStars,
+            Integer searchMaxStars,
+            int page,
+            int perPage,
+            PushedTimeSlice pushedTimeSlice) {
         GithubRepositorySearchRequest searchRequest = new GithubRepositorySearchRequest();
         searchRequest.setLanguage(language);
         searchRequest.setKeyword(request.getKeyword());
         searchRequest.setMinStars(searchMinStars);
         searchRequest.setMaxStars(searchMaxStars);
+        searchRequest.setPushedFrom(pushedTimeSlice.from() == null ? null : pushedTimeSlice.from().toString());
+        searchRequest.setPushedTo(pushedTimeSlice.to() == null ? null : pushedTimeSlice.to().toString());
         searchRequest.setPage(page);
         searchRequest.setPerPage(perPage);
         searchRequest.setSort("stars");
@@ -1168,6 +1207,14 @@ public class SweRepoDiscoveryJob {
     }
 
     private Integer findHighestStarAtOrBelow(String language, ScanRequest request, Integer maxStars) {
+        return findHighestStarAtOrBelow(language, request, maxStars, PushedTimeSlice.NONE);
+    }
+
+    private Integer findHighestStarAtOrBelow(
+            String language,
+            ScanRequest request,
+            Integer maxStars,
+            PushedTimeSlice pushedTimeSlice) {
         if (maxStars != null && maxStars < request.getMinStars()) {
             return null;
         }
@@ -1177,7 +1224,8 @@ public class SweRepoDiscoveryJob {
                 request.getMinStars(),
                 maxStars,
                 1,
-                1);
+                1,
+                pushedTimeSlice);
         GithubRepositorySearchResponse response = repositorySearchService.search(searchRequest);
         List<GithubRepositoryDTO> repositories = response.getRepositories() == null
                 ? List.of()
@@ -1186,6 +1234,44 @@ public class SweRepoDiscoveryJob {
             return null;
         }
         return repositories.get(0).getStargazersCount();
+    }
+
+    private List<PushedTimeSlice> activePushedTimeSlices(String language, ScanRequest request) {
+        List<PushedTimeSlice> slices = request.resolvePushedTimeSlices();
+        int slicesPerRun = request.getPushedSlicesPerRun();
+        if (slicesPerRun <= 0 || slicesPerRun >= slices.size()) {
+            return slices;
+        }
+        int start = pushedSliceStartIndex(language, request, slices.size());
+        List<PushedTimeSlice> active = new ArrayList<>();
+        for (int index = 0; index < slicesPerRun; index++) {
+            active.add(slices.get((start + index) % slices.size()));
+        }
+        return active;
+    }
+
+    private int pushedSliceStartIndex(String language, ScanRequest request, int sliceCount) {
+        if (sliceCount <= 1) {
+            return 0;
+        }
+        long timeBucket = System.currentTimeMillis() / TimeUnit.MINUTES.toMillis(5);
+        return Math.floorMod(timeBucket + language.hashCode(), sliceCount);
+    }
+
+    private String cursorKeyword(ScanRequest request, PushedTimeSlice pushedTimeSlice) {
+        String keyword = request.getKeyword();
+        if (pushedTimeSlice == null || pushedTimeSlice.isNone()) {
+            return keyword;
+        }
+        String slicePart = "pushed:" + datePart(pushedTimeSlice.from()) + ".." + datePart(pushedTimeSlice.to());
+        if (!StringUtils.hasText(keyword)) {
+            return slicePart;
+        }
+        return keyword.trim() + " " + slicePart;
+    }
+
+    private String datePart(LocalDate date) {
+        return date == null ? "*" : date.toString();
     }
 
     private int scaRepositoryPages(int remainingRepoLimit) {
@@ -1269,6 +1355,10 @@ public class SweRepoDiscoveryJob {
         request.setMaxDirectDependencies(intValue(json, "maxDirectDependencies", request.getMaxDirectDependencies(), 0, 500));
         request.setMaxManifestCount(intValue(json, "maxManifestCount", request.getMaxManifestCount(), 0, 100));
         request.setMaxManifestDownloads(intValue(json, "maxManifestDownloads", request.getMaxManifestDownloads(), 0, 20));
+        request.setPushedFrom(optionalDate(json, "pushedFrom"));
+        request.setPushedTo(optionalDate(json, "pushedTo"));
+        request.setPushedSliceMonths(intValue(json, "pushedSliceMonths", request.getPushedSliceMonths(), 0, 120));
+        request.setPushedSlicesPerRun(intValue(json, "pushedSlicesPerRun", request.getPushedSlicesPerRun(), 0, 120));
         request.setUseStarCursor(booleanValue(json, "useStarCursor", request.isUseStarCursor()));
         request.setResetCursor(booleanValue(json, "resetCursor", request.isResetCursor()));
         request.setImportBlacklist(booleanValue(json, "importBlacklist", request.isImportBlacklist()));
@@ -1337,6 +1427,14 @@ public class SweRepoDiscoveryJob {
     private Integer optionalPositiveInt(JSONObject json, String key) {
         Integer value = json.getInteger(key);
         return value == null ? null : Math.max(value, 0);
+    }
+
+    private LocalDate optionalDate(JSONObject json, String key) {
+        String value = json.getString(key);
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return LocalDate.parse(value.trim());
     }
 
     private boolean booleanValue(JSONObject json, String key, boolean defaultValue) {
@@ -1409,6 +1507,14 @@ public class SweRepoDiscoveryJob {
 
         private int maxManifestDownloads = 3;
 
+        private LocalDate pushedFrom;
+
+        private LocalDate pushedTo;
+
+        private int pushedSliceMonths;
+
+        private int pushedSlicesPerRun;
+
         private boolean useStarCursor = true;
 
         private boolean resetCursor;
@@ -1432,6 +1538,40 @@ public class SweRepoDiscoveryJob {
                 return remainingDailyRepoLimit;
             }
             return Math.min(perRunRepoLimit, remainingDailyRepoLimit);
+        }
+
+        private List<PushedTimeSlice> resolvePushedTimeSlices() {
+            if (pushedSliceMonths <= 0) {
+                if (pushedFrom == null && pushedTo == null) {
+                    return List.of(PushedTimeSlice.NONE);
+                }
+                return List.of(new PushedTimeSlice(pushedFrom, pushedTo));
+            }
+            LocalDate end = pushedTo == null ? scanDate : pushedTo;
+            LocalDate start = pushedFrom == null ? end.minusYears(DEFAULT_PUSHED_LOOKBACK_YEARS).plusDays(1) : pushedFrom;
+            if (end.isBefore(start)) {
+                throw new IllegalArgumentException("pushedTo cannot be earlier than pushedFrom");
+            }
+            List<PushedTimeSlice> slices = new ArrayList<>();
+            LocalDate sliceEnd = end;
+            while (!sliceEnd.isBefore(start)) {
+                LocalDate sliceStart = sliceEnd.minusMonths(pushedSliceMonths).plusDays(1);
+                if (sliceStart.isBefore(start)) {
+                    sliceStart = start;
+                }
+                slices.add(new PushedTimeSlice(sliceStart, sliceEnd));
+                sliceEnd = sliceStart.minusDays(1);
+            }
+            return slices.isEmpty() ? List.of(PushedTimeSlice.NONE) : slices;
+        }
+    }
+
+    private record PushedTimeSlice(LocalDate from, LocalDate to) {
+
+        private static final PushedTimeSlice NONE = new PushedTimeSlice(null, null);
+
+        private boolean isNone() {
+            return from == null && to == null;
         }
     }
 
@@ -1566,6 +1706,10 @@ public class SweRepoDiscoveryJob {
         private int reposProcessedTodayInScope;
 
         private String scanDate;
+
+        private String pushedFrom;
+
+        private String pushedTo;
 
         private void add(RepoScanOutcome outcome) {
             foundRepos += outcome.getFoundRepos();
