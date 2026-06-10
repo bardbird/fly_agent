@@ -1,0 +1,50 @@
+{
+  "task": "easy/manifest-integrity-audit-easy",
+  "startedAt": "2026-06-10T07:13:28.427680+00:00",
+  "finishedAt": "2026-06-10T07:13:29.015647+00:00",
+  "image": "tb20-oracle/easy-manifest-integrity-audit-easy:local",
+  "buildExitCode": 0,
+  "solutionExitCode": 0,
+  "verifierExitCode": 0,
+  "reward": "1",
+  "ok": true,
+  "logs": {
+    "build": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/manifest-integrity-audit-easy/oracle-logs/build.log",
+    "solution": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/manifest-integrity-audit-easy/oracle-logs/solution.log",
+    "verifier": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/manifest-integrity-audit-easy/oracle-logs/verifier.log",
+    "reward": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/manifest-integrity-audit-easy/oracle-logs/reward.txt",
+    "result": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/manifest-integrity-audit-easy/oracle-logs/result.json"
+  },
+  "containerExitCode": 0,
+  "standardHarness": {
+    "command": [
+      "/home/ubuntu/tb20-runtime/.venv/bin/harbor",
+      "run",
+      "-p",
+      "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/manifest-integrity-audit-easy",
+      "-a",
+      "oracle",
+      "--jobs-dir",
+      "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs",
+      "--job-name",
+      "oracle__easy__manifest-integrity-audit-easy",
+      "--yes",
+      "--force-build",
+      "--no-delete"
+    ],
+    "jobName": "oracle__easy__manifest-integrity-audit-easy",
+    "jobsDir": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs",
+    "trialRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs/oracle__easy__manifest-integrity-audit-easy/manifest-integrity-audit-easy__riDWhVc",
+    "startedAt": "2026-06-10T07:20:20.239185+00:00",
+    "finishedAt": "2026-06-10T07:20:35.661659+00:00",
+    "exitCode": 0,
+    "reward": "1",
+    "copied": {
+      "harnessRun": true,
+      "harnessOracle": true,
+      "testStdout": true,
+      "reward": true,
+      "harnessJob": true
+    }
+  }
+}

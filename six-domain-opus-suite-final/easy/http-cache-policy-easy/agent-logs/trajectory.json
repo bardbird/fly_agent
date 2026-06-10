@@ -1,0 +1,226 @@
+{
+  "schema_version": "ATIF-v1.2",
+  "session_id": "d118771b-8e9e-4215-90e9-3713b3983ca9",
+  "agent": {
+    "name": "claude-code",
+    "version": "2.1.170",
+    "model_name": "claude-opus-4-7",
+    "extra": {
+      "cwds": [
+        "/app"
+      ],
+      "git_branches": [
+        "HEAD"
+      ]
+    }
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-06-10T07:01:20.571Z",
+      "source": "user",
+      "message": "# HTTP Cache Policy Report\n\n## Context\nYou are auditing HTTP response metadata for cache behavior. The fixture is synthetic and uses a constrained subset of RFC 9111 HTTP caching semantics.\n\n## Files Available\n- `/app/responses.jsonl`: input JSON Lines file.\n- `/app/cache_report.csv`: output CSV file you must create.\n\n## Task\nFor each response, determine whether the response is cacheable by the simplified policy below and compute its freshness lifetime in seconds.\n\n## Input Format\nEach JSON line has:\n- `id`: response identifier.\n- `method`: HTTP method.\n- `status`: integer status code.\n- `headers`: object whose keys are HTTP header names and whose values are strings.\n\nHeader names must be handled case-insensitively. Cache-Control directives are comma-separated and may contain optional spaces.\n\n## Required Output\nWrite `/app/cache_report.csv` with header:\n\n`id,cacheable,ttl_seconds,reason`\n\nRows must preserve input order. Use lowercase `true` or `false` for `cacheable`.\n\n## Behavioral Requirements\nUse exactly this simplified policy:\n- `Cache-Control: no-store` makes the response not cacheable, reason `no-store`, TTL `0`.\n- Status codes `200`, `203`, `204`, `206`, `301`, `404`, and `410` are cacheable by default. Other status codes are not cacheable unless `Cache-Control` contains `public`.\n- `Cache-Control: max-age=N` sets TTL to `N` seconds and reason `fresh-max-age`.\n- If no max-age is present, an `Expires` header later than `Date` sets TTL to the positive difference in seconds and reason `expires`.\n- If a response is cacheable but has neither max-age nor a future Expires value, TTL is `0` and reason `cacheable-no-ttl`.\n- If a response is not cacheable because of status, reason is `status-not-cacheable`.\n\n## Edge Cases\n- Header names may use different capitalization.\n- `public` can make a non-default-cacheable status cacheable.\n- `no-store` overrides `public`, `max-age`, and `Expires`.\n\n## Constraints\n- Do not modify `/app/responses.jsonl`.\n- Do not use network access.\n\n## Examples\nA `POST` response with status `200` and `Cache-Control: public, max-age=30` must be cacheable with TTL `30`.\n\n## Success Criteria\nThe verifier checks row order, case-insensitive headers, directive precedence, exact reason strings, TTL calculations, and CSV formatting.\n",
+      "extra": {
+        "is_sidechain": false
+      }
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-06-10T07:01:22.999Z",
+      "source": "agent",
+      "model_name": "claude-opus-4-7",
+      "message": "Let me read the input file first.",
+      "tool_calls": [
+        {
+          "tool_call_id": "tooluse_yazsoZPPl2XHYcssjI2x6q",
+          "function_name": "Read",
+          "arguments": {
+            "file_path": "/app/responses.jsonl"
+          },
+          "extra": {
+            "raw_arguments": {
+              "file_path": "/app/responses.jsonl"
+            },
+            "tool_use_name": "Read"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "tooluse_yazsoZPPl2XHYcssjI2x6q",
+            "content": "1\t{\"id\": \"r1\", \"method\": \"GET\", \"status\": 200, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Cache-Control\": \"max-age=60\"}}\n2\t{\"id\": \"r2\", \"method\": \"POST\", \"status\": 200, \"headers\": {\"date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"cache-control\": \"public, max-age=30\"}}\n3\t{\"id\": \"r3\", \"method\": \"GET\", \"status\": 500, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Cache-Control\": \"max-age=10\"}}\n4\t{\"id\": \"r4\", \"method\": \"GET\", \"status\": 200, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Cache-Control\": \"public, no-store, max-age=100\"}}\n5\t{\"id\": \"r5\", \"method\": \"GET\", \"status\": 301, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Expires\": \"Wed, 11 Jun 2025 10:00:00 GMT\"}}\n6\t{\"id\": \"r6\", \"method\": \"PUT\", \"status\": 201, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Cache-Control\": \"public\"}}\n7\n\n[metadata] {\"type\": \"text\", \"file\": {\"filePath\": \"/app/responses.jsonl\", \"content\": \"{\\\"id\\\": \\\"r1\\\", \\\"method\\\": \\\"GET\\\", \\\"status\\\": 200, \\\"headers\\\": {\\\"Date\\\": \\\"Tue, 10 Jun 2025 10:00:00 GMT\\\", \\\"Cache-Control\\\": \\\"max-age=60\\\"}}\\n{\\\"id\\\": \\\"r2\\\", \\\"method\\\": \\\"POST\\\", \\\"status\\\": 200, \\\"headers\\\": {\\\"date\\\": \\\"Tue, 10 Jun 2025 10:00:00 GMT\\\", \\\"cache-control\\\": \\\"public, max-age=30\\\"}}\\n{\\\"id\\\": \\\"r3\\\", \\\"method\\\": \\\"GET\\\", \\\"status\\\": 500, \\\"headers\\\": {\\\"Date\\\": \\\"Tue, 10 Jun 2025 10:00:00 GMT\\\", \\\"Cache-Control\\\": \\\"max-age=10\\\"}}\\n{\\\"id\\\": \\\"r4\\\", \\\"method\\\": \\\"GET\\\", \\\"status\\\": 200, \\\"headers\\\": {\\\"Date\\\": \\\"Tue, 10 Jun 2025 10:00:00 GMT\\\", \\\"Cache-Control\\\": \\\"public, no-store, max-age=100\\\"}}\\n{\\\"id\\\": \\\"r5\\\", \\\"method\\\": \\\"GET\\\", \\\"status\\\": 301, \\\"headers\\\": {\\\"Date\\\": \\\"Tue, 10 Jun 2025 10:00:00 GMT\\\", \\\"Expires\\\": \\\"Wed, 11 Jun 2025 10:00:00 GMT\\\"}}\\n{\\\"id\\\": \\\"r6\\\", \\\"method\\\": \\\"PUT\\\", \\\"status\\\": 201, \\\"headers\\\": {\\\"Date\\\": \\\"Tue, 10 Jun 2025 10:00:00 GMT\\\", \\\"Cache-Control\\\": \\\"public\\\"}}\\n\", \"numLines\": 7, \"startLine\": 1, \"totalLines\": 7}}",
+            "extra": {
+              "tool_result_metadata": {
+                "tool_use_result": {
+                  "type": "text",
+                  "file": {
+                    "filePath": "/app/responses.jsonl",
+                    "content": "{\"id\": \"r1\", \"method\": \"GET\", \"status\": 200, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Cache-Control\": \"max-age=60\"}}\n{\"id\": \"r2\", \"method\": \"POST\", \"status\": 200, \"headers\": {\"date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"cache-control\": \"public, max-age=30\"}}\n{\"id\": \"r3\", \"method\": \"GET\", \"status\": 500, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Cache-Control\": \"max-age=10\"}}\n{\"id\": \"r4\", \"method\": \"GET\", \"status\": 200, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Cache-Control\": \"public, no-store, max-age=100\"}}\n{\"id\": \"r5\", \"method\": \"GET\", \"status\": 301, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Expires\": \"Wed, 11 Jun 2025 10:00:00 GMT\"}}\n{\"id\": \"r6\", \"method\": \"PUT\", \"status\": 201, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Cache-Control\": \"public\"}}\n",
+                    "numLines": 7,
+                    "startLine": 1,
+                    "totalLines": 7
+                  }
+                },
+                "raw_tool_result": {
+                  "tool_use_id": "tooluse_yazsoZPPl2XHYcssjI2x6q",
+                  "type": "tool_result",
+                  "content": "1\t{\"id\": \"r1\", \"method\": \"GET\", \"status\": 200, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Cache-Control\": \"max-age=60\"}}\n2\t{\"id\": \"r2\", \"method\": \"POST\", \"status\": 200, \"headers\": {\"date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"cache-control\": \"public, max-age=30\"}}\n3\t{\"id\": \"r3\", \"method\": \"GET\", \"status\": 500, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Cache-Control\": \"max-age=10\"}}\n4\t{\"id\": \"r4\", \"method\": \"GET\", \"status\": 200, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Cache-Control\": \"public, no-store, max-age=100\"}}\n5\t{\"id\": \"r5\", \"method\": \"GET\", \"status\": 301, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Expires\": \"Wed, 11 Jun 2025 10:00:00 GMT\"}}\n6\t{\"id\": \"r6\", \"method\": \"PUT\", \"status\": 201, \"headers\": {\"Date\": \"Tue, 10 Jun 2025 10:00:00 GMT\", \"Cache-Control\": \"public\"}}\n7\t"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 32677,
+        "completion_tokens": 27,
+        "cached_tokens": 0,
+        "extra": {
+          "cache_creation_input_tokens": 32656,
+          "cache_read_input_tokens": 0,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 32656
+          },
+          "inference_geo": "not_available",
+          "iterations": [],
+          "speed": "standard"
+        }
+      },
+      "extra": {
+        "stop_reason": "tool_use",
+        "cwd": "/app",
+        "is_sidechain": false
+      }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-06-10T07:01:25.795Z",
+      "source": "agent",
+      "model_name": "claude-opus-4-7",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "tooluse_0jPnkcFwp51hBDepV36kt3",
+          "function_name": "Bash",
+          "arguments": {
+            "command": "cat << 'EOF' > /app/solve.py\nimport json\nfrom email.utils import parsedate_to_datetime\n\nCACHEABLE_STATUSES = {200, 203, 204, 206, 301, 404, 410}\n\ndef parse_cc(headers):\n    for k, v in headers.items():\n        if k.lower() == 'cache-control':\n            return [d.strip().lower() for d in v.split(',')]\n    return []\n\ndef get_header(headers, name):\n    for k, v in headers.items():\n        if k.lower() == name.lower():\n            return v\n    return None\n\nrows = []\nwith open('/app/responses.jsonl') as f:\n    for line in f:\n        line = line.strip()\n        if not line:\n            continue\n        r = json.loads(line)\n        h = r['headers']\n        cc = parse_cc(h)\n\n        if 'no-store' in cc:\n            rows.append((r['id'], 'false', 0, 'no-store'))\n            continue\n\n        has_public = 'public' in cc\n        cacheable = r['status'] in CACHEABLE_STATUSES or has_public\n\n        if not cacheable:\n            rows.append((r['id'], 'false', 0, 'status-not-cacheable'))\n            continue\n\n        # find max-age\n        max_age = None\n        for d in cc:\n            if d.startswith('max-age='):\n                try:\n                    max_age = int(d.split('=', 1)[1])\n                except ValueError:\n                    pass\n\n        if max_age is not None:\n            rows.append((r['id'], 'true', max_age, 'fresh-max-age'))\n            continue\n\n        # try Expires vs Date\n        expires = get_header(h, 'expires')\n        date = get_header(h, 'date')\n        if expires and date:\n            try:\n                ttl = int((parsedate_to_datetime(expires) - parsedate_to_datetime(date)).total_seconds())\n                if ttl > 0:\n                    rows.append((r['id'], 'true', ttl, 'expires'))\n                    continue\n            except Exception:\n                pass\n\n        rows.append((r['id'], 'true', 0, 'cacheable-no-ttl'))\n\nwith open('/app/cache_report.csv', 'w') as f:\n    f.write('id,cacheable,ttl_seconds,reason\\n')\n    for row in rows:\n        f.write(f'{row[0]},{row[1]},{row[2]},{row[3]}\\n')\nEOF\npython3 /app/solve.py && cat /app/cache_report.csv",
+            "description": "Run cache policy script and print output"
+          },
+          "extra": {
+            "raw_arguments": {
+              "command": "cat << 'EOF' > /app/solve.py\nimport json\nfrom email.utils import parsedate_to_datetime\n\nCACHEABLE_STATUSES = {200, 203, 204, 206, 301, 404, 410}\n\ndef parse_cc(headers):\n    for k, v in headers.items():\n        if k.lower() == 'cache-control':\n            return [d.strip().lower() for d in v.split(',')]\n    return []\n\ndef get_header(headers, name):\n    for k, v in headers.items():\n        if k.lower() == name.lower():\n            return v\n    return None\n\nrows = []\nwith open('/app/responses.jsonl') as f:\n    for line in f:\n        line = line.strip()\n        if not line:\n            continue\n        r = json.loads(line)\n        h = r['headers']\n        cc = parse_cc(h)\n\n        if 'no-store' in cc:\n            rows.append((r['id'], 'false', 0, 'no-store'))\n            continue\n\n        has_public = 'public' in cc\n        cacheable = r['status'] in CACHEABLE_STATUSES or has_public\n\n        if not cacheable:\n            rows.append((r['id'], 'false', 0, 'status-not-cacheable'))\n            continue\n\n        # find max-age\n        max_age = None\n        for d in cc:\n            if d.startswith('max-age='):\n                try:\n                    max_age = int(d.split('=', 1)[1])\n                except ValueError:\n                    pass\n\n        if max_age is not None:\n            rows.append((r['id'], 'true', max_age, 'fresh-max-age'))\n            continue\n\n        # try Expires vs Date\n        expires = get_header(h, 'expires')\n        date = get_header(h, 'date')\n        if expires and date:\n            try:\n                ttl = int((parsedate_to_datetime(expires) - parsedate_to_datetime(date)).total_seconds())\n                if ttl > 0:\n                    rows.append((r['id'], 'true', ttl, 'expires'))\n                    continue\n            except Exception:\n                pass\n\n        rows.append((r['id'], 'true', 0, 'cacheable-no-ttl'))\n\nwith open('/app/cache_report.csv', 'w') as f:\n    f.write('id,cacheable,ttl_seconds,reason\\n')\n    for row in rows:\n        f.write(f'{row[0]},{row[1]},{row[2]},{row[3]}\\n')\nEOF\npython3 /app/solve.py && cat /app/cache_report.csv",
+              "description": "Run cache policy script and print output"
+            },
+            "tool_use_name": "Bash"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "tooluse_0jPnkcFwp51hBDepV36kt3",
+            "content": "id,cacheable,ttl_seconds,reason\nr1,true,60,fresh-max-age\nr2,true,30,fresh-max-age\nr3,false,0,status-not-cacheable\nr4,false,0,no-store\nr5,true,86400,expires\nr6,true,0,cacheable-no-ttl\n\n[stdout]\nid,cacheable,ttl_seconds,reason\nr1,true,60,fresh-max-age\nr2,true,30,fresh-max-age\nr3,false,0,status-not-cacheable\nr4,false,0,no-store\nr5,true,86400,expires\nr6,true,0,cacheable-no-ttl\n[metadata] {\"noOutputExpected\": false}",
+            "extra": {
+              "tool_result_metadata": {
+                "tool_use_result": {
+                  "stdout": "id,cacheable,ttl_seconds,reason\nr1,true,60,fresh-max-age\nr2,true,30,fresh-max-age\nr3,false,0,status-not-cacheable\nr4,false,0,no-store\nr5,true,86400,expires\nr6,true,0,cacheable-no-ttl",
+                  "stderr": "",
+                  "interrupted": false,
+                  "isImage": false,
+                  "noOutputExpected": false
+                },
+                "raw_tool_result": {
+                  "tool_use_id": "tooluse_0jPnkcFwp51hBDepV36kt3",
+                  "type": "tool_result",
+                  "content": "id,cacheable,ttl_seconds,reason\nr1,true,60,fresh-max-age\nr2,true,30,fresh-max-age\nr3,false,0,status-not-cacheable\nr4,false,0,no-store\nr5,true,86400,expires\nr6,true,0,cacheable-no-ttl",
+                  "is_error": false
+                }
+              },
+              "tool_result_is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 33260,
+        "completion_tokens": 1135,
+        "cached_tokens": 32656,
+        "extra": {
+          "cache_creation_input_tokens": 583,
+          "cache_read_input_tokens": 32656,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 583
+          },
+          "inference_geo": "not_available",
+          "iterations": [],
+          "speed": "standard"
+        }
+      },
+      "extra": {
+        "stop_reason": "tool_use",
+        "cwd": "/app",
+        "is_sidechain": false
+      }
+    },
+    {
+      "step_id": 4,
+      "timestamp": "2026-06-10T07:01:36.178Z",
+      "source": "agent",
+      "model_name": "claude-opus-4-7",
+      "message": "`/app/cache_report.csv` is written with 6 rows. All edge cases handled: `no-store` overrides everything (r4), `public` promotes non-default status (r6), `Expires` diff used when no `max-age` (r5).",
+      "metrics": {
+        "prompt_tokens": 34301,
+        "completion_tokens": 62,
+        "cached_tokens": 0,
+        "extra": {
+          "cache_creation_input_tokens": 34280,
+          "cache_read_input_tokens": 0,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 34280
+          },
+          "inference_geo": "not_available",
+          "iterations": [],
+          "speed": "standard"
+        }
+      },
+      "extra": {
+        "stop_reason": "end_turn",
+        "cwd": "/app",
+        "is_sidechain": false
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 100238,
+    "total_completion_tokens": 1224,
+    "total_cached_tokens": 32656,
+    "total_cost_usd": 0.46923675,
+    "total_steps": 4,
+    "extra": {
+      "service_tiers": [
+        "standard"
+      ],
+      "total_cache_creation_input_tokens": 67519,
+      "total_cache_read_input_tokens": 32656
+    }
+  }
+}

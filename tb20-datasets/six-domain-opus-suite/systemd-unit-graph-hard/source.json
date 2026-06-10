@@ -1,0 +1,12 @@
+{
+  "domain": "system-administration",
+  "source_channel": "systemd-repo",
+  "acquisition_method": "stable specification review plus synthetic fixture generation",
+  "source_name": "systemd unit dependency semantics",
+  "source_url": "https://github.com/systemd/systemd",
+  "license": "LGPL-2.1-or-later",
+  "license_url": "https://github.com/systemd/systemd/blob/main/LICENSES/LGPL-2.1-or-later.txt",
+  "terms_url": "https://github.com/systemd/systemd/blob/main/LICENSES/LGPL-2.1-or-later.txt",
+  "redistribution_risk": "low",
+  "allowed_for_task_generation": true
+}

@@ -1,0 +1,41 @@
+schema_version = "1.1"
+artifacts = []
+
+[task]
+name = "terminal-bench/sbom-version-audit-medium"
+description = "Match SBOM components against advisory semver ranges and produce a vulnerability report."
+keywords = ["sbom", "cve", "semver", "vulnerability"]
+[[task.authors]]
+name = "Codex"
+email = "codex@example.com"
+
+[metadata]
+author_name = "Codex"
+author_email = "codex@example.com"
+difficulty = "medium"
+category = "security"
+tags = ["sbom", "cve", "semver", "vulnerability"]
+expert_time_estimate_min = 35.0
+junior_time_estimate_min = 120.0
+
+[verifier]
+timeout_sec = 900.0
+
+[agent]
+timeout_sec = 900.0
+
+[environment]
+build_timeout_sec = 600.0
+docker_image = "tb20/sbom-version-audit-medium:local"
+cpus = 1
+memory_mb = 2048
+storage_mb = 4096
+gpus = 0
+allow_internet = true
+mcp_servers = []
+
+[verifier.env]
+
+[environment.env]
+
+[solution.env]

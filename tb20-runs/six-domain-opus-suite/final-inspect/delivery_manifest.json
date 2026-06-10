@@ -1,0 +1,346 @@
+{
+  "schema": "fly-agent.tb20.delivery-manifest.v1",
+  "createdAt": "2026-06-10T07:12:13.503583+00:00",
+  "sourceRoot": "/home/ubuntu/gitee/fly_agent/six-domain-opus-suite-final",
+  "outputRoot": null,
+  "copyTasks": false,
+  "deliveryFormat": "clean",
+  "standard": "Terminal-Bench 2.0",
+  "requiredExternalDependencies": [
+    {
+      "name": "Terminal-Bench 2.0",
+      "role": "task standard and benchmark target"
+    },
+    {
+      "name": "Harbor",
+      "role": "external runner/harness for TB 2.0 tasks"
+    },
+    {
+      "name": "Docker",
+      "role": "isolated task environment"
+    },
+    {
+      "name": "pytest + pytest-json-ctrf",
+      "role": "verifier and CTRF report generation"
+    },
+    {
+      "name": "Claude Code / Codex / task skills",
+      "role": "AI-assisted generation and audit of non-fully-automatable stages"
+    }
+  ],
+  "summary": {
+    "taskCount": 6,
+    "compliantTaskCount": 6,
+    "rewardOneCount": 6,
+    "totalTests": 6,
+    "totalTrajectorySteps": 32,
+    "totalPromptTokens": 0,
+    "totalCompletionTokens": 0,
+    "totalCachedTokens": 0,
+    "difficultyDistribution": {
+      "easy": 2,
+      "hard": 2,
+      "medium": 2
+    },
+    "categoryDistribution": {
+      "web-network-services": 1,
+      "file-operations": 1,
+      "scientific-computing": 1,
+      "system-administration": 1,
+      "data-science": 1,
+      "security": 1
+    }
+  },
+  "tasks": [
+    {
+      "taskName": "http-cache-policy-easy",
+      "relativePath": "easy/http-cache-policy-easy",
+      "absolutePath": "/home/ubuntu/gitee/fly_agent/six-domain-opus-suite-final/easy/http-cache-policy-easy",
+      "standardCompliant": true,
+      "missingRequiredFiles": [],
+      "optionalLogFilesPresent": [
+        "agent-logs/run.json",
+        "agent-logs/trajectory.json",
+        "agent-logs/verifier/ctrf.json",
+        "agent-logs/verifier/reward.txt"
+      ],
+      "optionalLogFilesMissing": [],
+      "difficulty": "easy",
+      "category": "web-network-services",
+      "tags": [
+        "http",
+        "cache-control",
+        "rfc9111",
+        "csv"
+      ],
+      "expertTimeEstimateMin": 20.0,
+      "juniorTimeEstimateMin": 75.0,
+      "dockerImage": "tb20/http-cache-policy-easy:local",
+      "cpu": 1,
+      "memory": null,
+      "storage": null,
+      "lineCounts": {
+        "instruction": 52,
+        "tests": 17,
+        "solution": 59
+      },
+      "environmentFileCount": 1,
+      "testCount": 1,
+      "passedTestCount": 1,
+      "failedTestCount": 0,
+      "reward": "1",
+      "agentName": "claude-code",
+      "modelName": "claude-opus-4-7",
+      "trajectorySchema": "ATIF-v1.2",
+      "trajectorySteps": 4,
+      "agentElapsedSec": null,
+      "promptTokens": null,
+      "completionTokens": null,
+      "cachedTokens": null,
+      "contentChecksum": "af860da1f9fb95a35bd2d985bea3fef3f9d76430e646333cfe69a81207116d32"
+    },
+    {
+      "taskName": "manifest-integrity-audit-easy",
+      "relativePath": "easy/manifest-integrity-audit-easy",
+      "absolutePath": "/home/ubuntu/gitee/fly_agent/six-domain-opus-suite-final/easy/manifest-integrity-audit-easy",
+      "standardCompliant": true,
+      "missingRequiredFiles": [],
+      "optionalLogFilesPresent": [
+        "agent-logs/run.json",
+        "agent-logs/trajectory.json",
+        "agent-logs/verifier/ctrf.json",
+        "agent-logs/verifier/reward.txt"
+      ],
+      "optionalLogFilesMissing": [],
+      "difficulty": "easy",
+      "category": "file-operations",
+      "tags": [
+        "manifest",
+        "sha256",
+        "filesystem",
+        "audit"
+      ],
+      "expertTimeEstimateMin": 15.0,
+      "juniorTimeEstimateMin": 60.0,
+      "dockerImage": "tb20/manifest-integrity-audit-easy:local",
+      "cpu": 1,
+      "memory": null,
+      "storage": null,
+      "lineCounts": {
+        "instruction": 50,
+        "tests": 17,
+        "solution": 39
+      },
+      "environmentFileCount": 1,
+      "testCount": 1,
+      "passedTestCount": 1,
+      "failedTestCount": 0,
+      "reward": "1",
+      "agentName": "claude-code",
+      "modelName": "claude-opus-4-7",
+      "trajectorySchema": "ATIF-v1.2",
+      "trajectorySteps": 5,
+      "agentElapsedSec": null,
+      "promptTokens": null,
+      "completionTokens": null,
+      "cachedTokens": null,
+      "contentChecksum": "b03da947ec213b2731f077d49bc3ba9faf67cac9320a88f3fe0a5539fc5eb131"
+    },
+    {
+      "taskName": "matrix-market-repair-hard",
+      "relativePath": "hard/matrix-market-repair-hard",
+      "absolutePath": "/home/ubuntu/gitee/fly_agent/six-domain-opus-suite-final/hard/matrix-market-repair-hard",
+      "standardCompliant": true,
+      "missingRequiredFiles": [],
+      "optionalLogFilesPresent": [
+        "agent-logs/run.json",
+        "agent-logs/trajectory.json",
+        "agent-logs/verifier/ctrf.json",
+        "agent-logs/verifier/reward.txt"
+      ],
+      "optionalLogFilesMissing": [],
+      "difficulty": "hard",
+      "category": "scientific-computing",
+      "tags": [
+        "matrix-market",
+        "sparse-matrix",
+        "coalesce",
+        "linear-algebra"
+      ],
+      "expertTimeEstimateMin": 60.0,
+      "juniorTimeEstimateMin": 180.0,
+      "dockerImage": "tb20/matrix-market-repair-hard:local",
+      "cpu": 1,
+      "memory": null,
+      "storage": null,
+      "lineCounts": {
+        "instruction": 60,
+        "tests": 17,
+        "solution": 53
+      },
+      "environmentFileCount": 1,
+      "testCount": 1,
+      "passedTestCount": 1,
+      "failedTestCount": 0,
+      "reward": "1",
+      "agentName": "claude-code",
+      "modelName": "claude-opus-4-7",
+      "trajectorySchema": "ATIF-v1.2",
+      "trajectorySteps": 6,
+      "agentElapsedSec": null,
+      "promptTokens": null,
+      "completionTokens": null,
+      "cachedTokens": null,
+      "contentChecksum": "e5c5ecf67a5a1482eff40c3461d1543f21507903adbe26f5913b24a5347e2c4d"
+    },
+    {
+      "taskName": "systemd-unit-graph-hard",
+      "relativePath": "hard/systemd-unit-graph-hard",
+      "absolutePath": "/home/ubuntu/gitee/fly_agent/six-domain-opus-suite-final/hard/systemd-unit-graph-hard",
+      "standardCompliant": true,
+      "missingRequiredFiles": [],
+      "optionalLogFilesPresent": [
+        "agent-logs/run.json",
+        "agent-logs/trajectory.json",
+        "agent-logs/verifier/ctrf.json",
+        "agent-logs/verifier/reward.txt"
+      ],
+      "optionalLogFilesMissing": [],
+      "difficulty": "hard",
+      "category": "system-administration",
+      "tags": [
+        "systemd",
+        "dependency-graph",
+        "topological-sort",
+        "cycle-detection"
+      ],
+      "expertTimeEstimateMin": 55.0,
+      "juniorTimeEstimateMin": 180.0,
+      "dockerImage": "tb20/systemd-unit-graph-hard:local",
+      "cpu": 1,
+      "memory": null,
+      "storage": null,
+      "lineCounts": {
+        "instruction": 59,
+        "tests": 25,
+        "solution": 112
+      },
+      "environmentFileCount": 1,
+      "testCount": 1,
+      "passedTestCount": 1,
+      "failedTestCount": 0,
+      "reward": "1",
+      "agentName": "claude-code",
+      "modelName": "claude-opus-4-7",
+      "trajectorySchema": "ATIF-v1.2",
+      "trajectorySteps": 6,
+      "agentElapsedSec": null,
+      "promptTokens": null,
+      "completionTokens": null,
+      "cachedTokens": null,
+      "contentChecksum": "bf9c8d486e7bf2be9b1955cd6910c08600e03c2660e4296c0809e11d0ff11ca2"
+    },
+    {
+      "taskName": "csv-schema-drift-medium",
+      "relativePath": "medium/csv-schema-drift-medium",
+      "absolutePath": "/home/ubuntu/gitee/fly_agent/six-domain-opus-suite-final/medium/csv-schema-drift-medium",
+      "standardCompliant": true,
+      "missingRequiredFiles": [],
+      "optionalLogFilesPresent": [
+        "agent-logs/run.json",
+        "agent-logs/trajectory.json",
+        "agent-logs/verifier/ctrf.json",
+        "agent-logs/verifier/reward.txt"
+      ],
+      "optionalLogFilesMissing": [],
+      "difficulty": "medium",
+      "category": "data-science",
+      "tags": [
+        "csv",
+        "schema-drift",
+        "normalization",
+        "data-quality"
+      ],
+      "expertTimeEstimateMin": 35.0,
+      "juniorTimeEstimateMin": 120.0,
+      "dockerImage": "tb20/csv-schema-drift-medium:local",
+      "cpu": 1,
+      "memory": null,
+      "storage": null,
+      "lineCounts": {
+        "instruction": 64,
+        "tests": 46,
+        "solution": 75
+      },
+      "environmentFileCount": 1,
+      "testCount": 1,
+      "passedTestCount": 1,
+      "failedTestCount": 0,
+      "reward": "1",
+      "agentName": "claude-code",
+      "modelName": "claude-opus-4-7",
+      "trajectorySchema": "ATIF-v1.2",
+      "trajectorySteps": 6,
+      "agentElapsedSec": null,
+      "promptTokens": null,
+      "completionTokens": null,
+      "cachedTokens": null,
+      "contentChecksum": "1878932e91b60dc26dac4033b262554fb4d42b6bac8588509a74c77c9db6edef"
+    },
+    {
+      "taskName": "sbom-version-audit-medium",
+      "relativePath": "medium/sbom-version-audit-medium",
+      "absolutePath": "/home/ubuntu/gitee/fly_agent/six-domain-opus-suite-final/medium/sbom-version-audit-medium",
+      "standardCompliant": true,
+      "missingRequiredFiles": [],
+      "optionalLogFilesPresent": [
+        "agent-logs/run.json",
+        "agent-logs/trajectory.json",
+        "agent-logs/verifier/ctrf.json",
+        "agent-logs/verifier/reward.txt"
+      ],
+      "optionalLogFilesMissing": [],
+      "difficulty": "medium",
+      "category": "security",
+      "tags": [
+        "sbom",
+        "cve",
+        "semver",
+        "vulnerability"
+      ],
+      "expertTimeEstimateMin": 35.0,
+      "juniorTimeEstimateMin": 120.0,
+      "dockerImage": "tb20/sbom-version-audit-medium:local",
+      "cpu": 1,
+      "memory": null,
+      "storage": null,
+      "lineCounts": {
+        "instruction": 64,
+        "tests": 18,
+        "solution": 61
+      },
+      "environmentFileCount": 1,
+      "testCount": 1,
+      "passedTestCount": 1,
+      "failedTestCount": 0,
+      "reward": "1",
+      "agentName": "claude-code",
+      "modelName": "claude-opus-4-7",
+      "trajectorySchema": "ATIF-v1.2",
+      "trajectorySteps": 5,
+      "agentElapsedSec": null,
+      "promptTokens": null,
+      "completionTokens": null,
+      "cachedTokens": null,
+      "contentChecksum": "b25428ead511bf98deafb77712cd1bcf23f67d5dca6557b3b9d4c8d699451dde"
+    }
+  ],
+  "nonAutomatableStages": [
+    "领域选题价值判断",
+    "hard 任务核心算法/协议/系统正确性审计",
+    "参考解是否体现合理 expert path",
+    "hidden tests 与抗投机测试设计",
+    "多模型难度校准结论解释",
+    "版权、许可证、敏感信息和交付风险复核"
+  ]
+}

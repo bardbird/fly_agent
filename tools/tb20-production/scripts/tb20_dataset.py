@@ -53,7 +53,20 @@ TASK_FILES = [
     "tests/test.sh",
     "tests/test_outputs.py",
 ]
-TASK_ROOT_ALLOWLIST = {"task.toml", "instruction.md", "environment", "solution", "tests"}
+TASK_ROOT_ALLOWLIST = {"task.toml", "instruction.md", "environment", "solution", "tests", "oracle-logs"}
+ORACLE_LOG_FILES = [
+    "oracle-logs/build.log",
+    "oracle-logs/solution.log",
+    "oracle-logs/verifier.log",
+    "oracle-logs/reward.txt",
+    "oracle-logs/test-stdout.txt",
+    "oracle-logs/ctrf.json",
+    "oracle-logs/result.json",
+    "oracle-logs/harness.log",
+    "oracle-logs/harness-job.json",
+    "oracle-logs/harness-run.json",
+    "oracle-logs/harness-oracle.txt",
+]
 REQUIRED_PRODUCTION_EVIDENCE = [
     "01-intent-analysis.md",
     "02-test-design.md",
@@ -307,6 +320,17 @@ environment/Dockerfile
 solution/solve.sh
 tests/test.sh
 tests/test_outputs.py
+oracle-logs/build.log
+oracle-logs/solution.log
+oracle-logs/verifier.log
+oracle-logs/reward.txt
+oracle-logs/test-stdout.txt
+oracle-logs/ctrf.json
+oracle-logs/result.json
+oracle-logs/harness.log
+oracle-logs/harness-job.json
+oracle-logs/harness-run.json
+oracle-logs/harness-oracle.txt
 
 Required evidence files:
 {evidence_files}
@@ -316,7 +340,7 @@ Evidence content requirements:
 - `02-test-design.md`: derive tests from the instruction in natural language: intended behavior, observable outputs, edge cases, ambiguity handling, anti-cheat strategy, and why each test is necessary.
 - `03-test-review.md`: independent reviewer critique of the test design: missing behavior, overfitting, false positives, false negatives, hardcoding risks, and required revisions.
 - `04-implementation-review.md`: explain Docker environment, fixtures/data, solution strategy, verifier strategy, and dependency choices.
-- `05-oracle-positive.md`: include exact commands run for the reference solution/verifier and observed passing output.
+- `05-oracle-positive.md`: include exact commands run for the reference solution/verifier, the standard Harbor oracle harness command if used, observed passing output, and paths to oracle-logs/build.log, oracle-logs/solution.log, oracle-logs/verifier.log, oracle-logs/reward.txt, oracle-logs/ctrf.json, oracle-logs/harness-run.json, and oracle-logs/result.json.
 - `06-negative-controls.md`: include exact wrong-solution/failure-mode commands or edits and observed failing output.
 - `07-final-review.md`: confirm source contract, intent alignment, reviewer concerns resolved, oracle pass, negative control failure, no placeholders, and handoff readiness.
 
@@ -373,6 +397,10 @@ def source_quality_problems(root: Path) -> list[str]:
         solution = task_dir / "solution/solve.sh"
         if solution.is_file() and not file_text(solution).startswith("#!"):
             problems.append(f"{rel}: solution/solve.sh must start with a shebang")
+        for item in ORACLE_LOG_FILES:
+            path = task_dir / item
+            if path.exists() and not file_text(path).strip():
+                problems.append(f"{rel}: {item} is empty")
     return problems
 
 

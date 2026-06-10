@@ -1,0 +1,111 @@
+{
+    "id": "181121c4-4ddf-441f-b029-b8b4959440d9",
+    "task_name": "terminal-bench/matrix-market-repair-hard",
+    "trial_name": "matrix-market-repair-hard__XWY4gey",
+    "trial_uri": "file:///home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/workspace/jobs/hard__matrix-market-repair-hard/matrix-market-repair-hard__XWY4gey",
+    "task_id": {
+        "path": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/matrix-market-repair-hard"
+    },
+    "source": null,
+    "task_checksum": "660d90514185d70708b7335761be4958c292e6f8bcbeda0a73c67aa1282d85ca",
+    "config": {
+        "task": {
+            "path": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/matrix-market-repair-hard",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": null
+        },
+        "trial_name": "matrix-market-repair-hard__XWY4gey",
+        "trials_dir": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/workspace/jobs/hard__matrix-market-repair-hard",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "claude-code",
+            "import_path": null,
+            "model_name": "claude-opus-4-7",
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "env": {},
+            "mcp_servers": []
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": true,
+            "delete": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "env": {},
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "env": {},
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "job_id": "f7c7da6e-ff12-49cd-a63a-eec9b0b55051"
+    },
+    "agent_info": {
+        "name": "claude-code",
+        "version": "2.1.170",
+        "model_info": {
+            "name": "claude-opus-4-7",
+            "provider": null
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 169852,
+        "n_cache_tokens": 99625,
+        "n_output_tokens": 1584,
+        "cost_usd": 0.528095,
+        "rollout_details": null,
+        "metadata": null
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-06-10T07:02:34.061310Z",
+    "finished_at": "2026-06-10T07:03:24.931786Z",
+    "environment_setup": {
+        "started_at": "2026-06-10T07:02:34.068034Z",
+        "finished_at": "2026-06-10T07:02:35.732111Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-06-10T07:02:35.732151Z",
+        "finished_at": "2026-06-10T07:02:46.349037Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-06-10T07:02:46.349114Z",
+        "finished_at": "2026-06-10T07:03:13.697641Z"
+    },
+    "verifier": {
+        "started_at": "2026-06-10T07:03:13.939062Z",
+        "finished_at": "2026-06-10T07:03:14.209118Z"
+    },
+    "step_results": null
+}

@@ -39,6 +39,7 @@ CLEAN_TASK_DIRS = [
     "environment",
     "solution",
     "tests",
+    "oracle-logs",
 ]
 
 CLEAN_AGENT_LOG_FILES = [

@@ -1,0 +1,41 @@
+schema_version = "1.1"
+artifacts = []
+
+[task]
+name = "terminal-bench/http-cache-policy-easy"
+description = "Apply a constrained HTTP caching policy to JSONL response metadata and emit a CSV report."
+keywords = ["http", "cache-control", "rfc9111", "csv"]
+[[task.authors]]
+name = "Codex"
+email = "codex@example.com"
+
+[metadata]
+author_name = "Codex"
+author_email = "codex@example.com"
+difficulty = "easy"
+category = "web-network-services"
+tags = ["http", "cache-control", "rfc9111", "csv"]
+expert_time_estimate_min = 20.0
+junior_time_estimate_min = 75.0
+
+[verifier]
+timeout_sec = 900.0
+
+[agent]
+timeout_sec = 900.0
+
+[environment]
+build_timeout_sec = 600.0
+docker_image = "tb20/http-cache-policy-easy:local"
+cpus = 1
+memory_mb = 2048
+storage_mb = 4096
+gpus = 0
+allow_internet = true
+mcp_servers = []
+
+[verifier.env]
+
+[environment.env]
+
+[solution.env]

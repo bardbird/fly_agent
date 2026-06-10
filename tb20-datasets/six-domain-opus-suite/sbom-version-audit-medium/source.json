@@ -1,0 +1,12 @@
+{
+  "domain": "security",
+  "source_channel": "cve-cvelist",
+  "acquisition_method": "stable specification review plus synthetic fixture generation",
+  "source_name": "CVE List V5 affected product/version concepts",
+  "source_url": "https://github.com/CVEProject/cvelistV5",
+  "license": "CC0",
+  "license_url": "https://github.com/CVEProject/cvelistV5/blob/main/LICENSE",
+  "terms_url": "https://github.com/CVEProject/cvelistV5/blob/main/LICENSE",
+  "redistribution_risk": "low",
+  "allowed_for_task_generation": true
+}

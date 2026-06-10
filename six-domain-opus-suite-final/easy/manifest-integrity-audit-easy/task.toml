@@ -1,0 +1,41 @@
+schema_version = "1.1"
+artifacts = []
+
+[task]
+name = "terminal-bench/manifest-integrity-audit-easy"
+description = "Audit a file tree against a CSV manifest with size, mode, and SHA-256 expectations."
+keywords = ["manifest", "sha256", "filesystem", "audit"]
+[[task.authors]]
+name = "Codex"
+email = "codex@example.com"
+
+[metadata]
+author_name = "Codex"
+author_email = "codex@example.com"
+difficulty = "easy"
+category = "file-operations"
+tags = ["manifest", "sha256", "filesystem", "audit"]
+expert_time_estimate_min = 15.0
+junior_time_estimate_min = 60.0
+
+[verifier]
+timeout_sec = 900.0
+
+[agent]
+timeout_sec = 900.0
+
+[environment]
+build_timeout_sec = 600.0
+docker_image = "tb20/manifest-integrity-audit-easy:local"
+cpus = 1
+memory_mb = 2048
+storage_mb = 4096
+gpus = 0
+allow_internet = true
+mcp_servers = []
+
+[verifier.env]
+
+[environment.env]
+
+[solution.env]

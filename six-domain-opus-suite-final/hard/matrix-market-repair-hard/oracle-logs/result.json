@@ -1,0 +1,50 @@
+{
+  "task": "hard/matrix-market-repair-hard",
+  "startedAt": "2026-06-10T07:13:29.098612+00:00",
+  "finishedAt": "2026-06-10T07:13:29.679575+00:00",
+  "image": "tb20-oracle/hard-matrix-market-repair-hard:local",
+  "buildExitCode": 0,
+  "solutionExitCode": 0,
+  "verifierExitCode": 0,
+  "reward": "1",
+  "ok": true,
+  "logs": {
+    "build": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/matrix-market-repair-hard/oracle-logs/build.log",
+    "solution": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/matrix-market-repair-hard/oracle-logs/solution.log",
+    "verifier": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/matrix-market-repair-hard/oracle-logs/verifier.log",
+    "reward": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/matrix-market-repair-hard/oracle-logs/reward.txt",
+    "result": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/matrix-market-repair-hard/oracle-logs/result.json"
+  },
+  "containerExitCode": 0,
+  "standardHarness": {
+    "command": [
+      "/home/ubuntu/tb20-runtime/.venv/bin/harbor",
+      "run",
+      "-p",
+      "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/matrix-market-repair-hard",
+      "-a",
+      "oracle",
+      "--jobs-dir",
+      "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs",
+      "--job-name",
+      "oracle__hard__matrix-market-repair-hard",
+      "--yes",
+      "--force-build",
+      "--no-delete"
+    ],
+    "jobName": "oracle__hard__matrix-market-repair-hard",
+    "jobsDir": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs",
+    "trialRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs/oracle__hard__matrix-market-repair-hard/matrix-market-repair-hard__VsMAUwr",
+    "startedAt": "2026-06-10T07:20:35.663489+00:00",
+    "finishedAt": "2026-06-10T07:20:51.193664+00:00",
+    "exitCode": 0,
+    "reward": "1",
+    "copied": {
+      "harnessRun": true,
+      "harnessOracle": true,
+      "testStdout": true,
+      "reward": true,
+      "harnessJob": true
+    }
+  }
+}

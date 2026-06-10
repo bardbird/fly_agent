@@ -35,7 +35,7 @@ LOG_FILES = [
     "agent-logs/verifier/ctrf.json",
     "agent-logs/verifier/reward.txt",
 ]
-TASK_ROOT_ALLOWLIST = {"task.toml", "instruction.md", "README.md", ".gitignore", "environment", "solution", "tests", "agent-logs"}
+TASK_ROOT_ALLOWLIST = {"task.toml", "instruction.md", "README.md", ".gitignore", "environment", "solution", "tests", "oracle-logs", "agent-logs"}
 SECRET_ENV_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD")
 
 

@@ -1,0 +1,50 @@
+{
+  "task": "medium/sbom-version-audit-medium",
+  "startedAt": "2026-06-10T07:13:31.171178+00:00",
+  "finishedAt": "2026-06-10T07:13:31.786243+00:00",
+  "image": "tb20-oracle/medium-sbom-version-audit-medium:local",
+  "buildExitCode": 0,
+  "solutionExitCode": 0,
+  "verifierExitCode": 0,
+  "reward": "1",
+  "ok": true,
+  "logs": {
+    "build": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/sbom-version-audit-medium/oracle-logs/build.log",
+    "solution": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/sbom-version-audit-medium/oracle-logs/solution.log",
+    "verifier": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/sbom-version-audit-medium/oracle-logs/verifier.log",
+    "reward": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/sbom-version-audit-medium/oracle-logs/reward.txt",
+    "result": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/sbom-version-audit-medium/oracle-logs/result.json"
+  },
+  "containerExitCode": 0,
+  "standardHarness": {
+    "command": [
+      "/home/ubuntu/tb20-runtime/.venv/bin/harbor",
+      "run",
+      "-p",
+      "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/sbom-version-audit-medium",
+      "-a",
+      "oracle",
+      "--jobs-dir",
+      "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs",
+      "--job-name",
+      "oracle__medium__sbom-version-audit-medium",
+      "--yes",
+      "--force-build",
+      "--no-delete"
+    ],
+    "jobName": "oracle__medium__sbom-version-audit-medium",
+    "jobsDir": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs",
+    "trialRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs/oracle__medium__sbom-version-audit-medium/sbom-version-audit-medium__TNeWyXv",
+    "startedAt": "2026-06-10T07:21:22.049353+00:00",
+    "finishedAt": "2026-06-10T07:21:37.488922+00:00",
+    "exitCode": 0,
+    "reward": "1",
+    "copied": {
+      "harnessRun": true,
+      "harnessOracle": true,
+      "testStdout": true,
+      "reward": true,
+      "harnessJob": true
+    }
+  }
+}

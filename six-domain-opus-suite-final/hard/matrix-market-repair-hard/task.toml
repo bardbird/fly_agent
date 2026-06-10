@@ -1,0 +1,41 @@
+schema_version = "1.1"
+artifacts = []
+
+[task]
+name = "terminal-bench/matrix-market-repair-hard"
+description = "Parse Matrix Market coordinate matrices, coalesce duplicates, expand symmetric entries, and validate vector products."
+keywords = ["matrix-market", "sparse-matrix", "coalesce", "linear-algebra"]
+[[task.authors]]
+name = "Codex"
+email = "codex@example.com"
+
+[metadata]
+author_name = "Codex"
+author_email = "codex@example.com"
+difficulty = "hard"
+category = "scientific-computing"
+tags = ["matrix-market", "sparse-matrix", "coalesce", "linear-algebra"]
+expert_time_estimate_min = 60.0
+junior_time_estimate_min = 180.0
+
+[verifier]
+timeout_sec = 900.0
+
+[agent]
+timeout_sec = 900.0
+
+[environment]
+build_timeout_sec = 600.0
+docker_image = "tb20/matrix-market-repair-hard:local"
+cpus = 1
+memory_mb = 2048
+storage_mb = 4096
+gpus = 0
+allow_internet = true
+mcp_servers = []
+
+[verifier.env]
+
+[environment.env]
+
+[solution.env]

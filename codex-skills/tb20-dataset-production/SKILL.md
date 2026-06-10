@@ -11,7 +11,7 @@ This skill currently owns the core production stage. The controllable workflow m
 brief/spec input -> source-backed material acquisition -> problem-card -> instruction.md -> test-generation-brief.md
 ```
 
-It does not run Harbor, solve tasks, collect `agent-logs/`, or pretend a script can judge semantic task quality.
+It does not run Harbor, collect `agent-logs/`, or pretend a script can judge semantic task quality. It may require and audit oracle-solution verification evidence before a task is handed to Harbor execution.
 
 ## Runtime Control
 
@@ -166,6 +166,36 @@ test-generation-brief.md
 
 If the license or terms cannot be established, stop with `allowed_for_task_generation=false`.
 
+## Oracle Verification Evidence
+
+Every executable TB2.0 task must have durable oracle-solution verification logs before any target-agent evaluation.
+
+Required per-task oracle log files:
+
+```text
+oracle-logs/build.log
+oracle-logs/solution.log
+oracle-logs/verifier.log
+oracle-logs/reward.txt
+oracle-logs/test-stdout.txt
+oracle-logs/ctrf.json
+oracle-logs/result.json
+oracle-logs/harness.log
+oracle-logs/harness-job.json
+oracle-logs/harness-run.json
+oracle-logs/harness-oracle.txt
+```
+
+Rules:
+
+- The logs must be produced by a real execution of the task image, `solution/solve.sh`, and `tests/test.sh`; do not write hand-made success logs.
+- Prefer the standard Harbor oracle harness (`harbor run -a oracle`) for final oracle evidence. If a lightweight local Docker oracle check is also used, keep both records and label them clearly.
+- `reward.txt` must contain `1` or `1.0` before Harbor/agent execution starts.
+- `result.json` must include the exact image tag, build/solution/verifier exit codes, start/finish timestamps, and paths to the log files.
+- `ctrf.json` must preserve the real oracle pass/fail status derived from the real verifier reward and test stdout; it must never turn a failing oracle run into success.
+- `05-oracle-positive.md` must reference these log paths and summarize the observed passing result.
+- If oracle verification fails, fix the instruction, fixture, solution, or verifier before packaging. Do not relax verifier assertions that are already declared in `instruction.md`.
+
 ## Instruction Standard
 
 `instruction.md` must be demo-grade: a test writer should not need to guess the core task semantics.
@@ -225,6 +255,7 @@ The verifier must check externally specified behavior, not an internal reference
 - Accept equivalent units or formats when the instruction permits them; otherwise update the instruction first.
 - Use focused assertions that reveal behavior gaps: corrupt input handling, boundary transitions, duplicate detection, sort order, precision/tolerance, and trailing-newline rules.
 - Run the oracle solution before any agent evaluation and fix verifier/spec mismatches immediately.
+- Preserve oracle verification logs for every task under `oracle-logs/`; agent evaluation logs under `agent-logs/` are not a substitute.
 - Keep task data synthetic or source-grounded; do not copy upstream fixtures unless the license and redistribution risk are intentionally accepted.
 
 For Docker image tags in shell commands, always brace variables in zsh-compatible contexts, for example `"repo/task-${difficulty}:local"`, not `"repo/task-$difficulty:local"`. zsh treats `$name:modifier` specially and can silently create wrong tags.

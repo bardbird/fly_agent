@@ -1,0 +1,7 @@
+Task: systemd-unit-graph-hard
+Domain: system-administration
+Difficulty: hard
+Source: systemd unit dependency semantics (https://github.com/systemd/systemd)
+License basis: LGPL-2.1-or-later (https://github.com/systemd/systemd/blob/main/LICENSES/LGPL-2.1-or-later.txt)
+
+The executable fixtures are synthetic and generated locally. No upstream data files, tests, or implementation code are copied into the task.

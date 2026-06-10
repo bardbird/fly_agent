@@ -1,0 +1,7 @@
+Task: csv-schema-drift-medium
+Domain: data-science
+Difficulty: medium
+Source: CSV on the Web metadata practices and public-data tabular quality checks (https://www.w3.org/TR/tabular-data-primer/)
+License basis: CC-BY-4.0 (https://www.w3.org/copyright/document-license-2023/)
+
+The executable fixtures are synthetic and generated locally. No upstream data files, tests, or implementation code are copied into the task.

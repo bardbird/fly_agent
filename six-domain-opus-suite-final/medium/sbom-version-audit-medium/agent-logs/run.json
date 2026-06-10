@@ -1,0 +1,111 @@
+{
+    "id": "279b8402-ceb3-45ea-bfc1-c6d65818e828",
+    "task_name": "terminal-bench/sbom-version-audit-medium",
+    "trial_name": "sbom-version-audit-medium__d2wJN7b",
+    "trial_uri": "file:///home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/workspace/jobs/medium__sbom-version-audit-medium/sbom-version-audit-medium__d2wJN7b",
+    "task_id": {
+        "path": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/sbom-version-audit-medium"
+    },
+    "source": null,
+    "task_checksum": "643c7eab57782431d41b79c9ad348a0af96a87f545d60a7860fee21ed614ae69",
+    "config": {
+        "task": {
+            "path": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/sbom-version-audit-medium",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": null
+        },
+        "trial_name": "sbom-version-audit-medium__d2wJN7b",
+        "trials_dir": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/workspace/jobs/medium__sbom-version-audit-medium",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "claude-code",
+            "import_path": null,
+            "model_name": "claude-opus-4-7",
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "env": {},
+            "mcp_servers": []
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": true,
+            "delete": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "env": {},
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "env": {},
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "job_id": "1d623361-d733-42af-bb63-35db5741f303"
+    },
+    "agent_info": {
+        "name": "claude-code",
+        "version": "2.1.170",
+        "model_info": {
+            "name": "claude-opus-4-7",
+            "provider": null
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 135938,
+        "n_cache_tokens": 101693,
+        "n_output_tokens": 1225,
+        "cost_usd": 0.29529774999999997,
+        "rollout_details": null,
+        "metadata": null
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-06-10T07:05:32.302254Z",
+    "finished_at": "2026-06-10T07:08:47.043801Z",
+    "environment_setup": {
+        "started_at": "2026-06-10T07:05:32.308934Z",
+        "finished_at": "2026-06-10T07:05:33.796749Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-06-10T07:05:33.796783Z",
+        "finished_at": "2026-06-10T07:05:44.361927Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-06-10T07:05:44.362036Z",
+        "finished_at": "2026-06-10T07:08:35.723101Z"
+    },
+    "verifier": {
+        "started_at": "2026-06-10T07:08:36.010878Z",
+        "finished_at": "2026-06-10T07:08:36.283067Z"
+    },
+    "step_results": null
+}

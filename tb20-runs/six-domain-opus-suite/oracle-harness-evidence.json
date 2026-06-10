@@ -1,0 +1,98 @@
+{
+  "root": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source",
+  "jobsDir": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs",
+  "taskCount": 6,
+  "results": [
+    {
+      "task": "easy/http-cache-policy-easy",
+      "jobName": "oracle__easy__http-cache-policy-easy",
+      "exitCode": 0,
+      "reward": "1",
+      "trialRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs/oracle__easy__http-cache-policy-easy/http-cache-policy-easy__fQQTJFA",
+      "ok": true,
+      "copied": {
+        "harnessRun": true,
+        "harnessOracle": true,
+        "testStdout": true,
+        "reward": true,
+        "harnessJob": true
+      }
+    },
+    {
+      "task": "easy/manifest-integrity-audit-easy",
+      "jobName": "oracle__easy__manifest-integrity-audit-easy",
+      "exitCode": 0,
+      "reward": "1",
+      "trialRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs/oracle__easy__manifest-integrity-audit-easy/manifest-integrity-audit-easy__riDWhVc",
+      "ok": true,
+      "copied": {
+        "harnessRun": true,
+        "harnessOracle": true,
+        "testStdout": true,
+        "reward": true,
+        "harnessJob": true
+      }
+    },
+    {
+      "task": "hard/matrix-market-repair-hard",
+      "jobName": "oracle__hard__matrix-market-repair-hard",
+      "exitCode": 0,
+      "reward": "1",
+      "trialRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs/oracle__hard__matrix-market-repair-hard/matrix-market-repair-hard__VsMAUwr",
+      "ok": true,
+      "copied": {
+        "harnessRun": true,
+        "harnessOracle": true,
+        "testStdout": true,
+        "reward": true,
+        "harnessJob": true
+      }
+    },
+    {
+      "task": "hard/systemd-unit-graph-hard",
+      "jobName": "oracle__hard__systemd-unit-graph-hard",
+      "exitCode": 0,
+      "reward": "1",
+      "trialRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs/oracle__hard__systemd-unit-graph-hard/systemd-unit-graph-hard__s9g6tmA",
+      "ok": true,
+      "copied": {
+        "harnessRun": true,
+        "harnessOracle": true,
+        "testStdout": true,
+        "reward": true,
+        "harnessJob": true
+      }
+    },
+    {
+      "task": "medium/csv-schema-drift-medium",
+      "jobName": "oracle__medium__csv-schema-drift-medium",
+      "exitCode": 0,
+      "reward": "1",
+      "trialRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs/oracle__medium__csv-schema-drift-medium/csv-schema-drift-medium__gsR4Cbh",
+      "ok": true,
+      "copied": {
+        "harnessRun": true,
+        "harnessOracle": true,
+        "testStdout": true,
+        "reward": true,
+        "harnessJob": true
+      }
+    },
+    {
+      "task": "medium/sbom-version-audit-medium",
+      "jobName": "oracle__medium__sbom-version-audit-medium",
+      "exitCode": 0,
+      "reward": "1",
+      "trialRoot": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/oracle-harness-jobs/oracle__medium__sbom-version-audit-medium/sbom-version-audit-medium__TNeWyXv",
+      "ok": true,
+      "copied": {
+        "harnessRun": true,
+        "harnessOracle": true,
+        "testStdout": true,
+        "reward": true,
+        "harnessJob": true
+      }
+    }
+  ],
+  "ok": true
+}

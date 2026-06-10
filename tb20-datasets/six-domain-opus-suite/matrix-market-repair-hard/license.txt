@@ -1,0 +1,7 @@
+Task: matrix-market-repair-hard
+Domain: scientific-computing
+Difficulty: hard
+Source: Matrix Market exchange format (https://math.nist.gov/MatrixMarket/formats.html)
+License basis: public-domain (https://www.nist.gov/open/license)
+
+The executable fixtures are synthetic and generated locally. No upstream data files, tests, or implementation code are copied into the task.

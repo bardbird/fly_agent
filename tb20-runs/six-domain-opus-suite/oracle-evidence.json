@@ -1,0 +1,121 @@
+{
+  "root": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source",
+  "taskCount": 6,
+  "results": [
+    {
+      "task": "easy/http-cache-policy-easy",
+      "startedAt": "2026-06-10T07:13:27.576689+00:00",
+      "finishedAt": "2026-06-10T07:13:28.358088+00:00",
+      "image": "tb20-oracle/easy-http-cache-policy-easy:local",
+      "buildExitCode": 0,
+      "solutionExitCode": 0,
+      "verifierExitCode": 0,
+      "reward": "1",
+      "ok": true,
+      "logs": {
+        "build": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/http-cache-policy-easy/oracle-logs/build.log",
+        "solution": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/http-cache-policy-easy/oracle-logs/solution.log",
+        "verifier": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/http-cache-policy-easy/oracle-logs/verifier.log",
+        "reward": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/http-cache-policy-easy/oracle-logs/reward.txt",
+        "result": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/http-cache-policy-easy/oracle-logs/result.json"
+      },
+      "containerExitCode": 0
+    },
+    {
+      "task": "easy/manifest-integrity-audit-easy",
+      "startedAt": "2026-06-10T07:13:28.427680+00:00",
+      "finishedAt": "2026-06-10T07:13:29.015647+00:00",
+      "image": "tb20-oracle/easy-manifest-integrity-audit-easy:local",
+      "buildExitCode": 0,
+      "solutionExitCode": 0,
+      "verifierExitCode": 0,
+      "reward": "1",
+      "ok": true,
+      "logs": {
+        "build": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/manifest-integrity-audit-easy/oracle-logs/build.log",
+        "solution": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/manifest-integrity-audit-easy/oracle-logs/solution.log",
+        "verifier": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/manifest-integrity-audit-easy/oracle-logs/verifier.log",
+        "reward": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/manifest-integrity-audit-easy/oracle-logs/reward.txt",
+        "result": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/manifest-integrity-audit-easy/oracle-logs/result.json"
+      },
+      "containerExitCode": 0
+    },
+    {
+      "task": "hard/matrix-market-repair-hard",
+      "startedAt": "2026-06-10T07:13:29.098612+00:00",
+      "finishedAt": "2026-06-10T07:13:29.679575+00:00",
+      "image": "tb20-oracle/hard-matrix-market-repair-hard:local",
+      "buildExitCode": 0,
+      "solutionExitCode": 0,
+      "verifierExitCode": 0,
+      "reward": "1",
+      "ok": true,
+      "logs": {
+        "build": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/matrix-market-repair-hard/oracle-logs/build.log",
+        "solution": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/matrix-market-repair-hard/oracle-logs/solution.log",
+        "verifier": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/matrix-market-repair-hard/oracle-logs/verifier.log",
+        "reward": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/matrix-market-repair-hard/oracle-logs/reward.txt",
+        "result": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/matrix-market-repair-hard/oracle-logs/result.json"
+      },
+      "containerExitCode": 0
+    },
+    {
+      "task": "hard/systemd-unit-graph-hard",
+      "startedAt": "2026-06-10T07:13:29.765333+00:00",
+      "finishedAt": "2026-06-10T07:13:30.407300+00:00",
+      "image": "tb20-oracle/hard-systemd-unit-graph-hard:local",
+      "buildExitCode": 0,
+      "solutionExitCode": 0,
+      "verifierExitCode": 0,
+      "reward": "1",
+      "ok": true,
+      "logs": {
+        "build": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/systemd-unit-graph-hard/oracle-logs/build.log",
+        "solution": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/systemd-unit-graph-hard/oracle-logs/solution.log",
+        "verifier": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/systemd-unit-graph-hard/oracle-logs/verifier.log",
+        "reward": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/systemd-unit-graph-hard/oracle-logs/reward.txt",
+        "result": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/hard/systemd-unit-graph-hard/oracle-logs/result.json"
+      },
+      "containerExitCode": 0
+    },
+    {
+      "task": "medium/csv-schema-drift-medium",
+      "startedAt": "2026-06-10T07:13:30.477713+00:00",
+      "finishedAt": "2026-06-10T07:13:31.090221+00:00",
+      "image": "tb20-oracle/medium-csv-schema-drift-medium:local",
+      "buildExitCode": 0,
+      "solutionExitCode": 0,
+      "verifierExitCode": 0,
+      "reward": "1",
+      "ok": true,
+      "logs": {
+        "build": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/csv-schema-drift-medium/oracle-logs/build.log",
+        "solution": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/csv-schema-drift-medium/oracle-logs/solution.log",
+        "verifier": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/csv-schema-drift-medium/oracle-logs/verifier.log",
+        "reward": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/csv-schema-drift-medium/oracle-logs/reward.txt",
+        "result": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/csv-schema-drift-medium/oracle-logs/result.json"
+      },
+      "containerExitCode": 0
+    },
+    {
+      "task": "medium/sbom-version-audit-medium",
+      "startedAt": "2026-06-10T07:13:31.171178+00:00",
+      "finishedAt": "2026-06-10T07:13:31.786243+00:00",
+      "image": "tb20-oracle/medium-sbom-version-audit-medium:local",
+      "buildExitCode": 0,
+      "solutionExitCode": 0,
+      "verifierExitCode": 0,
+      "reward": "1",
+      "ok": true,
+      "logs": {
+        "build": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/sbom-version-audit-medium/oracle-logs/build.log",
+        "solution": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/sbom-version-audit-medium/oracle-logs/solution.log",
+        "verifier": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/sbom-version-audit-medium/oracle-logs/verifier.log",
+        "reward": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/sbom-version-audit-medium/oracle-logs/reward.txt",
+        "result": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/medium/sbom-version-audit-medium/oracle-logs/result.json"
+      },
+      "containerExitCode": 0
+    }
+  ],
+  "ok": true
+}

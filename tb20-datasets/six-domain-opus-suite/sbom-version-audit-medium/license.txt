@@ -1,0 +1,7 @@
+Task: sbom-version-audit-medium
+Domain: security
+Difficulty: medium
+Source: CVE List V5 affected product/version concepts (https://github.com/CVEProject/cvelistV5)
+License basis: CC0 (https://github.com/CVEProject/cvelistV5/blob/main/LICENSE)
+
+The executable fixtures are synthetic and generated locally. No upstream data files, tests, or implementation code are copied into the task.

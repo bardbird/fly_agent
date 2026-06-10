@@ -1,0 +1,111 @@
+{
+    "id": "c610c14a-ca48-455c-8dd1-c3fcf6617d53",
+    "task_name": "terminal-bench/http-cache-policy-easy",
+    "trial_name": "http-cache-policy-easy__ACtmRTK",
+    "trial_uri": "file:///home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/workspace/jobs/easy__http-cache-policy-easy/http-cache-policy-easy__ACtmRTK",
+    "task_id": {
+        "path": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/http-cache-policy-easy"
+    },
+    "source": null,
+    "task_checksum": "0f13e934c0526ba8c0537f8c7b02a5667dfe0843770b7111e38435c76ec9d7c1",
+    "config": {
+        "task": {
+            "path": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/source/easy/http-cache-policy-easy",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": null
+        },
+        "trial_name": "http-cache-policy-easy__ACtmRTK",
+        "trials_dir": "/home/ubuntu/gitee/fly_agent/tb20-runs/six-domain-opus-suite/workspace/jobs/easy__http-cache-policy-easy",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "claude-code",
+            "import_path": null,
+            "model_name": "claude-opus-4-7",
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "env": {},
+            "mcp_servers": []
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": true,
+            "delete": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "env": {},
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "env": {},
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "job_id": "38b1397b-4fb4-446c-bdb3-697414d5b824"
+    },
+    "agent_info": {
+        "name": "claude-code",
+        "version": "2.1.170",
+        "model_info": {
+            "name": "claude-opus-4-7",
+            "provider": null
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 100238,
+        "n_cache_tokens": 32656,
+        "n_output_tokens": 1224,
+        "cost_usd": 0.46923675,
+        "rollout_details": null,
+        "metadata": null
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-06-10T07:01:07.810093Z",
+    "finished_at": "2026-06-10T07:01:47.857926Z",
+    "environment_setup": {
+        "started_at": "2026-06-10T07:01:07.816776Z",
+        "finished_at": "2026-06-10T07:01:09.363423Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-06-10T07:01:09.363471Z",
+        "finished_at": "2026-06-10T07:01:20.135697Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-06-10T07:01:20.135775Z",
+        "finished_at": "2026-06-10T07:01:36.465887Z"
+    },
+    "verifier": {
+        "started_at": "2026-06-10T07:01:36.788081Z",
+        "finished_at": "2026-06-10T07:01:37.058627Z"
+    },
+    "step_results": null
+}

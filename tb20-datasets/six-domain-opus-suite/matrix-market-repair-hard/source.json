@@ -1,0 +1,12 @@
+{
+  "domain": "scientific-computing",
+  "source_channel": "netlib",
+  "acquisition_method": "stable specification review plus synthetic fixture generation",
+  "source_name": "Matrix Market exchange format",
+  "source_url": "https://math.nist.gov/MatrixMarket/formats.html",
+  "license": "public-domain",
+  "license_url": "https://www.nist.gov/open/license",
+  "terms_url": "https://www.nist.gov/open/license",
+  "redistribution_risk": "low",
+  "allowed_for_task_generation": true
+}

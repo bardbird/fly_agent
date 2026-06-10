@@ -1,0 +1,41 @@
+schema_version = "1.1"
+artifacts = []
+
+[task]
+name = "terminal-bench/systemd-unit-graph-hard"
+description = "Analyze systemd-style unit dependencies, missing required units, ordering cycles, and startup waves."
+keywords = ["systemd", "dependency-graph", "topological-sort", "cycle-detection"]
+[[task.authors]]
+name = "Codex"
+email = "codex@example.com"
+
+[metadata]
+author_name = "Codex"
+author_email = "codex@example.com"
+difficulty = "hard"
+category = "system-administration"
+tags = ["systemd", "dependency-graph", "topological-sort", "cycle-detection"]
+expert_time_estimate_min = 55.0
+junior_time_estimate_min = 180.0
+
+[verifier]
+timeout_sec = 900.0
+
+[agent]
+timeout_sec = 900.0
+
+[environment]
+build_timeout_sec = 600.0
+docker_image = "tb20/systemd-unit-graph-hard:local"
+cpus = 1
+memory_mb = 2048
+storage_mb = 4096
+gpus = 0
+allow_internet = true
+mcp_servers = []
+
+[verifier.env]
+
+[environment.env]
+
+[solution.env]

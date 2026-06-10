@@ -1,0 +1,7 @@
+Task: manifest-integrity-audit-easy
+Domain: file-operations
+Difficulty: easy
+Source: POSIX file utilities and GNU coreutils checksum behavior (https://pubs.opengroup.org/onlinepubs/9699919799/utilities/contents.html)
+License basis: public-domain (https://www.opengroup.org/legal/licensing)
+
+The executable fixtures are synthetic and generated locally. No upstream data files, tests, or implementation code are copied into the task.

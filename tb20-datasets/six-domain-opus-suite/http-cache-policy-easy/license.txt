@@ -1,0 +1,7 @@
+Task: http-cache-policy-easy
+Domain: web-network-services
+Difficulty: easy
+Source: RFC 9111 HTTP Caching (https://www.rfc-editor.org/rfc/rfc9111.html)
+License basis: IETF-Trust (https://trustee.ietf.org/license-info/)
+
+The executable fixtures are synthetic and generated locally. No upstream data files, tests, or implementation code are copied into the task.
