@@ -216,6 +216,7 @@ public class AleStage1Service {
             }
         } catch (Exception e) {
             log.error("ALE stage1 run failed", e);
+            markTasksFinished(runId, "FAILED", e.getMessage());
             try {
                 writeSummaryIfMissing(runDir, runId, request, List.of(), "FAILED", e.getMessage());
             } catch (IOException ioException) {
@@ -336,7 +337,6 @@ public class AleStage1Service {
                 java.nio.file.StandardOpenOption.APPEND);
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.directory(cwd.toFile());
-        builder.redirectInput(ProcessBuilder.Redirect.DISCARD);
         builder.redirectErrorStream(true);
         builder.redirectOutput(ProcessBuilder.Redirect.appendTo(logPath.toFile()));
         Map<String, String> env = builder.environment();
@@ -344,6 +344,7 @@ public class AleStage1Service {
         env.put("ALE_FRAMEWORK_ROOT", frameworkRoot().toAbsolutePath().toString());
         env.put("ALE_STAGE1", "true");
         Process process = builder.start();
+        process.getOutputStream().close();
         int lastProgress = 25;
         updateProgress(runId, lastProgress);
         while (process.isAlive()) {
@@ -361,20 +362,27 @@ public class AleStage1Service {
 
     private int estimateProgress(Path runDir, Path logPath) {
         int progress = 25;
-        if (hasLogContent(logPath)) {
+        long logSize = logSize(logPath);
+        if (logSize > 0) {
             progress = 35;
         }
-        if (Files.exists(runDir.resolve("generated/stages/brief.md"))) {
+        if (logSize > 4_000) {
             progress = 45;
         }
+        if (logSize > 16_000) {
+            progress = 55;
+        }
+        if (Files.exists(runDir.resolve("generated/stages/brief.md"))) {
+            progress = Math.max(progress, 60);
+        }
         if (Files.exists(runDir.resolve("generated/stages/draft.md"))) {
-            progress = 60;
+            progress = Math.max(progress, 70);
         }
         if (Files.exists(runDir.resolve("generated/stages/scaffold.md"))) {
-            progress = 75;
+            progress = Math.max(progress, 80);
         }
         if (hasGeneratedTasks(runDir)) {
-            progress = 85;
+            progress = Math.max(progress, 88);
         }
         if (Files.exists(runDir.resolve("summary.json"))) {
             progress = 95;
@@ -382,11 +390,11 @@ public class AleStage1Service {
         return progress;
     }
 
-    private boolean hasLogContent(Path logPath) {
+    private long logSize(Path logPath) {
         try {
-            return Files.exists(logPath) && Files.size(logPath) > 0;
+            return Files.exists(logPath) ? Files.size(logPath) : 0;
         } catch (IOException e) {
-            return false;
+            return 0;
         }
     }
 

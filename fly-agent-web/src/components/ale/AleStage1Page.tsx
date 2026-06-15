@@ -204,15 +204,15 @@ export function AleStage1Page() {
       </div>
 
       <div className="mx-auto grid max-w-[1600px] gap-4 px-4 py-3 xl:grid-cols-[1.2fr_1fr]">
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatButton active={statusFilter === 'ALL'} label="总 run" value={runs.length} onClick={() => setStatusFilter('ALL')} />
-            <StatButton active={statusFilter === 'RUNNING'} label="进行中" value={runs.filter((run) => run.status === 'RUNNING').length} onClick={() => setStatusFilter('RUNNING')} />
-            <StatButton active={statusFilter === 'COMPLETED'} label="完成" value={runs.filter((run) => run.status === 'COMPLETED').length} onClick={() => setStatusFilter('COMPLETED')} />
-            <StatButton active={statusFilter === 'FAILED'} label="失败" value={runs.filter((run) => run.status === 'FAILED').length} onClick={() => setStatusFilter('FAILED')} />
-          </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatButton active={statusFilter === 'ALL'} label="总 run" value={runs.length} onClick={() => setStatusFilter('ALL')} />
+          <StatButton active={statusFilter === 'RUNNING'} label="进行中" value={runs.filter((run) => run.status === 'RUNNING').length} onClick={() => setStatusFilter('RUNNING')} />
+          <StatButton active={statusFilter === 'COMPLETED'} label="完成" value={runs.filter((run) => run.status === 'COMPLETED').length} onClick={() => setStatusFilter('COMPLETED')} />
+          <StatButton active={statusFilter === 'FAILED'} label="失败" value={runs.filter((run) => run.status === 'FAILED').length} onClick={() => setStatusFilter('FAILED')} />
+        </div>
+        <div className="hidden xl:block" />
 
-          <div className="terminal">
+          <div className="terminal flex h-[clamp(500px,calc(100vh-260px),760px)] flex-col overflow-hidden">
             <div className="flex flex-col gap-3 border-b border-terminal px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <h2 className="text-sm font-bold">运行概览</h2>
@@ -246,24 +246,24 @@ export function AleStage1Page() {
               ))}
               {Object.keys(runDomainStats).length === 0 ? <span className="text-xs text-text-secondary">暂无领域数据</span> : null}
             </div>
-            <div className="divide-y divide-terminal">
+            <div className="min-h-0 flex-1 divide-y divide-terminal overflow-y-auto custom-scrollbar">
               {filteredRuns.map((run) => (
                 <button
                   key={run.runId}
                   onClick={() => setSelectedRunId(run.runId)}
                   className={cn(
-                    'w-full px-4 py-3 text-left transition-colors hover:bg-primary-50',
+                    'w-full px-3 py-2 text-left transition-colors hover:bg-primary-50',
                     selectedRunId === run.runId ? 'bg-primary-50' : ''
                   )}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="truncate font-medium">{run.runKey}</div>
-                      <div className="text-xs text-text-secondary">
+                      <div className="truncate text-xs font-medium leading-5">{run.runKey}</div>
+                      <div className="truncate text-[11px] leading-4 text-text-secondary">
                         {run.domain} · {run.scenario} · {run.difficulty}
                       </div>
                     </div>
-                    <div className="text-right text-xs text-text-secondary">
+                    <div className="shrink-0 text-right text-[11px] leading-4 text-text-secondary">
                       <div>{run.status}</div>
                       <div>{run.progressPercent}%</div>
                     </div>
@@ -274,10 +274,8 @@ export function AleStage1Page() {
               {runs.length > 0 && filteredRuns.length === 0 ? <div className="px-4 py-6 text-sm text-text-secondary">当前筛选无结果</div> : null}
             </div>
           </div>
-        </div>
 
-        <div className="space-y-4">
-          <div className="terminal">
+          <div className="terminal flex h-[clamp(500px,calc(100vh-260px),760px)] flex-col overflow-hidden">
             <div className="flex flex-col gap-3 border-b border-terminal px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="min-w-0 truncate text-sm font-bold">{activeRun ? activeRun.runKey : '运行工作台'}</h2>
               <div className="flex w-full shrink-0 rounded-lg border border-terminal bg-white p-1 sm:w-auto">
@@ -286,24 +284,25 @@ export function AleStage1Page() {
                 <PanelTab active={activePanel === 'logs'} icon="mdi:console-line" label="日志" onClick={() => setActivePanel('logs')} />
               </div>
             </div>
-            {activePanel === 'progress' ? (
-              <RunProgress run={activeRun} selectedTask={selectedTask} />
-            ) : null}
-            {activePanel === 'tasks' ? (
-              <TaskExplorer
-                tasksByDomain={tasksByDomain}
-                selectedTask={selectedTask}
-                onSelect={(taskId) => setSelectedTaskId(taskId)}
-              />
-            ) : null}
-            {activePanel === 'logs' ? (
-              <RunLogs
-                lines={logLines}
-                onRefresh={() => selectedRunId && refreshRunLog(selectedRunId)}
-              />
-            ) : null}
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {activePanel === 'progress' ? (
+                <RunProgress run={activeRun} selectedTask={selectedTask} />
+              ) : null}
+              {activePanel === 'tasks' ? (
+                <TaskExplorer
+                  tasksByDomain={tasksByDomain}
+                  selectedTask={selectedTask}
+                  onSelect={(taskId) => setSelectedTaskId(taskId)}
+                />
+              ) : null}
+              {activePanel === 'logs' ? (
+                <RunLogs
+                  lines={logLines}
+                  onRefresh={() => selectedRunId && refreshRunLog(selectedRunId)}
+                />
+              ) : null}
+            </div>
           </div>
-        </div>
       </div>
     </div>
   )
@@ -336,10 +335,10 @@ function PanelTab({
 
 function RunProgress({ run, selectedTask }: { run: AleRun | AleRunSummary | null; selectedTask: AleRun['tasks'][number] | null }) {
   if (!run) {
-    return <div className="px-4 py-6 text-sm text-text-secondary">选择一个 run 查看进度</div>
+    return <div className="h-full overflow-y-auto px-4 py-6 text-sm text-text-secondary custom-scrollbar">选择一个 run 查看进度</div>
   }
   return (
-    <div className="space-y-4 p-4">
+    <div className="h-full space-y-4 overflow-y-auto p-4 custom-scrollbar">
       <div className="flex items-center justify-between text-xs">
         <span>整体进度</span>
         <StatusPill status={run.status} />
@@ -388,11 +387,11 @@ function TaskExplorer({
 }) {
   const domains = Object.keys(tasksByDomain)
   if (domains.length === 0) {
-    return <div className="px-4 py-6 text-sm text-text-secondary">暂无 task 详情</div>
+    return <div className="h-full overflow-y-auto px-4 py-6 text-sm text-text-secondary custom-scrollbar">暂无 task 详情</div>
   }
   return (
-    <div className="grid min-h-[420px] md:grid-cols-[0.9fr_1.1fr]">
-      <div className="max-h-[520px] overflow-y-auto border-b border-terminal md:border-b-0 md:border-r custom-scrollbar">
+    <div className="grid h-full min-h-0 md:grid-cols-[0.9fr_1.1fr]">
+      <div className="min-h-0 overflow-y-auto border-b border-terminal md:border-b-0 md:border-r custom-scrollbar">
         {domains.map((domain) => (
           <div key={domain} className="border-b border-terminal">
             <div className="bg-primary-50 px-4 py-2 text-xs font-medium text-text-secondary">{domain}</div>
@@ -417,7 +416,7 @@ function TaskExplorer({
           </div>
         ))}
       </div>
-      <div className="p-4">
+      <div className="min-h-0 overflow-y-auto p-4 custom-scrollbar">
         {selectedTask ? (
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
@@ -452,19 +451,24 @@ function RunLogs({ lines, onRefresh }: { lines: string[]; onRefresh: () => void 
   useEffect(() => {
     const node = logRef.current
     if (node) {
-      node.scrollTop = node.scrollHeight
+      window.requestAnimationFrame(() => {
+        node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
+      })
     }
   }, [lines])
 
   return (
-    <div>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex justify-end border-b border-terminal px-4 py-2">
         <button onClick={onRefresh} className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-cyan">
           <Icon icon="mdi:refresh" className="h-4 w-4" />
           刷新
         </button>
       </div>
-      <pre ref={logRef} className="max-h-[560px] min-h-[360px] overflow-y-auto whitespace-pre-wrap px-4 py-3 text-xs leading-6 text-text-primary custom-scrollbar">
+      <pre
+        ref={logRef}
+        className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words px-4 py-3 font-mono text-[11px] leading-5 text-text-primary custom-scrollbar"
+      >
         {lines.length > 0 ? lines.join('\n') : '暂无日志'}
       </pre>
     </div>
