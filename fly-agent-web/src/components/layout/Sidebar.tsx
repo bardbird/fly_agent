@@ -68,6 +68,11 @@ export function Sidebar() {
                   label="SWE-Pro 流水线"
                   to="/swe"
                 />
+                <WorkspaceLink
+                  icon="mdi:factory"
+                  label="ALE Stage 1"
+                  to="/ale"
+                />
               </div>
             </div>
 

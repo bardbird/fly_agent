@@ -19,6 +19,7 @@ import type {
   SweTaskCreateRequest,
   SweTaskFromCandidateRequest,
 } from '@/types/swe'
+import type { AleOptionsResponse, AleRun, AleRunRequest, AleRunSummary } from '@/types/ale'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -197,6 +198,30 @@ export async function createConversation(): Promise<{ sessionId: string }> {
 export async function deleteConversation(id: string) {
   const response = await api.delete('/conversations', { data: { id } })
   return response.data
+}
+
+export async function getAleOptions(): Promise<AleOptionsResponse> {
+  return unwrapResult(await api.get<ApiResult<AleOptionsResponse>>('/ale/stage1/options'))
+}
+
+export async function startAleRun(data: AleRunRequest): Promise<AleRun> {
+  return unwrapResult(await api.post<ApiResult<AleRun>>('/ale/stage1/runs', data))
+}
+
+export async function listAleRuns(): Promise<AleRunSummary[]> {
+  const runs = unwrapResult(await api.get<ApiResult<AleRunSummary[]>>('/ale/stage1/runs'))
+  return Array.isArray(runs) ? runs : []
+}
+
+export async function getAleRun(id: number): Promise<AleRun> {
+  return unwrapResult(await api.get<ApiResult<AleRun>>('/ale/stage1/runs/detail', { params: { id } }))
+}
+
+export async function getAleRunLog(id: number, lines = 400): Promise<string[]> {
+  const linesData = unwrapResult(
+    await api.get<ApiResult<string[]>>('/ale/stage1/runs/log', { params: { id, lines } })
+  )
+  return Array.isArray(linesData) ? linesData : []
 }
 
 export async function listSweTasks(): Promise<SweTask[]> {
