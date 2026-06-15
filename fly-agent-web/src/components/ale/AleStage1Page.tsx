@@ -10,20 +10,42 @@ import {
   listAleRuns,
   startAleRun,
 } from '@/lib/api'
-import type { AleOptionsResponse, AleRun, AleRunRequest, AleRunSummary } from '@/types/ale'
+import type { AleOptionsResponse, AleRun, AleRunRequest, AleRunStatus, AleRunSummary } from '@/types/ale'
 
 const emptyRequest: AleRunRequest = {
-  domain: '',
-  discipline: '',
-  scenario: '',
-  difficulty: '',
-  inputMode: '',
-  outputMode: '',
-  verificationMode: '',
-  referenceStrategy: '',
+  domain: 'computing_math',
+  discipline: 'software-engineering',
+  scenario: 'task-authoring',
+  difficulty: 'medium',
+  inputMode: 'brief',
+  outputMode: 'task-package',
+  verificationMode: 'oracle',
+  referenceStrategy: 'hidden-reference',
   targetCount: 1,
   codexModel: 'gpt-5',
 }
+
+const FALLBACK_DOMAINS = [
+  { value: 'computing_math', label: 'Computing Math' },
+  { value: 'business_finance', label: 'Business Finance' },
+  { value: 'engineering', label: 'Engineering' },
+  { value: 'health_medicine', label: 'Health Medicine' },
+  { value: 'life_sciences', label: 'Life Sciences' },
+  { value: 'physical_sciences', label: 'Physical Sciences' },
+  { value: 'visual_media', label: 'Visual Media' },
+]
+
+const FALLBACK_DIFFICULTIES = [
+  { value: 'easy', label: 'Easy' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'hard', label: 'Hard' },
+]
+
+const FALLBACK_MODELS = [
+  { value: 'gpt-5', label: 'gpt-5' },
+  { value: 'gpt-5-mini', label: 'gpt-5-mini' },
+  { value: 'gpt-5-codex', label: 'gpt-5-codex' },
+]
 
 const TARGET_COUNT_OPTIONS = [
   { value: 1, label: '1' },
@@ -38,6 +60,10 @@ export function AleStage1Page() {
   const [runs, setRuns] = useState<AleRunSummary[]>([])
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null)
   const [selectedRun, setSelectedRun] = useState<AleRun | null>(null)
+  const [activePanel, setActivePanel] = useState<'progress' | 'tasks' | 'logs'>('progress')
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null)
+  const [statusFilter, setStatusFilter] = useState<AleRunStatus | 'ALL'>('ALL')
+  const [domainFilter, setDomainFilter] = useState<string | null>(null)
   const [logLines, setLogLines] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -54,6 +80,8 @@ export function AleStage1Page() {
 
   useEffect(() => {
     if (!selectedRunId) return
+    setActivePanel('progress')
+    setSelectedTaskId(null)
     void refreshSelectedRun(selectedRunId)
     void refreshRunLog(selectedRunId)
     const timer = window.setInterval(() => {
@@ -65,20 +93,24 @@ export function AleStage1Page() {
   }, [selectedRunId])
 
   async function loadOptions() {
-    const next = await getAleOptions()
-    setOptions(next)
-    setRequest((prev) => ({
-      ...prev,
-      domain: next.domains[0]?.value ?? prev.domain,
-      discipline: next.disciplines[0]?.value ?? prev.discipline,
-      scenario: next.scenarios[0]?.value ?? prev.scenario,
-      difficulty: next.difficulties[1]?.value ?? next.difficulties[0]?.value ?? prev.difficulty,
-      inputMode: next.inputModes[0]?.value ?? prev.inputMode,
-      outputMode: next.outputModes[0]?.value ?? prev.outputMode,
-      verificationMode: next.verificationModes[0]?.value ?? prev.verificationMode,
-      referenceStrategy: next.referenceStrategies[0]?.value ?? prev.referenceStrategy,
-      codexModel: next.codexModels[0]?.value ?? prev.codexModel,
-    }))
+    try {
+      const next = await getAleOptions()
+      setOptions(next)
+      setRequest((prev) => ({
+        ...prev,
+        domain: next.domains.some((option) => option.value === prev.domain)
+          ? prev.domain
+          : next.domains[0]?.value ?? prev.domain,
+        difficulty: next.difficulties.some((option) => option.value === prev.difficulty)
+          ? prev.difficulty
+          : next.difficulties[1]?.value ?? next.difficulties[0]?.value ?? prev.difficulty,
+        codexModel: next.codexModels.some((option) => option.value === prev.codexModel)
+          ? prev.codexModel
+          : next.codexModels[0]?.value ?? prev.codexModel,
+      }))
+    } catch (err) {
+      setError(err instanceof Error ? `后端未连接：${err.message}` : '后端未连接')
+    }
   }
 
   async function refreshRuns(selectLatest = true) {
@@ -93,6 +125,7 @@ export function AleStage1Page() {
   async function refreshSelectedRun(id: number) {
     const next = await getAleRun(id)
     setSelectedRun(next)
+    setSelectedTaskId((current) => current ?? next.tasks[0]?.id ?? null)
   }
 
   async function refreshRunLog(id: number) {
@@ -117,7 +150,25 @@ export function AleStage1Page() {
   }
 
   const activeRun = selectedRun ?? (selectedRunId ? runs.find((run) => run.runId === selectedRunId) ?? null : null)
-  const domainStats = activeRun?.domainStats ?? {}
+  const tasks = selectedRun?.tasks ?? []
+  const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? tasks[0] ?? null
+  const tasksByDomain = tasks.reduce<Record<string, typeof tasks>>((acc, task) => {
+    const key = task.domain || 'unknown'
+    acc[key] = [...(acc[key] ?? []), task]
+    return acc
+  }, {})
+  const domainOptions = options?.domains.length ? options.domains : FALLBACK_DOMAINS
+  const difficultyOptions = options?.difficulties.length ? options.difficulties : FALLBACK_DIFFICULTIES
+  const modelOptions = options?.codexModels.length ? options.codexModels : FALLBACK_MODELS
+  const runDomainStats = runs.reduce<Record<string, number>>((acc, run) => {
+    acc[run.domain] = (acc[run.domain] ?? 0) + 1
+    return acc
+  }, {})
+  const filteredRuns = runs.filter((run) => {
+    if (statusFilter !== 'ALL' && run.status !== statusFilter) return false
+    if (domainFilter && run.domain !== domainFilter) return false
+    return true
+  })
 
   return (
     <div className="min-h-screen bg-primary text-text-primary">
@@ -134,22 +185,16 @@ export function AleStage1Page() {
             </Button>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
-            <SelectField label="领域" value={request.domain} onChange={(value) => setRequest({ ...request, domain: value })} options={options?.domains ?? []} />
-            <SelectField label="学科" value={request.discipline} onChange={(value) => setRequest({ ...request, discipline: value })} options={options?.disciplines ?? []} />
-            <SelectField label="场景" value={request.scenario} onChange={(value) => setRequest({ ...request, scenario: value })} options={options?.scenarios ?? []} />
-            <SelectField label="难度" value={request.difficulty} onChange={(value) => setRequest({ ...request, difficulty: value })} options={options?.difficulties ?? []} />
-            <SelectField label="Codex 模型" value={request.codexModel} onChange={(value) => setRequest({ ...request, codexModel: value })} options={options?.codexModels ?? []} />
-            <SelectField label="输入形态" value={request.inputMode} onChange={(value) => setRequest({ ...request, inputMode: value })} options={options?.inputModes ?? []} />
-            <SelectField label="输出形态" value={request.outputMode} onChange={(value) => setRequest({ ...request, outputMode: value })} options={options?.outputModes ?? []} />
-            <SelectField label="验证方式" value={request.verificationMode} onChange={(value) => setRequest({ ...request, verificationMode: value })} options={options?.verificationModes ?? []} />
-            <SelectField label="reference 策略" value={request.referenceStrategy} onChange={(value) => setRequest({ ...request, referenceStrategy: value })} options={options?.referenceStrategies ?? []} />
+          <div className="grid gap-3 md:grid-cols-4">
+            <SelectField label="领域" value={request.domain} onChange={(value) => setRequest({ ...request, domain: value })} options={domainOptions} />
+            <SelectField label="难度" value={request.difficulty} onChange={(value) => setRequest({ ...request, difficulty: value })} options={difficultyOptions} />
             <SelectNumberField
-              label="目标 task 数"
+              label="Task 数"
               value={request.targetCount}
               onChange={(value) => setRequest({ ...request, targetCount: value })}
               options={TARGET_COUNT_OPTIONS}
             />
+            <SelectField label="Codex 模型" value={request.codexModel} onChange={(value) => setRequest({ ...request, codexModel: value })} options={modelOptions} />
           </div>
 
           {error ? <div className="text-sm text-error">{error}</div> : null}
@@ -159,21 +204,48 @@ export function AleStage1Page() {
       <div className="mx-auto grid max-w-[1600px] gap-4 px-4 py-4 xl:grid-cols-[1.2fr_1fr]">
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <Stat label="总 run" value={runs.length} />
-            <Stat label="进行中" value={runs.filter((run) => run.status === 'RUNNING').length} />
-            <Stat label="完成" value={runs.filter((run) => run.status === 'COMPLETED').length} />
-            <Stat label="失败" value={runs.filter((run) => run.status === 'FAILED').length} />
+            <StatButton active={statusFilter === 'ALL'} label="总 run" value={runs.length} onClick={() => setStatusFilter('ALL')} />
+            <StatButton active={statusFilter === 'RUNNING'} label="进行中" value={runs.filter((run) => run.status === 'RUNNING').length} onClick={() => setStatusFilter('RUNNING')} />
+            <StatButton active={statusFilter === 'COMPLETED'} label="完成" value={runs.filter((run) => run.status === 'COMPLETED').length} onClick={() => setStatusFilter('COMPLETED')} />
+            <StatButton active={statusFilter === 'FAILED'} label="失败" value={runs.filter((run) => run.status === 'FAILED').length} onClick={() => setStatusFilter('FAILED')} />
           </div>
 
           <div className="terminal">
             <div className="flex items-center justify-between border-b border-terminal px-4 py-3">
-              <h2 className="font-bold">运行概览</h2>
-              <div className="text-xs text-text-secondary">
-                {selectedRunSummary ? `${selectedRunSummary.runKey} · ${selectedRunSummary.status}` : '未选择 run'}
+              <div>
+                <h2 className="font-bold">运行概览</h2>
+                <div className="text-xs text-text-secondary">
+                  {selectedRunSummary ? `${selectedRunSummary.runKey} · ${selectedRunSummary.status}` : '未选择 run'}
+                </div>
               </div>
+              <button
+                onClick={() => {
+                  setStatusFilter('ALL')
+                  setDomainFilter(null)
+                }}
+                className="flex items-center gap-1 text-xs text-cyan"
+              >
+                <Icon icon="mdi:filter-off-outline" className="h-4 w-4" />
+                清除筛选
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2 border-b border-terminal px-4 py-3">
+              {Object.entries(runDomainStats).map(([domain, count]) => (
+                <button
+                  key={domain}
+                  onClick={() => setDomainFilter(domainFilter === domain ? null : domain)}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs transition-colors',
+                    domainFilter === domain ? 'border-cyan bg-cyan text-white' : 'border-terminal bg-white text-text-secondary hover:bg-primary-50'
+                  )}
+                >
+                  {domain} · {count}
+                </button>
+              ))}
+              {Object.keys(runDomainStats).length === 0 ? <span className="text-xs text-text-secondary">暂无领域数据</span> : null}
             </div>
             <div className="divide-y divide-terminal">
-              {runs.map((run) => (
+              {filteredRuns.map((run) => (
                 <button
                   key={run.runId}
                   onClick={() => setSelectedRunId(run.runId)}
@@ -197,108 +269,207 @@ export function AleStage1Page() {
                 </button>
               ))}
               {runs.length === 0 ? <div className="px-4 py-6 text-sm text-text-secondary">暂无运行记录</div> : null}
-            </div>
-          </div>
-
-          <div className="terminal">
-            <div className="border-b border-terminal px-4 py-3">
-              <h2 className="font-bold">领域统计</h2>
-            </div>
-            <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-              {Object.entries(domainStats).map(([domain, count]) => (
-                <div key={domain} className="rounded-lg border border-terminal px-3 py-3">
-                  <div className="text-sm font-medium">{domain}</div>
-                  <div className="mt-1 text-2xl font-bold">{count}</div>
-                </div>
-              ))}
-              {Object.keys(domainStats).length === 0 ? <div className="text-sm text-text-secondary">暂无统计数据</div> : null}
+              {runs.length > 0 && filteredRuns.length === 0 ? <div className="px-4 py-6 text-sm text-text-secondary">当前筛选无结果</div> : null}
             </div>
           </div>
         </div>
 
         <div className="space-y-4">
           <div className="terminal">
-            <div className="border-b border-terminal px-4 py-3">
-              <h2 className="font-bold">单体任务进度</h2>
-            </div>
-            <div className="p-4">
-              {activeRun ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span>进度</span>
-                    <span>{activeRun.progressPercent}%</span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-tertiary">
-                    <div className="h-full rounded-full bg-cyan" style={{ width: `${activeRun.progressPercent}%` }} />
-                  </div>
-                  <div className="grid gap-2 text-sm md:grid-cols-2">
-                    <InfoLine label="任务总数" value={activeRun.totalTasks} />
-                    <InfoLine label="完成" value={activeRun.completedTasks} />
-                    <InfoLine label="失败" value={activeRun.failedTasks} />
-                    <InfoLine label="阻塞" value={activeRun.blockedTasks} />
-                    <InfoLine label="状态" value={activeRun.status} />
-                    <InfoLine label="输出目录" value={activeRun.outputRoot ?? '-'} />
-                  </div>
-                  {activeRun.errorMessage ? <div className="text-sm text-error">{activeRun.errorMessage}</div> : null}
-                </div>
-              ) : (
-                <div className="text-sm text-text-secondary">选择一个 run 查看进度</div>
-              )}
-            </div>
-          </div>
-
-          <div className="terminal">
-            <div className="border-b border-terminal px-4 py-3">
-              <h2 className="font-bold">Task 列表</h2>
-            </div>
-            <div className="max-h-[420px] overflow-y-auto custom-scrollbar">
-              {(selectedRun?.tasks ?? []).map((task) => (
-                <details key={task.id} className="border-b border-terminal px-4 py-3">
-                  <summary className="cursor-pointer list-none">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{task.taskId}</div>
-                        <div className="text-xs text-text-secondary">{task.title}</div>
-                      </div>
-                      <div className="text-right text-xs text-text-secondary">
-                        <div>{task.status}</div>
-                        <div>{task.score ?? '-'}</div>
-                      </div>
-                    </div>
-                  </summary>
-                  <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
-                    <InfoLine label="领域" value={task.domain} />
-                    <InfoLine label="学科" value={task.discipline ?? '-'} />
-                    <InfoLine label="场景" value={task.scenario ?? '-'} />
-                    <InfoLine label="难度" value={task.difficulty ?? '-'} />
-                    <InfoLine label="目录" value={task.taskDir ?? '-'} />
-                    <InfoLine label="证据" value={task.evidencePath ?? '-'} />
-                  </div>
-                  {task.summary ? <div className="mt-3 text-sm text-text-secondary">{task.summary}</div> : null}
-                  {task.errorMessage ? <div className="mt-2 text-sm text-error">{task.errorMessage}</div> : null}
-                </details>
-              ))}
-              {!selectedRun?.tasks?.length ? <div className="px-4 py-6 text-sm text-text-secondary">暂无 task 详情</div> : null}
-            </div>
-          </div>
-
-          <div className="terminal">
             <div className="flex items-center justify-between border-b border-terminal px-4 py-3">
-              <h2 className="font-bold">Codex 日志</h2>
-              <button
-                onClick={() => selectedRunId && refreshRunLog(selectedRunId)}
-                className="text-xs text-cyan"
-              >
-                刷新
-              </button>
+              <h2 className="font-bold">{activeRun ? activeRun.runKey : '运行工作台'}</h2>
+              <div className="flex rounded-lg border border-terminal bg-white p-1">
+                <PanelTab active={activePanel === 'progress'} icon="mdi:chart-line" label="进度" onClick={() => setActivePanel('progress')} />
+                <PanelTab active={activePanel === 'tasks'} icon="mdi:format-list-checks" label="Task" onClick={() => setActivePanel('tasks')} />
+                <PanelTab active={activePanel === 'logs'} icon="mdi:console-line" label="日志" onClick={() => setActivePanel('logs')} />
+              </div>
             </div>
-            <pre className="max-h-[380px] overflow-y-auto whitespace-pre-wrap px-4 py-3 text-xs leading-6 text-text-primary custom-scrollbar">
-              {logLines.length > 0 ? logLines.join('\n') : '暂无日志'}
-            </pre>
+            {activePanel === 'progress' ? (
+              <RunProgress run={activeRun} selectedTask={selectedTask} />
+            ) : null}
+            {activePanel === 'tasks' ? (
+              <TaskExplorer
+                tasksByDomain={tasksByDomain}
+                selectedTask={selectedTask}
+                onSelect={(taskId) => setSelectedTaskId(taskId)}
+              />
+            ) : null}
+            {activePanel === 'logs' ? (
+              <RunLogs
+                lines={logLines}
+                onRefresh={() => selectedRunId && refreshRunLog(selectedRunId)}
+              />
+            ) : null}
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+function PanelTab({
+  active,
+  icon,
+  label,
+  onClick,
+}: {
+  active: boolean
+  icon: string
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex h-8 items-center gap-1 rounded-md px-3 text-xs transition-colors',
+        active ? 'bg-cyan text-white' : 'text-text-secondary hover:bg-primary-50'
+      )}
+    >
+      <Icon icon={icon} className="h-4 w-4" />
+      {label}
+    </button>
+  )
+}
+
+function RunProgress({ run, selectedTask }: { run: AleRun | AleRunSummary | null; selectedTask: AleRun['tasks'][number] | null }) {
+  if (!run) {
+    return <div className="px-4 py-6 text-sm text-text-secondary">选择一个 run 查看进度</div>
+  }
+  return (
+    <div className="space-y-4 p-4">
+      <div className="flex items-center justify-between text-sm">
+        <span>整体进度</span>
+        <StatusPill status={run.status} />
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-tertiary">
+        <div className="h-full rounded-full bg-cyan" style={{ width: `${run.progressPercent}%` }} />
+      </div>
+      <div className="grid gap-2 text-sm md:grid-cols-2">
+        <InfoLine label="进度" value={`${run.progressPercent}%`} />
+        <InfoLine label="任务总数" value={run.totalTasks} />
+        <InfoLine label="完成" value={run.completedTasks} />
+        <InfoLine label="失败" value={run.failedTasks} />
+        <InfoLine label="阻塞" value={run.blockedTasks} />
+        <InfoLine label="输出目录" value={run.outputRoot ?? '-'} />
+      </div>
+      <div className="rounded-lg border border-terminal p-3">
+        <div className="mb-2 text-xs text-text-secondary">当前 Task</div>
+        {selectedTask ? (
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="truncate font-medium">{selectedTask.taskId}</span>
+              <StatusPill status={selectedTask.status} />
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <InfoLine label="目录" value={selectedTask.taskDir ?? '-'} />
+              <InfoLine label="证据" value={selectedTask.evidencePath ?? '-'} />
+            </div>
+          </div>
+        ) : (
+          <div className="text-sm text-text-secondary">暂无 task</div>
+        )}
+      </div>
+      {run.errorMessage ? <div className="text-sm text-error">{run.errorMessage}</div> : null}
+    </div>
+  )
+}
+
+function TaskExplorer({
+  tasksByDomain,
+  selectedTask,
+  onSelect,
+}: {
+  tasksByDomain: Record<string, AleRun['tasks']>
+  selectedTask: AleRun['tasks'][number] | null
+  onSelect: (taskId: number) => void
+}) {
+  const domains = Object.keys(tasksByDomain)
+  if (domains.length === 0) {
+    return <div className="px-4 py-6 text-sm text-text-secondary">暂无 task 详情</div>
+  }
+  return (
+    <div className="grid min-h-[420px] md:grid-cols-[0.9fr_1.1fr]">
+      <div className="max-h-[520px] overflow-y-auto border-b border-terminal md:border-b-0 md:border-r custom-scrollbar">
+        {domains.map((domain) => (
+          <div key={domain} className="border-b border-terminal">
+            <div className="bg-primary-50 px-4 py-2 text-xs font-medium text-text-secondary">{domain}</div>
+            {tasksByDomain[domain].map((task) => (
+              <button
+                key={task.id}
+                onClick={() => onSelect(task.id)}
+                className={cn(
+                  'w-full px-4 py-3 text-left transition-colors hover:bg-primary-50',
+                  selectedTask?.id === task.id ? 'bg-cyan/10' : ''
+                )}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{task.taskId}</div>
+                    <div className="truncate text-xs text-text-secondary">{task.title}</div>
+                  </div>
+                  <StatusPill status={task.status} compact />
+                </div>
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="p-4">
+        {selectedTask ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate font-medium">{selectedTask.taskId}</div>
+                <div className="text-xs text-text-secondary">{selectedTask.title}</div>
+              </div>
+              <StatusPill status={selectedTask.status} />
+            </div>
+            <div className="grid gap-2 text-sm md:grid-cols-2">
+              <InfoLine label="领域" value={selectedTask.domain} />
+              <InfoLine label="学科" value={selectedTask.discipline ?? '-'} />
+              <InfoLine label="场景" value={selectedTask.scenario ?? '-'} />
+              <InfoLine label="难度" value={selectedTask.difficulty ?? '-'} />
+              <InfoLine label="目录" value={selectedTask.taskDir ?? '-'} />
+              <InfoLine label="证据" value={selectedTask.evidencePath ?? '-'} />
+            </div>
+            {selectedTask.summary ? <div className="text-sm text-text-secondary">{selectedTask.summary}</div> : null}
+            {selectedTask.errorMessage ? <div className="text-sm text-error">{selectedTask.errorMessage}</div> : null}
+          </div>
+        ) : (
+          <div className="text-sm text-text-secondary">选择一个 task 查看详情</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function RunLogs({ lines, onRefresh }: { lines: string[]; onRefresh: () => void }) {
+  return (
+    <div>
+      <div className="flex justify-end border-b border-terminal px-4 py-2">
+        <button onClick={onRefresh} className="flex items-center gap-1 text-xs text-cyan">
+          <Icon icon="mdi:refresh" className="h-4 w-4" />
+          刷新
+        </button>
+      </div>
+      <pre className="max-h-[560px] overflow-y-auto whitespace-pre-wrap px-4 py-3 text-xs leading-6 text-text-primary custom-scrollbar">
+        {lines.length > 0 ? lines.join('\n') : '暂无日志'}
+      </pre>
+    </div>
+  )
+}
+
+function StatusPill({ status, compact = false }: { status: string; compact?: boolean }) {
+  const tone =
+    status === 'COMPLETED' ? 'border-success/40 bg-success/10 text-success'
+      : status === 'FAILED' ? 'border-error/40 bg-error/10 text-error'
+        : status === 'RUNNING' ? 'border-cyan/40 bg-cyan/10 text-cyan'
+          : 'border-terminal bg-white text-text-secondary'
+  return (
+    <span className={cn('rounded-full border px-2 py-0.5 text-xs', tone, compact ? 'shrink-0' : '')}>
+      {status}
+    </span>
   )
 }
 
@@ -360,12 +531,28 @@ function SelectNumberField({
   )
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function StatButton({
+  active,
+  label,
+  value,
+  onClick,
+}: {
+  active: boolean
+  label: string
+  value: number
+  onClick: () => void
+}) {
   return (
-    <div className="terminal px-4 py-3">
+    <button
+      onClick={onClick}
+      className={cn(
+        'terminal px-4 py-3 text-left transition-colors hover:bg-primary-50',
+        active ? 'border-cyan bg-cyan/10' : ''
+      )}
+    >
       <div className="text-xs text-text-secondary">{label}</div>
       <div className="mt-1 text-2xl font-bold">{value}</div>
-    </div>
+    </button>
   )
 }
 

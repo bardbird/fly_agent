@@ -25,8 +25,10 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -97,10 +99,7 @@ public class AleStage1Service {
                 "hidden-reference", "Hidden Reference",
                 "public-fixture", "Public Fixture",
                 "generated-reference", "Generated Reference"));
-        response.setCodexModels(options(
-                DEFAULT_MODEL, DEFAULT_MODEL,
-                "gpt-5-mini", "gpt-5-mini",
-                "gpt-5-codex", "gpt-5-codex"));
+        response.setCodexModels(codexModelOptions());
         return response;
     }
 
@@ -374,6 +373,77 @@ public class AleStage1Service {
             result.add(new AleOptionDTO(pairs[i], pairs[i + 1]));
         }
         return result;
+    }
+
+    private List<AleOptionDTO> codexModelOptions() {
+        Set<String> models = new LinkedHashSet<>();
+        Path configPath = codexConfigPath();
+        if (Files.exists(configPath)) {
+            try {
+                String section = "";
+                for (String rawLine : Files.readAllLines(configPath, StandardCharsets.UTF_8)) {
+                    String line = rawLine.trim();
+                    if (line.isEmpty() || line.startsWith("#")) {
+                        continue;
+                    }
+                    if (line.startsWith("[") && line.endsWith("]")) {
+                        section = line.substring(1, line.length() - 1);
+                        continue;
+                    }
+                    if (section.isEmpty() && line.startsWith("model")) {
+                        addTomlKeyValueModel(models, line);
+                    } else if ("tui.model_availability_nux".equals(section)) {
+                        addTomlQuotedKeyModel(models, line);
+                    }
+                }
+            } catch (IOException e) {
+                log.warn("failed to read Codex config {}", configPath, e);
+            }
+        }
+        if (models.isEmpty()) {
+            models.add(DEFAULT_MODEL);
+            models.add("gpt-5-mini");
+            models.add("gpt-5-codex");
+        }
+        return models.stream().map(model -> new AleOptionDTO(model, model)).toList();
+    }
+
+    private Path codexConfigPath() {
+        String codexHome = System.getenv("CODEX_HOME");
+        Path home = StringUtils.hasText(codexHome)
+                ? Path.of(codexHome)
+                : Path.of(System.getProperty("user.home"), ".codex");
+        return home.resolve("config.toml");
+    }
+
+    private void addTomlKeyValueModel(Set<String> models, String line) {
+        int index = line.indexOf('=');
+        if (index < 0) {
+            return;
+        }
+        String key = line.substring(0, index).trim();
+        if (!"model".equals(key)) {
+            return;
+        }
+        addTomlString(models, line.substring(index + 1));
+    }
+
+    private void addTomlQuotedKeyModel(Set<String> models, String line) {
+        int end = line.indexOf('"', 1);
+        if (!line.startsWith("\"") || end <= 1) {
+            return;
+        }
+        models.add(line.substring(1, end));
+    }
+
+    private void addTomlString(Set<String> models, String rawValue) {
+        String value = rawValue.trim();
+        if (value.startsWith("\"")) {
+            int end = value.indexOf('"', 1);
+            if (end > 1) {
+                models.add(value.substring(1, end));
+            }
+        }
     }
 
     private String buildRunKey(AleRunRequest request) {
