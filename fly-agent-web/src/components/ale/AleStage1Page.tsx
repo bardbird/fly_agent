@@ -21,15 +21,15 @@ const emptyRequest: AleRunRequest = {
   outputMode: '',
   verificationMode: '',
   referenceStrategy: '',
-  targetCount: 8,
+  targetCount: 1,
   codexModel: 'gpt-5',
 }
 
 const TARGET_COUNT_OPTIONS = [
+  { value: 1, label: '1' },
   { value: 4, label: '4' },
   { value: 8, label: '8' },
   { value: 12, label: '12' },
-  { value: 16, label: '16' },
 ]
 
 export function AleStage1Page() {

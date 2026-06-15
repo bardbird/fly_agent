@@ -39,7 +39,7 @@ public class AleStage1Service {
 
     private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(2);
     private static final String DEFAULT_MODEL = "gpt-5";
-    private static final int DEFAULT_TARGET_COUNT = 8;
+    private static final int DEFAULT_TARGET_COUNT = 1;
     private static final String SKILL_ROOT = "codex-skills/ale-task-factory";
 
     private final AleRunMapper runMapper;
@@ -49,11 +49,20 @@ public class AleStage1Service {
     public AleOptionsResponse getOptions() {
         AleOptionsResponse response = new AleOptionsResponse();
         response.setDomains(options(
-                "general-workflows", "通用工作流",
-                "documentation", "文档生成",
-                "data-processing", "数据处理",
-                "code-analysis", "代码分析",
-                "research-synthesis", "研究综述"));
+                "agriculture_env", "Agriculture Env",
+                "business_finance", "Business Finance",
+                "computing_math", "Computing Math",
+                "education_info", "Education Info",
+                "engineering", "Engineering",
+                "health_medicine", "Health Medicine",
+                "legal", "Legal",
+                "life_sciences", "Life Sciences",
+                "physical_sciences", "Physical Sciences",
+                "psychology_neuro", "Psychology Neuro",
+                "social_sciences", "Social Sciences",
+                "transport_safety", "Transport Safety",
+                "visual_media", "Visual Media",
+                "other", "Other"));
         response.setDisciplines(options(
                 "software-engineering", "软件工程",
                 "data-science", "数据科学",
@@ -115,7 +124,7 @@ public class AleStage1Service {
         run.setOutputMode(request.getOutputMode());
         run.setVerificationMode(request.getVerificationMode());
         run.setReferenceStrategy(request.getReferenceStrategy());
-        run.setTargetCount(Math.max(request.getTargetCount(), DEFAULT_TARGET_COUNT));
+        run.setTargetCount(resolveTargetCount(request));
         run.setCodexModel(request.getCodexModel());
         run.setStatus(AleRunStatus.CREATED.name());
         run.setProgressPercent(0);
@@ -193,22 +202,22 @@ public class AleStage1Service {
             updateTaskSummary(runId, tasks);
 
             Path logPath = runDir.resolve("codex.log");
-            List<String> command = buildCommand(planPath, runDir);
+            List<String> command = buildCommand(planPath, runDir, request);
             int exitCode = runCodex(command, Path.of(".").toAbsolutePath().normalize(), logPath, runDir);
             if (exitCode == 0) {
                 markTasksFinished(runId, "COMPLETED", null);
-                writeSummary(runDir, runId, request, tasks, "COMPLETED", null);
+                writeSummaryIfMissing(runDir, runId, request, tasks, "COMPLETED", null);
                 updateRun(runId, AleRunStatus.COMPLETED, 100, null);
             } else {
                 String message = "codex exit code " + exitCode;
                 markTasksFinished(runId, "FAILED", message);
-                writeSummary(runDir, runId, request, tasks, "FAILED", message);
+                writeSummaryIfMissing(runDir, runId, request, tasks, "FAILED", message);
                 updateRun(runId, AleRunStatus.FAILED, 100, message);
             }
         } catch (Exception e) {
             log.error("ALE stage1 run failed", e);
             try {
-                writeSummary(runDir, runId, request, List.of(), "FAILED", e.getMessage());
+                writeSummaryIfMissing(runDir, runId, request, List.of(), "FAILED", e.getMessage());
             } catch (IOException ioException) {
                 log.error("failed to write ALE stage1 summary", ioException);
             }
@@ -218,17 +227,19 @@ public class AleStage1Service {
 
     private List<AleTaskEntity> createTasks(Long runId, AleRunRequest request) {
         List<AleTaskEntity> tasks = new ArrayList<>();
-        int count = Math.max(request.getTargetCount(), DEFAULT_TARGET_COUNT);
+        int count = resolveTargetCount(request);
         for (int i = 1; i <= count; i++) {
             AleTaskEntity task = new AleTaskEntity();
             task.setRunId(runId);
-            task.setTaskId(String.format("%s-%s-%02d", request.getDomain(), request.getScenario(), i));
+            String taskName = String.format("%s_%02d", request.getScenario().replace('-', '_'), i);
+            task.setTaskId(request.getDomain() + "/" + taskName);
             task.setTitle(request.getScenario() + " #" + i);
             task.setDomain(request.getDomain());
             task.setDiscipline(request.getDiscipline());
             task.setScenario(request.getScenario());
             task.setDifficulty(request.getDifficulty());
             task.setStatus("CREATED");
+            task.setTaskDir(runDirectoryPlaceholder(request.getDomain(), taskName));
             taskMapper.insert(task);
             tasks.add(task);
         }
@@ -279,19 +290,19 @@ public class AleStage1Service {
         runMapper.updateById(update);
     }
 
-    private List<String> buildCommand(Path planPath, Path runDir) {
+    private List<String> buildCommand(Path planPath, Path runDir, AleRunRequest request) {
         List<String> command = new ArrayList<>();
         command.add(properties.getCodexBinary());
         command.add("exec");
-        command.add("-C");
+        command.add("--cd");
         command.add(Path.of(".").toAbsolutePath().normalize().toString());
-        command.add("--sandbox");
-        command.add("danger-full-access");
-        command.add("--ask-for-approval");
-        command.add("never");
+        command.add("--dangerously-bypass-approvals-and-sandbox");
         command.add("--model");
-        command.add(DEFAULT_MODEL);
-        command.add("Use the ALE task factory skill to generate the run described in " + planPath.toAbsolutePath() + ". Write logs and artifacts under " + runDir.toAbsolutePath() + ".");
+        command.add(StringUtils.hasText(request.getCodexModel()) ? request.getCodexModel() : DEFAULT_MODEL);
+        command.add("Use the ALE task factory skill to generate the run described in " + planPath.toAbsolutePath()
+                + ". Use ALE framework root " + frameworkRoot().toAbsolutePath()
+                + ". Write logs and artifacts under " + runDir.toAbsolutePath()
+                + ". Do not run stage-2 model evaluation.");
         return command;
     }
 
@@ -302,6 +313,7 @@ public class AleStage1Service {
         builder.redirectOutput(ProcessBuilder.Redirect.appendTo(logPath.toFile()));
         Map<String, String> env = builder.environment();
         env.put("ALE_OUTPUT_ROOT", runDir.toAbsolutePath().toString());
+        env.put("ALE_FRAMEWORK_ROOT", frameworkRoot().toAbsolutePath().toString());
         env.put("ALE_STAGE1", "true");
         Process process = builder.start();
         int exit = process.waitFor();
@@ -309,7 +321,11 @@ public class AleStage1Service {
         return exit;
     }
 
-    private void writeSummary(Path runDir, Long runId, AleRunRequest request, List<AleTaskEntity> tasks, String status, String errorMessage) throws IOException {
+    private void writeSummaryIfMissing(Path runDir, Long runId, AleRunRequest request, List<AleTaskEntity> tasks, String status, String errorMessage) throws IOException {
+        Path summaryPath = runDir.resolve("summary.json");
+        if (Files.exists(summaryPath)) {
+            return;
+        }
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("runId", runId);
         summary.put("runKey", runDir.getFileName().toString());
@@ -322,7 +338,7 @@ public class AleStage1Service {
         summary.put("generatedCount", tasks.size());
         summary.put("taskIds", tasks.stream().map(AleTaskEntity::getTaskId).toList());
         summary.put("errorMessage", errorMessage);
-        Files.writeString(runDir.resolve("summary.json"), toJson(summary), StandardCharsets.UTF_8);
+        Files.writeString(summaryPath, toJson(summary), StandardCharsets.UTF_8);
     }
 
     private AleRunDTO toRunDTO(AleRunEntity run) {
@@ -364,8 +380,22 @@ public class AleStage1Service {
         return request.getDomain() + "__" + request.getScenario() + "__" + UUID.randomUUID().toString().substring(0, 8);
     }
 
+    private int resolveTargetCount(AleRunRequest request) {
+        return request.getTargetCount() == null || request.getTargetCount() <= 0
+                ? DEFAULT_TARGET_COUNT
+                : request.getTargetCount();
+    }
+
     private Path runDirectory(String runKey) {
         return Path.of(properties.getOutputRoot()).resolve(runKey);
+    }
+
+    private String runDirectoryPlaceholder(String domain, String taskName) {
+        return "tasks/" + domain + "/" + taskName;
+    }
+
+    private Path frameworkRoot() {
+        return Path.of(properties.getFrameworkRoot()).toAbsolutePath().normalize();
     }
 
     private String toJson(Object value) {
@@ -378,7 +408,14 @@ public class AleStage1Service {
         plan.put("request", request);
         plan.put("outputRoot", runDir.toAbsolutePath().toString());
         plan.put("skillRoot", SKILL_ROOT);
+        plan.put("frameworkRoot", frameworkRoot().toString());
+        plan.put("frameworkTasksRoot", frameworkRoot().resolve("tasks").toString());
         plan.put("steps", List.of("brief", "draft", "scaffold", "oracle_validate"));
+        plan.put("requirements", Map.of(
+                "aleNativeMainPy", true,
+                "oracleMustPassBeforeStage2", true,
+                "noStage2ModelEvaluation", true,
+                "summaryJsonMustIncludeEvidence", true));
         return toJson(plan);
     }
 }

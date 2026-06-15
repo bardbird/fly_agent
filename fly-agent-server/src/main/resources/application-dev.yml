@@ -3,15 +3,15 @@ server:
 
 spring:
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://51.161.15.134:3307/fly_agent?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://127.0.0.1:3306/fly_agent?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
     username: ${SPRING_DATASOURCE_USERNAME:root}
     password: ${SPRING_DATASOURCE_PASSWORD:123456789}
 
   flyway:
-    enabled: false
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
 
   redis:
-    host: ${SPRING_REDIS_HOST:51.161.15.134}
+    host: ${SPRING_REDIS_HOST:127.0.0.1}
     port: ${SPRING_REDIS_PORT:6379}
     database: ${SPRING_REDIS_DATABASE:0}
     password: ${SPRING_REDIS_PASSWORD:homeX}
@@ -42,3 +42,8 @@ swe:
     base-url: ${SWE_OPUS_BASE_URL:https://ai.yiqiu.dev/v1}
     token: ${SWE_OPUS_TOKEN:}
     model: claude-opus-4-7
+
+ale:
+  codex-binary: ${ALE_CODEX_BINARY:codex}
+  output-root: ${ALE_OUTPUT_ROOT:ale-runs}
+  framework-root: ${ALE_FRAMEWORK_ROOT:/Users/liuyifei/Liu/github/agents-last-exam}

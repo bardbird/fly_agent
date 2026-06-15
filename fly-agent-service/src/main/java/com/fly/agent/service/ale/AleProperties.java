@@ -11,4 +11,5 @@ public class AleProperties {
 
     private String codexBinary = "codex";
     private String outputRoot = "ale-runs";
+    private String frameworkRoot = "/Users/liuyifei/Liu/github/agents-last-exam";
 }
