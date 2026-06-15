@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Loading } from '@/components/ui/loading'
@@ -173,19 +173,21 @@ export function AleStage1Page() {
   return (
     <div className="min-h-screen bg-primary text-text-primary">
       <div className="border-b border-terminal bg-white/85 backdrop-blur">
-        <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h1 className="text-xl font-bold">ALE Stage 1</h1>
+        <div className="mx-auto flex max-w-[1600px] flex-col gap-3 px-4 py-3">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold">ALE Stage 1</h1>
               <p className="text-xs text-text-secondary">一键发起 Codex CLI skill 调用，查看生成进度、任务详情和日志。</p>
             </div>
-            <Button onClick={handleStart} disabled={loading} className="shrink-0">
-              {loading ? <Loading size="sm" /> : <Icon icon="mdi:play" className="mr-2 h-4 w-4" />}
-              启动生成
+            <Button size="sm" onClick={handleStart} disabled={loading} className="w-full whitespace-nowrap md:w-auto md:shrink-0">
+              <span className="inline-flex items-center justify-center whitespace-nowrap">
+                {loading ? <Loading size="sm" /> : <Icon icon="mdi:play" className="mr-2 h-4 w-4 shrink-0" />}
+                <span className="whitespace-nowrap">启动生成</span>
+              </span>
             </Button>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <SelectField label="领域" value={request.domain} onChange={(value) => setRequest({ ...request, domain: value })} options={domainOptions} />
             <SelectField label="难度" value={request.difficulty} onChange={(value) => setRequest({ ...request, difficulty: value })} options={difficultyOptions} />
             <SelectNumberField
@@ -201,9 +203,9 @@ export function AleStage1Page() {
         </div>
       </div>
 
-      <div className="mx-auto grid max-w-[1600px] gap-4 px-4 py-4 xl:grid-cols-[1.2fr_1fr]">
+      <div className="mx-auto grid max-w-[1600px] gap-4 px-4 py-3 xl:grid-cols-[1.2fr_1fr]">
         <div className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <StatButton active={statusFilter === 'ALL'} label="总 run" value={runs.length} onClick={() => setStatusFilter('ALL')} />
             <StatButton active={statusFilter === 'RUNNING'} label="进行中" value={runs.filter((run) => run.status === 'RUNNING').length} onClick={() => setStatusFilter('RUNNING')} />
             <StatButton active={statusFilter === 'COMPLETED'} label="完成" value={runs.filter((run) => run.status === 'COMPLETED').length} onClick={() => setStatusFilter('COMPLETED')} />
@@ -211,9 +213,9 @@ export function AleStage1Page() {
           </div>
 
           <div className="terminal">
-            <div className="flex items-center justify-between border-b border-terminal px-4 py-3">
-              <div>
-                <h2 className="font-bold">运行概览</h2>
+            <div className="flex flex-col gap-3 border-b border-terminal px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold">运行概览</h2>
                 <div className="text-xs text-text-secondary">
                   {selectedRunSummary ? `${selectedRunSummary.runKey} · ${selectedRunSummary.status}` : '未选择 run'}
                 </div>
@@ -223,7 +225,7 @@ export function AleStage1Page() {
                   setStatusFilter('ALL')
                   setDomainFilter(null)
                 }}
-                className="flex items-center gap-1 text-xs text-cyan"
+                className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-cyan"
               >
                 <Icon icon="mdi:filter-off-outline" className="h-4 w-4" />
                 清除筛选
@@ -235,7 +237,7 @@ export function AleStage1Page() {
                   key={domain}
                   onClick={() => setDomainFilter(domainFilter === domain ? null : domain)}
                   className={cn(
-                    'rounded-full border px-3 py-1 text-xs transition-colors',
+                    'shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs transition-colors',
                     domainFilter === domain ? 'border-cyan bg-cyan text-white' : 'border-terminal bg-white text-text-secondary hover:bg-primary-50'
                   )}
                 >
@@ -276,9 +278,9 @@ export function AleStage1Page() {
 
         <div className="space-y-4">
           <div className="terminal">
-            <div className="flex items-center justify-between border-b border-terminal px-4 py-3">
-              <h2 className="font-bold">{activeRun ? activeRun.runKey : '运行工作台'}</h2>
-              <div className="flex rounded-lg border border-terminal bg-white p-1">
+            <div className="flex flex-col gap-3 border-b border-terminal px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="min-w-0 truncate text-sm font-bold">{activeRun ? activeRun.runKey : '运行工作台'}</h2>
+              <div className="flex w-full shrink-0 rounded-lg border border-terminal bg-white p-1 sm:w-auto">
                 <PanelTab active={activePanel === 'progress'} icon="mdi:chart-line" label="进度" onClick={() => setActivePanel('progress')} />
                 <PanelTab active={activePanel === 'tasks'} icon="mdi:format-list-checks" label="Task" onClick={() => setActivePanel('tasks')} />
                 <PanelTab active={activePanel === 'logs'} icon="mdi:console-line" label="日志" onClick={() => setActivePanel('logs')} />
@@ -322,7 +324,7 @@ function PanelTab({
     <button
       onClick={onClick}
       className={cn(
-        'flex h-8 items-center gap-1 rounded-md px-3 text-xs transition-colors',
+        'flex h-7 flex-1 items-center justify-center gap-1 whitespace-nowrap rounded-md px-2 text-xs transition-colors sm:flex-none',
         active ? 'bg-cyan text-white' : 'text-text-secondary hover:bg-primary-50'
       )}
     >
@@ -338,14 +340,14 @@ function RunProgress({ run, selectedTask }: { run: AleRun | AleRunSummary | null
   }
   return (
     <div className="space-y-4 p-4">
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex items-center justify-between text-xs">
         <span>整体进度</span>
         <StatusPill status={run.status} />
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-tertiary">
         <div className="h-full rounded-full bg-cyan" style={{ width: `${run.progressPercent}%` }} />
       </div>
-      <div className="grid gap-2 text-sm md:grid-cols-2">
+      <div className="grid gap-2 text-xs md:grid-cols-2">
         <InfoLine label="进度" value={`${run.progressPercent}%`} />
         <InfoLine label="任务总数" value={run.totalTasks} />
         <InfoLine label="完成" value={run.completedTasks} />
@@ -356,7 +358,7 @@ function RunProgress({ run, selectedTask }: { run: AleRun | AleRunSummary | null
       <div className="rounded-lg border border-terminal p-3">
         <div className="mb-2 text-xs text-text-secondary">当前 Task</div>
         {selectedTask ? (
-          <div className="space-y-2 text-sm">
+          <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between gap-3">
               <span className="truncate font-medium">{selectedTask.taskId}</span>
               <StatusPill status={selectedTask.status} />
@@ -367,7 +369,7 @@ function RunProgress({ run, selectedTask }: { run: AleRun | AleRunSummary | null
             </div>
           </div>
         ) : (
-          <div className="text-sm text-text-secondary">暂无 task</div>
+          <div className="text-xs text-text-secondary">暂无 task</div>
         )}
       </div>
       {run.errorMessage ? <div className="text-sm text-error">{run.errorMessage}</div> : null}
@@ -425,7 +427,7 @@ function TaskExplorer({
               </div>
               <StatusPill status={selectedTask.status} />
             </div>
-            <div className="grid gap-2 text-sm md:grid-cols-2">
+            <div className="grid gap-2 text-xs md:grid-cols-2">
               <InfoLine label="领域" value={selectedTask.domain} />
               <InfoLine label="学科" value={selectedTask.discipline ?? '-'} />
               <InfoLine label="场景" value={selectedTask.scenario ?? '-'} />
@@ -433,8 +435,8 @@ function TaskExplorer({
               <InfoLine label="目录" value={selectedTask.taskDir ?? '-'} />
               <InfoLine label="证据" value={selectedTask.evidencePath ?? '-'} />
             </div>
-            {selectedTask.summary ? <div className="text-sm text-text-secondary">{selectedTask.summary}</div> : null}
-            {selectedTask.errorMessage ? <div className="text-sm text-error">{selectedTask.errorMessage}</div> : null}
+            {selectedTask.summary ? <div className="text-xs text-text-secondary">{selectedTask.summary}</div> : null}
+            {selectedTask.errorMessage ? <div className="text-xs text-error">{selectedTask.errorMessage}</div> : null}
           </div>
         ) : (
           <div className="text-sm text-text-secondary">选择一个 task 查看详情</div>
@@ -445,15 +447,24 @@ function TaskExplorer({
 }
 
 function RunLogs({ lines, onRefresh }: { lines: string[]; onRefresh: () => void }) {
+  const logRef = useRef<HTMLPreElement>(null)
+
+  useEffect(() => {
+    const node = logRef.current
+    if (node) {
+      node.scrollTop = node.scrollHeight
+    }
+  }, [lines])
+
   return (
     <div>
       <div className="flex justify-end border-b border-terminal px-4 py-2">
-        <button onClick={onRefresh} className="flex items-center gap-1 text-xs text-cyan">
+        <button onClick={onRefresh} className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-cyan">
           <Icon icon="mdi:refresh" className="h-4 w-4" />
           刷新
         </button>
       </div>
-      <pre className="max-h-[560px] overflow-y-auto whitespace-pre-wrap px-4 py-3 text-xs leading-6 text-text-primary custom-scrollbar">
+      <pre ref={logRef} className="max-h-[560px] min-h-[360px] overflow-y-auto whitespace-pre-wrap px-4 py-3 text-xs leading-6 text-text-primary custom-scrollbar">
         {lines.length > 0 ? lines.join('\n') : '暂无日志'}
       </pre>
     </div>
@@ -488,7 +499,7 @@ function SelectField({
     <label className="flex flex-col gap-1 text-xs">
       <span className="text-text-secondary">{label}</span>
       <select
-        className="h-10 rounded-lg border border-terminal bg-white px-3 text-sm outline-none focus:border-cyan"
+        className="h-9 rounded-lg border border-terminal bg-white px-3 text-xs outline-none focus:border-cyan"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -517,7 +528,7 @@ function SelectNumberField({
     <label className="flex flex-col gap-1 text-xs">
       <span className="text-text-secondary">{label}</span>
       <select
-        className="h-10 rounded-lg border border-terminal bg-white px-3 text-sm outline-none focus:border-cyan"
+        className="h-9 rounded-lg border border-terminal bg-white px-3 text-xs outline-none focus:border-cyan"
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
       >
@@ -551,7 +562,7 @@ function StatButton({
       )}
     >
       <div className="text-xs text-text-secondary">{label}</div>
-      <div className="mt-1 text-2xl font-bold">{value}</div>
+      <div className="mt-1 text-xl font-bold">{value}</div>
     </button>
   )
 }
@@ -560,7 +571,7 @@ function InfoLine({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-md border border-terminal px-3 py-2">
       <div className="text-xs text-text-secondary">{label}</div>
-      <div className="truncate text-sm">{String(value)}</div>
+      <div className="truncate text-xs">{String(value)}</div>
     </div>
   )
 }

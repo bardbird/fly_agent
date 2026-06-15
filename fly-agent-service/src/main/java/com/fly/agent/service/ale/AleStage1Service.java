@@ -199,10 +199,11 @@ public class AleStage1Service {
 
             List<AleTaskEntity> tasks = createTasks(runId, request);
             updateTaskSummary(runId, tasks);
+            markTasksStatus(runId, "RUNNING", null);
 
             Path logPath = runDir.resolve("codex.log");
             List<String> command = buildCommand(planPath, runDir, request);
-            int exitCode = runCodex(command, Path.of(".").toAbsolutePath().normalize(), logPath, runDir);
+            int exitCode = runCodex(command, Path.of(".").toAbsolutePath().normalize(), logPath, runDir, runId);
             if (exitCode == 0) {
                 markTasksFinished(runId, "COMPLETED", null);
                 writeSummaryIfMissing(runDir, runId, request, tasks, "COMPLETED", null);
@@ -252,8 +253,20 @@ public class AleStage1Service {
         run.setCompletedTasks(0);
         run.setFailedTasks(0);
         run.setBlockedTasks(0);
-        run.setProgressPercent(15);
+        run.setProgressPercent(20);
         runMapper.updateById(run);
+    }
+
+    private void markTasksStatus(Long runId, String status, String errorMessage) {
+        List<AleTaskEntity> tasks = taskMapper.selectList(new LambdaQueryWrapper<AleTaskEntity>()
+                .eq(AleTaskEntity::getRunId, runId));
+        for (AleTaskEntity task : tasks) {
+            AleTaskEntity update = new AleTaskEntity();
+            update.setId(task.getId());
+            update.setStatus(status);
+            update.setErrorMessage(errorMessage);
+            taskMapper.updateById(update);
+        }
     }
 
     private void markTasksFinished(Long runId, String status, String errorMessage) {
@@ -272,6 +285,14 @@ public class AleStage1Service {
         run.setFailedTasks("FAILED".equals(status) ? tasks.size() : 0);
         run.setProgressPercent(100);
         runMapper.updateById(run);
+    }
+
+    private void updateProgress(Long runId, int progress) {
+        AleRunEntity update = new AleRunEntity();
+        update.setId(runId);
+        update.setProgressPercent(progress);
+        update.setUpdatedAt(LocalDateTime.now());
+        runMapper.updateById(update);
     }
 
     private void updateRun(Long runId, AleRunStatus status, int progress, String errorMessage) {
@@ -305,9 +326,17 @@ public class AleStage1Service {
         return command;
     }
 
-    private int runCodex(List<String> command, Path cwd, Path logPath, Path runDir) throws IOException, InterruptedException {
+    private int runCodex(List<String> command, Path cwd, Path logPath, Path runDir, Long runId) throws IOException, InterruptedException {
+        Files.writeString(logPath,
+                "$ " + String.join(" ", command) + System.lineSeparator()
+                        + "ALE_OUTPUT_ROOT=" + runDir.toAbsolutePath() + System.lineSeparator()
+                        + "ALE_FRAMEWORK_ROOT=" + frameworkRoot().toAbsolutePath() + System.lineSeparator(),
+                StandardCharsets.UTF_8,
+                java.nio.file.StandardOpenOption.CREATE,
+                java.nio.file.StandardOpenOption.APPEND);
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.directory(cwd.toFile());
+        builder.redirectInput(ProcessBuilder.Redirect.DISCARD);
         builder.redirectErrorStream(true);
         builder.redirectOutput(ProcessBuilder.Redirect.appendTo(logPath.toFile()));
         Map<String, String> env = builder.environment();
@@ -315,9 +344,60 @@ public class AleStage1Service {
         env.put("ALE_FRAMEWORK_ROOT", frameworkRoot().toAbsolutePath().toString());
         env.put("ALE_STAGE1", "true");
         Process process = builder.start();
+        int lastProgress = 25;
+        updateProgress(runId, lastProgress);
+        while (process.isAlive()) {
+            Thread.sleep(3000);
+            int nextProgress = Math.max(lastProgress, estimateProgress(runDir, logPath));
+            if (nextProgress > lastProgress) {
+                lastProgress = nextProgress;
+                updateProgress(runId, lastProgress);
+            }
+        }
         int exit = process.waitFor();
         Files.writeString(logPath, System.lineSeparator() + "exitCode=" + exit + System.lineSeparator(), StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND);
         return exit;
+    }
+
+    private int estimateProgress(Path runDir, Path logPath) {
+        int progress = 25;
+        if (hasLogContent(logPath)) {
+            progress = 35;
+        }
+        if (Files.exists(runDir.resolve("generated/stages/brief.md"))) {
+            progress = 45;
+        }
+        if (Files.exists(runDir.resolve("generated/stages/draft.md"))) {
+            progress = 60;
+        }
+        if (Files.exists(runDir.resolve("generated/stages/scaffold.md"))) {
+            progress = 75;
+        }
+        if (hasGeneratedTasks(runDir)) {
+            progress = 85;
+        }
+        if (Files.exists(runDir.resolve("summary.json"))) {
+            progress = 95;
+        }
+        return progress;
+    }
+
+    private boolean hasLogContent(Path logPath) {
+        try {
+            return Files.exists(logPath) && Files.size(logPath) > 0;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private boolean hasGeneratedTasks(Path runDir) {
+        try (var paths = Files.find(runDir, 5, (path, attrs) ->
+                attrs.isRegularFile() && ("main.py".equals(path.getFileName().toString())
+                        || "task_card.json".equals(path.getFileName().toString())))) {
+            return paths.findFirst().isPresent();
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     private void writeSummaryIfMissing(Path runDir, Long runId, AleRunRequest request, List<AleTaskEntity> tasks, String status, String errorMessage) throws IOException {

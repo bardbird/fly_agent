@@ -20,7 +20,7 @@ export const Button = motion.create(
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         className={cn(
-          'rounded-lg font-bold font-mono transition-all duration-300',
+          'inline-flex items-center justify-center whitespace-nowrap rounded-lg font-bold font-mono transition-all duration-300',
           {
             'bg-gradient-to-br from-cyan to-green text-white shadow-lg shadow-cyan/20 hover:shadow-xl hover:shadow-cyan/30':
               variant === 'default',
