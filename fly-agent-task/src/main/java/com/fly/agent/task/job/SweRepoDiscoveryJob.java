@@ -1328,11 +1328,11 @@ public class SweRepoDiscoveryJob {
         request.setMaxStars(optionalPositiveInt(json, "maxStars"));
         request.setStartStars(optionalPositiveInt(json, "startStars"));
         request.setPage(intValue(json, "page", request.getPage(), 1, Integer.MAX_VALUE));
-        request.setRepositoryPages(intValue(json, "repositoryPages", request.getRepositoryPages(), 1, 10));
+        request.setRepositoryPages(intValue(json, "repositoryPages", request.getRepositoryPages(), 1, 20));
         request.setRepositoryPerPage(intValue(json, "repositoryPerPage", request.getRepositoryPerPage(), 1, 50));
         request.setRepositoryConcurrency(intValue(json, "repositoryConcurrency", request.getRepositoryConcurrency(), 1, 5));
-        request.setRepoLimit(intValue(json, "repoLimit", request.getRepoLimit(), 1, 10000));
-        request.setRepoLimit(intValue(json, "dailyRepoLimit", request.getRepoLimit(), 1, 10000));
+        request.setRepoLimit(intValue(json, "repoLimit", request.getRepoLimit(), 1, 100000));
+        request.setRepoLimit(intValue(json, "dailyRepoLimit", request.getRepoLimit(), 1, 100000));
         request.setPerRunRepoLimit(optionalPositiveInt(json, "perRunRepoLimit"));
         request.setRepoOffset(intValue(json, "repoOffset", request.getRepoOffset(), 0, Integer.MAX_VALUE));
         request.setPullLimit(intValue(json, "pullLimit", request.getPullLimit(), 1, 50));
