@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Loading } from '@/components/ui/loading'
@@ -11,7 +11,7 @@ import {
   startAleRun,
   startAleStage2,
 } from '@/lib/api'
-import type { AleOptionsResponse, AleRun, AleRunRequest, AleRunStatus, AleRunSummary } from '@/types/ale'
+import type { AleOptionsResponse, AleRun, AleRunRequest, AleRunSummary } from '@/types/ale'
 
 // ── constants ────────────────────────────────────────────────────────────────
 
@@ -367,7 +367,6 @@ function Stage2Panel({
 }) {
   const stage2Tasks = tasks.filter((t) => t.stage2Status)
   const completed = stage2Tasks.filter((t) => t.stage2Status === 'completed').length
-  const failed = stage2Tasks.filter((t) => t.stage2Status === 'failed').length
   const scores = stage2Tasks.map((t) => t.stage2Score ?? 0).filter((s) => s > 0)
   const avg = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(3) : '-'
 
@@ -463,16 +462,9 @@ function Stage2Panel({
       {/* agent log placeholder */}
       <div className="rounded-lg border border-terminal bg-white p-4">
         <h2 className="text-sm font-bold mb-3">Agent 日志</h2>
-        {selectedTask?.stage2ResultDir ? (
-          <div className="text-xs text-text-secondary">
-            <p>结果目录: {selectedTask.stage2ResultDir}</p>
-            <p className="mt-1">查看 agent-log/ 目录获取详细执行轨迹</p>
-          </div>
-        ) : (
-          <div className="text-xs text-text-secondary text-center py-12">
-            完成 Stage 2 测评后可查看 agent 执行日志
-          </div>
-        )}
+        <div className="text-xs text-text-secondary text-center py-12">
+          完成 Stage 2 测评后可查看 agent 执行日志
+        </div>
       </div>
     </div>
   )
