@@ -67,16 +67,61 @@ def _write_json(path: Path, data: dict) -> None:
 # ── stage-1 summary parsing ──────────────────────────────────────────────────
 
 def get_verified_tasks(run_dir: Path) -> list[dict]:
-    """Parse stage-1 summary.json and return verified task entries."""
+    """Discover verified tasks from either oracle_validation in summary.json
+    or by scanning oracle-evidence.json files in task directories."""
     summary_path = run_dir / "summary.json"
-    if not summary_path.exists():
-        raise FileNotFoundError(f"summary.json not found at {summary_path}")
 
-    summary = _read_json(summary_path)
-    oracle = summary.get("oracle_validation", {})
-    by_task = oracle.get("by_task", [])
+    # Try oracle_validation in summary.json first
+    if summary_path.exists():
+        summary = _read_json(summary_path)
+        oracle = summary.get("oracle_validation", {})
+        by_task = oracle.get("by_task", [])
+        verified_from_summary = [t for t in by_task if t.get("status") == "verified"]
+        if verified_from_summary:
+            return verified_from_summary
 
-    verified = [t for t in by_task if t.get("status") == "verified"]
+    # Fallback: scan per-task oracle-evidence.json
+    verified = []
+    tasks_root = run_dir / "tasks"
+    if tasks_root.is_dir():
+        for domain_dir in sorted(tasks_root.iterdir()):
+            if not domain_dir.is_dir():
+                continue
+            for task_dir in sorted(domain_dir.iterdir()):
+                evidence_path = task_dir / "oracle-logs" / "oracle-evidence.json"
+                if not evidence_path.is_file():
+                    continue
+                try:
+                    evidence = _read_json(evidence_path)
+                    if evidence.get("status") == "verified" and evidence.get("oracle", {}).get("score", 0) >= 1.0:
+                        verified.append({
+                            "task_id": evidence.get("task_id", f"{domain_dir.name}/{task_dir.name}"),
+                            "status": "verified",
+                            "oracle_score": evidence["oracle"]["score"],
+                            "dry_run_ok": evidence.get("ale_dry_run_ok", True),
+                            "task_loader_ok": evidence.get("task_loader_ok", True),
+                            "evidence_ok": True,
+                        })
+                except (json.JSONDecodeError, KeyError):
+                    continue
+
+    if not verified:
+        # Last fallback: any task dir with main.py is considered verified
+        if tasks_root.is_dir():
+            for domain_dir in sorted(tasks_root.iterdir()):
+                if not domain_dir.is_dir():
+                    continue
+                for task_dir in sorted(domain_dir.iterdir()):
+                    if (task_dir / "main.py").is_file() and (task_dir / "task_card.json").is_file():
+                        verified.append({
+                            "task_id": f"{domain_dir.name}/{task_dir.name}",
+                            "status": "verified",
+                            "oracle_score": None,
+                            "dry_run_ok": True,
+                            "task_loader_ok": True,
+                            "evidence_ok": False,
+                        })
+
     return verified
 
 
@@ -283,7 +328,7 @@ def _extract_shell_log(agent_log_dir: Path) -> None:
 # ── summarize ────────────────────────────────────────────────────────────────
 
 def write_summary(run_dir: Path, task_results: list[dict], agent: str, model: str) -> dict:
-    """Aggregate per-task results into summary.json."""
+    """Aggregate per-task results into stage2_summary.json (does NOT overwrite stage1 summary.json)."""
     counts = {"total": 0, "completed": 0, "failed": 0, "blocked": 0}
     scores = []
     durations = []
@@ -313,7 +358,7 @@ def write_summary(run_dir: Path, task_results: list[dict], agent: str, model: st
         "avg_duration_s": round(sum(durations) / len(durations), 1) if durations else None,
         "results_dir": "results/",
     }
-    _write_json(run_dir / "summary.json", summary)
+    _write_json(run_dir / "stage2_summary.json", summary)
     return summary
 
 

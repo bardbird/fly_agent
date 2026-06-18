@@ -147,8 +147,8 @@ public class AleStage2Service {
             int exitCode = process.waitFor();
             log.info("Stage2 finished, exit={}", exitCode);
 
-            // Collect results from summary.json
-            Path summaryPath = runDir.resolve("summary.json");
+            // Collect results from stage2_summary.json
+            Path summaryPath = runDir.resolve("stage2_summary.json");
             if (Files.exists(summaryPath)) {
                 parseAndApplyResults(runId, runDir, summaryPath);
             }
@@ -195,7 +195,7 @@ public class AleStage2Service {
                 progress = Math.max(progress, 20 + (int) (count * 10));
             } catch (IOException ignored) {}
         }
-        Path summaryPath = runDir.resolve("summary.json");
+        Path summaryPath = runDir.resolve("stage2_summary.json");
         try {
             if (Files.exists(summaryPath)) {
                 String raw = Files.readString(summaryPath);
