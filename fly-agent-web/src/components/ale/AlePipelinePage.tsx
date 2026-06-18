@@ -129,7 +129,8 @@ export function AlePipelinePage() {
     setStage2Loading(true)
     setError(null)
     try {
-      await startAleStage2(selectedRunId)
+      const updated = await startAleStage2(selectedRunId)
+      setSelectedRun(updated)
       setStep('stage2')
     } catch (err) { setError(err instanceof Error ? err.message : 'Stage2 启动失败') }
     finally { setStage2Loading(false) }
