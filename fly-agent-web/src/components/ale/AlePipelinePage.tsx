@@ -79,12 +79,15 @@ export function AlePipelinePage() {
     void refreshSelectedRun(selectedRunId)
     void refreshRunLog(selectedRunId)
     const timer = window.setInterval(() => {
-      void refreshSelectedRun(selectedRunId)
+      void refreshSelectedRun(selectedRunId).then((run) => {
+        // auto-switch to stage2 panel when stage2 starts running
+        if (run?.stage2Status === 'RUNNING' && step === 'stage1') setStep('stage2')
+      })
       void refreshRunLog(selectedRunId)
       void refreshRuns(false)
     }, 3000)
     return () => window.clearInterval(timer)
-  }, [selectedRunId])
+  }, [selectedRunId, step])
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
@@ -98,10 +101,11 @@ export function AlePipelinePage() {
     if (selectLatest && !selectedRunId && next[0]) setSelectedRunId(next[0].runId)
   }
 
-  async function refreshSelectedRun(id: number) {
+  async function refreshSelectedRun(id: number): Promise<AleRun | null> {
     const next = await getAleRun(id)
     setSelectedRun(next)
     setSelectedTaskId((c) => c ?? next.tasks[0]?.id ?? null)
+    return next
   }
 
   async function refreshRunLog(id: number) {
@@ -298,7 +302,7 @@ function Stage1Panel({
               </div>
               {selectedRun.errorMessage && <div className="text-rose-600">{selectedRun.errorMessage}</div>}
               {/* quick stage2 start */}
-              {selectedRun.status === 'COMPLETED' && selectedRun.stage2Status !== 'RUNNING' && selectedRun.stage2Status !== 'COMPLETED' && (
+              {selectedRun.status === 'COMPLETED' && (!selectedRun.stage2Status || selectedRun.stage2Status === 'FAILED') && (
                 <Button size="sm" onClick={onStartStage2} disabled={stage2Loading} className="w-full mt-2">
                   {stage2Loading ? <Loading size="sm" /> : <Icon icon="mdi:play-circle" className="mr-1 h-4 w-4" />}
                   {stage2Loading ? '…' : '进入 Stage 2 测评'}
@@ -404,10 +408,10 @@ function Stage2Panel({
             {selectedRun?.stage2Status && <StatusPill status={selectedRun.stage2Status} />}
           </div>
 
-          {selectedRun?.status === 'COMPLETED' && !selectedRun?.stage2Status && (
+          {(selectedRun?.status === 'COMPLETED' && (!selectedRun?.stage2Status || selectedRun.stage2Status === 'FAILED')) && (
             <Button size="sm" onClick={onStartStage2} disabled={stage2Loading} className="w-full">
               {stage2Loading ? <Loading size="sm" /> : <Icon icon="mdi:play-circle" className="mr-1 h-4 w-4" />}
-              {stage2Loading ? '启动中…' : '开始测评'}
+              {selectedRun.stage2Status === 'FAILED' ? '重新测评' : stage2Loading ? '启动中…' : '开始测评'}
             </Button>
           )}
 
