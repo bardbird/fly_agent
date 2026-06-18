@@ -59,6 +59,50 @@ Produce ALE-native task packages that are ready for stage-2 model execution only
 - The batch favors diversity across domain, discipline, workflow type, data shape, and required artifact type.
 - Duplicate detection should use normalized title, domain, task intent, input/output schema, and grader target behavior.
 
+## Oracle Evidence Schema
+
+Every task must produce `oracle-logs/oracle-evidence.json` that conforms to the following machine-readable schema. The stage1 runner performs **programmatic validation** of this file after Codex completes.
+
+```json
+{
+  "task_id": "<domain>/<task_name>",
+  "status": "verified | blocked",
+  "oracle": {
+    "score": 1.0,
+    "grader_check_ok": true,
+    "details": "grader returned [1.0] for oracle expected output"
+  },
+  "blocked_reason": null
+}
+```
+
+Fields:
+- `task_id` — must match the directory path `<domain>/<task_name>`
+- `status` — `"verified"` if `evaluate()` returned `[1.0]` against the known-good output; `"blocked"` otherwise
+- `oracle.score` — the float score returned by `evaluate()`; must be `>= 1.0` for `verified` status
+- `oracle.grader_check_ok` — `true` if the grader correctly scored the oracle expected output
+- `oracle.details` — human-readable summary of what was checked
+- `blocked_reason` — required when `status` is `"blocked"`; explains why the task cannot be verified (e.g., "grader produced non-deterministic score", "hidden reference unreadable", "evaluate() raised exception")
+
+## Dual-Gate Oracle Validation
+
+Oracle validation is a **two-gate** process:
+
+1. **Codex gate** (during generation): You must run the grader against the known-good oracle output and write `oracle-evidence.json`.
+2. **Runner gate** (after generation): The `ale_stage1_runner.py` programmatically validates:
+   - **Level 1** — ALE `--dry-run`: the task appears in experiment unit listing (config is loadable)
+   - **Level 2** — `TaskLoader.load()`: `main.py` imports without syntax errors and returns valid task metadata
+   - **Level 3** — `oracle-evidence.json` schema check: file exists, JSON valid, `score >= 1.0` for `verified`, `blocked_reason` present for `blocked`
+
+A task is marked `verified` only when all three levels pass and `oracle-evidence.json` has `status: "verified"`.
+
 ## Failure Handling
 
-If a task cannot be made oracle-verified within the current run, mark that task `blocked` in `summary.json` with a specific reason. Do not silently include blocked tasks in runnable output.
+If a task cannot be made oracle-verified within the current run, mark that task `blocked` in `oracle-evidence.json` **and** in `summary.json` with a specific `blocked_reason`. The runner will propagate `blocked` status to the final summary.
+
+Blocked reasons must be specific and actionable, e.g.:
+- `"grader returned [0.5] instead of [1.0] — scoring logic mismatch"`
+- `"evaluate() raised FileNotFoundError for hidden reference"`
+- `"task requires nested Docker (DinD) — not supported by docker provider"`
+
+Do not silently include blocked tasks in runnable output. The runner treats `blocked` tasks as non-runnable and excludes them from stage-2 evaluation eligibility.

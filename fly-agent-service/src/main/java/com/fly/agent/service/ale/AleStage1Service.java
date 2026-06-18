@@ -204,19 +204,32 @@ public class AleStage1Service {
             Path logPath = runDir.resolve("codex.log");
             List<String> command = buildCommand(planPath, runDir, request);
             int exitCode = runCodex(command, Path.of(".").toAbsolutePath().normalize(), logPath, runDir, runId);
-            if (exitCode == 0) {
-                markTasksFinished(runId, "COMPLETED", null);
+            // Parse the enhanced summary.json for per-task oracle results
+            List<OracleTaskResult> oracleResults = parseOracleResults(runDir, tasks);
+            applyOracleResults(runId, oracleResults);
+            updateTaskCounts(runId, oracleResults);
+
+            if (exitCode == 0 && !hasFailedTasks(oracleResults)) {
                 writeSummaryIfMissing(runDir, runId, request, tasks, "COMPLETED", null);
                 updateRun(runId, AleRunStatus.COMPLETED, 100, null);
+            } else if (exitCode == 0 && allTasksBlocked(oracleResults)) {
+                String message = "all tasks blocked by oracle validation";
+                writeSummaryIfMissing(runDir, runId, request, tasks, "BLOCKED", message);
+                updateRun(runId, AleRunStatus.BLOCKED, 100, message);
+            } else if (exitCode == 0) {
+                String message = "some tasks failed or blocked — see per-task status";
+                writeSummaryIfMissing(runDir, runId, request, tasks, "COMPLETED", message);
+                updateRun(runId, AleRunStatus.COMPLETED, 100, message);
             } else {
                 String message = "codex exit code " + exitCode;
-                markTasksFinished(runId, "FAILED", message);
+                markTasksStatus(runId, "FAILED", message);
                 writeSummaryIfMissing(runDir, runId, request, tasks, "FAILED", message);
                 updateRun(runId, AleRunStatus.FAILED, 100, message);
             }
         } catch (Exception e) {
             log.error("ALE stage1 run failed", e);
-            markTasksFinished(runId, "FAILED", e.getMessage());
+            markTasksStatus(runId, "FAILED", e.getMessage());
+            updateTaskCountsToFailed(runId);
             try {
                 writeSummaryIfMissing(runDir, runId, request, List.of(), "FAILED", e.getMessage());
             } catch (IOException ioException) {
@@ -270,22 +283,166 @@ public class AleStage1Service {
         }
     }
 
-    private void markTasksFinished(Long runId, String status, String errorMessage) {
-        List<AleTaskEntity> tasks = taskMapper.selectList(new LambdaQueryWrapper<AleTaskEntity>()
-                .eq(AleTaskEntity::getRunId, runId));
-        for (AleTaskEntity task : tasks) {
-            AleTaskEntity update = new AleTaskEntity();
-            update.setId(task.getId());
-            update.setStatus(status);
-            update.setErrorMessage(errorMessage);
-            taskMapper.updateById(update);
+    // ── oracle-aware per-task status ──────────────────────────────────────────────
+
+    private record OracleTaskResult(String taskId, String status, Double oracleScore,
+                                     String evidencePath, boolean dryRunOk,
+                                     boolean taskLoaderOk, boolean evidenceOk,
+                                     String blockedReason) {}
+
+    private void markTaskStatus(Long taskId, String status, Double oracleScore,
+                                 String evidencePath, String errorMessage) {
+        AleTaskEntity update = new AleTaskEntity();
+        update.setId(taskId);
+        update.setStatus(status);
+        update.setScore(oracleScore != null ? java.math.BigDecimal.valueOf(oracleScore) : null);
+        update.setEvidencePath(evidencePath);
+        update.setErrorMessage(errorMessage);
+        taskMapper.updateById(update);
+    }
+
+    /**
+     * Apply per-task oracle results from summary.json.
+     * Falls back to uniform status if summary.json doesn't contain oracle data.
+     */
+    private void applyOracleResults(Long runId, List<OracleTaskResult> results) {
+        List<AleTaskEntity> tasks = taskMapper.selectList(
+                new LambdaQueryWrapper<AleTaskEntity>().eq(AleTaskEntity::getRunId, runId));
+        if (results.isEmpty()) {
+            // Fallback: mark all as completed if no oracle data available
+            for (AleTaskEntity task : tasks) {
+                markTaskStatus(task.getId(), "COMPLETED", null, null, null);
+            }
+            return;
         }
+        // Match results to tasks by taskId suffix
+        for (AleTaskEntity task : tasks) {
+            OracleTaskResult matched = findOracleResult(results, task.getTaskId());
+            if (matched != null) {
+                String status = mapOracleStatus(matched.status());
+                String blockedReason = "blocked".equals(matched.status()) ? matched.blockedReason() : null;
+                markTaskStatus(task.getId(), status, matched.oracleScore(),
+                        matched.evidencePath(), blockedReason);
+            } else {
+                markTaskStatus(task.getId(), "FAILED", null, null,
+                        "no oracle result found for task");
+            }
+        }
+    }
+
+    private OracleTaskResult findOracleResult(List<OracleTaskResult> results, String taskId) {
+        // taskId format: "domain/task_name" — try exact match first, then suffix match
+        for (OracleTaskResult r : results) {
+            if (taskId.equals(r.taskId())) {
+                return r;
+            }
+        }
+        for (OracleTaskResult r : results) {
+            if (taskId.endsWith(r.taskId()) || r.taskId().endsWith(taskId)) {
+                return r;
+            }
+        }
+        return null;
+    }
+
+    private String mapOracleStatus(String oracleStatus) {
+        return switch (oracleStatus) {
+            case "verified" -> "COMPLETED";
+            case "blocked" -> "BLOCKED";
+            default -> "FAILED";
+        };
+    }
+
+    private void updateTaskCounts(Long runId, List<OracleTaskResult> results) {
         AleRunEntity run = new AleRunEntity();
         run.setId(runId);
-        run.setCompletedTasks("COMPLETED".equals(status) ? tasks.size() : 0);
-        run.setFailedTasks("FAILED".equals(status) ? tasks.size() : 0);
-        run.setProgressPercent(100);
+        if (results.isEmpty()) {
+            List<AleTaskEntity> tasks = taskMapper.selectList(
+                    new LambdaQueryWrapper<AleTaskEntity>().eq(AleTaskEntity::getRunId, runId));
+            run.setCompletedTasks(tasks.size());
+            run.setFailedTasks(0);
+            run.setBlockedTasks(0);
+        } else {
+            long completed = results.stream().filter(r -> "verified".equals(r.status())).count();
+            long blocked = results.stream().filter(r -> "blocked".equals(r.status())).count();
+            long failed = results.size() - completed - blocked;
+            run.setCompletedTasks((int) completed);
+            run.setFailedTasks((int) failed);
+            run.setBlockedTasks((int) blocked);
+        }
         runMapper.updateById(run);
+    }
+
+    private void updateTaskCountsToFailed(Long runId) {
+        List<AleTaskEntity> tasks = taskMapper.selectList(
+                new LambdaQueryWrapper<AleTaskEntity>().eq(AleTaskEntity::getRunId, runId));
+        AleRunEntity run = new AleRunEntity();
+        run.setId(runId);
+        run.setFailedTasks(tasks.size());
+        run.setCompletedTasks(0);
+        run.setBlockedTasks(0);
+        runMapper.updateById(run);
+    }
+
+    private boolean hasFailedTasks(List<OracleTaskResult> results) {
+        return results.stream().anyMatch(r -> "failed".equals(r.status()));
+    }
+
+    private boolean allTasksBlocked(List<OracleTaskResult> results) {
+        return !results.isEmpty() && results.stream().allMatch(r -> "blocked".equals(r.status()));
+    }
+
+    /**
+     * Parse oracle validation results from summary.json written by the Python runner.
+     */
+    @SuppressWarnings("unchecked")
+    private List<OracleTaskResult> parseOracleResults(Path runDir, List<AleTaskEntity> tasks) {
+        Path summaryPath = runDir.resolve("summary.json");
+        if (!Files.exists(summaryPath)) {
+            return List.of();
+        }
+        try {
+            String raw = Files.readString(summaryPath, StandardCharsets.UTF_8);
+            Map<String, Object> summary = com.alibaba.fastjson2.JSON.parseObject(raw, Map.class);
+            Map<String, Object> oracleValidation = (Map<String, Object>) summary.get("oracle_validation");
+            if (oracleValidation == null) {
+                return List.of();
+            }
+            List<Map<String, Object>> byTask = (List<Map<String, Object>>) oracleValidation.get("by_task");
+            if (byTask == null || byTask.isEmpty()) {
+                return List.of();
+            }
+            List<OracleTaskResult> results = new ArrayList<>();
+            for (Map<String, Object> entry : byTask) {
+                String taskId = stringField(entry, "task_id");
+                String status = stringField(entry, "status");
+                Double oracleScore = doubleField(entry, "oracle_score");
+                String evidencePath = stringField(entry, "evidence_path");
+                boolean dryRunOk = Boolean.TRUE.equals(entry.get("dry_run_ok"));
+                boolean taskLoaderOk = Boolean.TRUE.equals(entry.get("task_loader_ok"));
+                boolean evidenceOk = Boolean.TRUE.equals(entry.get("evidence_ok"));
+                String blockedReason = stringField(entry, "blocked_reason");
+                results.add(new OracleTaskResult(taskId, status, oracleScore, evidencePath,
+                        dryRunOk, taskLoaderOk, evidenceOk, blockedReason));
+            }
+            return results;
+        } catch (Exception e) {
+            log.warn("Failed to parse oracle results from summary.json", e);
+            return List.of();
+        }
+    }
+
+    private static String stringField(Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        return value instanceof String s ? s : (value != null ? value.toString() : null);
+    }
+
+    private static Double doubleField(Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        if (value instanceof Number n) {
+            return n.doubleValue();
+        }
+        return null;
     }
 
     private void updateProgress(Long runId, int progress) {
@@ -385,7 +542,11 @@ public class AleStage1Service {
             progress = Math.max(progress, 88);
         }
         if (Files.exists(runDir.resolve("summary.json"))) {
-            progress = 95;
+            progress = Math.max(progress, 95);
+        }
+        // Oracle evidence files indicate per-task validation has run
+        if (hasOracleEvidence(runDir)) {
+            progress = Math.max(progress, 98);
         }
         return progress;
     }
@@ -402,6 +563,15 @@ public class AleStage1Service {
         try (var paths = Files.find(runDir, 5, (path, attrs) ->
                 attrs.isRegularFile() && ("main.py".equals(path.getFileName().toString())
                         || "task_card.json".equals(path.getFileName().toString())))) {
+            return paths.findFirst().isPresent();
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private boolean hasOracleEvidence(Path runDir) {
+        try (var paths = Files.find(runDir, 8, (path, attrs) ->
+                attrs.isRegularFile() && "oracle-evidence.json".equals(path.getFileName().toString()))) {
             return paths.findFirst().isPresent();
         } catch (IOException e) {
             return false;
