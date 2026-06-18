@@ -104,39 +104,29 @@ public class AleStage2Service {
 
     // ── internal ──────────────────────────────────────────────────────────────
 
+    private static final String STAGE2_QUEUE_DIR = "/data/fly-agent/ale-runs/.stage2-queue";
+
     private void executeStage2(Long runId) {
         AleRunEntity run = runMapper.selectById(runId);
         if (run == null) return;
         Path runDir = Path.of(run.getOutputRoot());
-        Path frameworkRoot = Path.of(properties.getFrameworkRoot());
 
         try {
-            // Build command
-            String runnerScript = findRunnerScript();
-            List<String> command = new ArrayList<>();
-            command.add("python3");
-            command.add(runnerScript);
-            command.add("--run-dir");
-            command.add(runDir.toAbsolutePath().toString());
-            command.add("--framework-root");
-            command.add(frameworkRoot.toAbsolutePath().toString());
+            // Write trigger file for host-side daemon
+            Path queueDir = Path.of(STAGE2_QUEUE_DIR);
+            Files.createDirectories(queueDir);
+            Path trigger = queueDir.resolve(runId + ".json");
+            String payload = com.alibaba.fastjson2.JSON.toJSONString(
+                    java.util.Map.of("run_id", runId, "run_dir", runDir.toString()));
+            Files.writeString(trigger, payload);
 
-            log.info("Starting stage2: {}", String.join(" ", command));
-            ProcessBuilder builder = new ProcessBuilder(command);
-            builder.directory(Path.of(".").toAbsolutePath().toFile());
-            builder.redirectErrorStream(true);
+            log.info("Stage2 trigger written: {}", trigger);
 
-            Path stage2Log = runDir.resolve("stage2.log");
-            builder.redirectOutput(ProcessBuilder.Redirect.appendTo(stage2Log.toFile()));
-
-            Process process = builder.start();
-            process.getOutputStream().close();
-
-            // Poll progress
+            // Poll for completion (daemon removes trigger when done)
             int lastProgress = 0;
             updateStage2Progress(runId, lastProgress);
-            while (process.isAlive()) {
-                Thread.sleep(5000);
+            while (Files.exists(trigger)) {
+                Thread.sleep(3000);
                 int progress = estimateStage2Progress(runDir);
                 if (progress > lastProgress) {
                     lastProgress = progress;
@@ -144,19 +134,22 @@ public class AleStage2Service {
                 }
             }
 
-            int exitCode = process.waitFor();
-            log.info("Stage2 finished, exit={}", exitCode);
-
             // Collect results from stage2_summary.json
             Path summaryPath = runDir.resolve("stage2_summary.json");
             if (Files.exists(summaryPath)) {
                 parseAndApplyResults(runId, runDir, summaryPath);
             }
 
-            // Update run status
+            // Determine exit from summary
+            boolean ok = false;
+            if (Files.exists(summaryPath)) {
+                String raw = Files.readString(summaryPath);
+                ok = raw.contains("\"completed\"") && raw.contains("\"failed\": 0") || raw.contains("\"failed\":0");
+            }
+
             AleRunEntity update = new AleRunEntity();
             update.setId(runId);
-            update.setStage2Status(exitCode == 0 ? "COMPLETED" : "FAILED");
+            update.setStage2Status(ok ? "COMPLETED" : "FAILED");
             update.setStage2Progress(100);
             update.setStage2FinishedAt(LocalDateTime.now());
             update.setStage2SummaryPath(summaryPath.toString());
