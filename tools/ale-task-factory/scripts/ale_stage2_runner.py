@@ -162,11 +162,11 @@ def prepare_tasks(
 
     exp_yaml = run_dir / "exp.yaml"
     exp_content = f"""name: ale_stage2_{run_key}
-secret_file: secret/.env
+secret_file: {framework_root}/secret/.env
 agents:
-  - configs/agents/claude_code.yaml
-environment: configs/environments/docker.yaml
-tasks: selected_tasks/stage2_{run_key}.txt
+  - {framework_root}/configs/agents/claude_code.yaml
+environment: {framework_root}/configs/environments/docker.yaml
+tasks: {task_list_path}
 output:
   root: {run_dir}/logs/ale
 concurrency: 1
