@@ -45,7 +45,7 @@ def _find_run_dirs(log_root: Path) -> list[Path]:
     if not log_root.exists():
         return []
     dirs = sorted(
-        (p for p in log_root.glob("**/v0/*") if p.is_dir()),
+        (p for p in log_root.glob("**/v0/*") if p.is_dir() and (p / "run.json").exists()),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
@@ -436,6 +436,8 @@ def main() -> int:
         elapsed = time.monotonic() - t0
 
         result = collect_task_result(run_dir, log_root, task_id, proc, elapsed)
+        if result["status"] == "failed" and result["error"] is None:
+            result["error"] = (proc.stderr or proc.stdout or "ale_run exit code " + str(proc.returncode))[:2000]
         task_results.append(result)
 
         status = result["status"]
@@ -455,16 +457,8 @@ def main() -> int:
         f"avg_score={summary['avg_score']}"
     )
 
-    # Clean up symlinks
-    for t in verified:
-        task_id = t["task_id"]
-        domain, task_name = task_id.split("/", 1)
-        link = framework_root / "tasks" / domain / task_name
-        if link.is_symlink():
-            try:
-                link.unlink()
-            except OSError:
-                pass
+    # Keep symlinks for debugging — user can clean up manually
+    # (symlinks are recreated on each run anyway)
 
     return 1 if failed > 0 else 0
 
