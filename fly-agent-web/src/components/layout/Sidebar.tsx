@@ -70,7 +70,7 @@ export function Sidebar() {
                 />
                 <WorkspaceLink
                   icon="mdi:factory"
-                  label="ALE Stage 1"
+                  label="ALE 任务工厂"
                   to="/ale"
                 />
               </div>
