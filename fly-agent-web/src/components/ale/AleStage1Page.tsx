@@ -9,6 +9,7 @@ import {
   getAleRunLog,
   listAleRuns,
   startAleRun,
+  startAleStage2,
 } from '@/lib/api'
 import type { AleOptionsResponse, AleRun, AleRunRequest, AleRunStatus, AleRunSummary } from '@/types/ale'
 
@@ -60,7 +61,7 @@ export function AleStage1Page() {
   const [runs, setRuns] = useState<AleRunSummary[]>([])
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null)
   const [selectedRun, setSelectedRun] = useState<AleRun | null>(null)
-  const [activePanel, setActivePanel] = useState<'progress' | 'tasks' | 'logs'>('progress')
+  const [activePanel, setActivePanel] = useState<'progress' | 'tasks' | 'logs' | 'stage2'>('progress')
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null)
   const [statusFilter, setStatusFilter] = useState<AleRunStatus | 'ALL'>('ALL')
   const [domainFilter, setDomainFilter] = useState<string | null>(null)
@@ -131,6 +132,23 @@ export function AleStage1Page() {
   async function refreshRunLog(id: number) {
     const next = await getAleRunLog(id, 400)
     setLogLines(next)
+  }
+
+  const [stage2Loading, setStage2Loading] = useState(false)
+
+  async function handleStartStage2() {
+    if (!selectedRunId) return
+    setStage2Loading(true)
+    setError(null)
+    try {
+      await startAleStage2(selectedRunId)
+      await refreshSelectedRun(selectedRunId)
+      setActivePanel('stage2')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Stage2 启动失败')
+    } finally {
+      setStage2Loading(false)
+    }
   }
 
   async function handleStart() {
@@ -281,12 +299,13 @@ export function AleStage1Page() {
               <div className="flex w-full shrink-0 rounded-lg border border-terminal bg-white p-1 sm:w-auto">
                 <PanelTab active={activePanel === 'progress'} icon="mdi:chart-line" label="进度" onClick={() => setActivePanel('progress')} />
                 <PanelTab active={activePanel === 'tasks'} icon="mdi:format-list-checks" label="Task" onClick={() => setActivePanel('tasks')} />
+                <PanelTab active={activePanel === 'stage2'} icon="mdi:play-circle" label="Stage2" onClick={() => setActivePanel('stage2')} />
                 <PanelTab active={activePanel === 'logs'} icon="mdi:console-line" label="日志" onClick={() => setActivePanel('logs')} />
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-hidden">
               {activePanel === 'progress' ? (
-                <RunProgress run={activeRun} selectedTask={selectedTask} />
+                <RunProgress run={activeRun} selectedTask={selectedTask} stage2Loading={stage2Loading} onStartStage2={handleStartStage2} />
               ) : null}
               {activePanel === 'tasks' ? (
                 <TaskExplorer
@@ -299,6 +318,14 @@ export function AleStage1Page() {
                 <RunLogs
                   lines={logLines}
                   onRefresh={() => selectedRunId && refreshRunLog(selectedRunId)}
+                />
+              ) : null}
+              {activePanel === 'stage2' ? (
+                <Stage2Panel
+                  run={activeRun}
+                  tasks={tasks}
+                  stage2Loading={stage2Loading}
+                  onStartStage2={handleStartStage2}
                 />
               ) : null}
             </div>
@@ -333,14 +360,22 @@ function PanelTab({
   )
 }
 
-function RunProgress({ run, selectedTask }: { run: AleRun | AleRunSummary | null; selectedTask: AleRun['tasks'][number] | null }) {
+function RunProgress({ run, selectedTask, stage2Loading, onStartStage2 }: {
+  run: AleRun | AleRunSummary | null
+  selectedTask: AleRun['tasks'][number] | null
+  stage2Loading: boolean
+  onStartStage2: () => void
+}) {
   if (!run) {
     return <div className="h-full overflow-y-auto px-4 py-6 text-sm text-text-secondary custom-scrollbar">选择一个 run 查看进度</div>
   }
+  const stage1Done = run.status === 'COMPLETED'
+  const stage2Running = run.stage2Status === 'RUNNING'
+  const stage2Done = run.stage2Status === 'COMPLETED' || run.stage2Status === 'FAILED'
   return (
     <div className="h-full space-y-4 overflow-y-auto p-4 custom-scrollbar">
       <div className="flex items-center justify-between text-xs">
-        <span>整体进度</span>
+        <span>Stage1 进度</span>
         <StatusPill status={run.status} />
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-tertiary">
@@ -354,6 +389,29 @@ function RunProgress({ run, selectedTask }: { run: AleRun | AleRunSummary | null
         <InfoLine label="阻塞" value={run.blockedTasks} />
         <InfoLine label="输出目录" value={run.outputRoot ?? '-'} />
       </div>
+
+      {/* ── Stage 2 ── */}
+      <div className="rounded-lg border border-terminal p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium">Stage2 测评</span>
+          <StatusPill status={run.stage2Status ?? '-'} />
+        </div>
+        {stage2Running && (
+          <div className="space-y-1">
+            <div className="h-2 overflow-hidden rounded-full bg-tertiary">
+              <div className="h-full rounded-full bg-green" style={{ width: `${run.stage2Progress ?? 0}%` }} />
+            </div>
+            <div className="text-xs text-text-secondary">执行中… {run.stage2Progress ?? 0}%</div>
+          </div>
+        )}
+        {stage1Done && !stage2Running && !stage2Done && (
+          <Button size="sm" onClick={onStartStage2} disabled={stage2Loading} className="w-full">
+            {stage2Loading ? <Loading size="sm" /> : <Icon icon="mdi:play" className="mr-1 h-4 w-4" />}
+            {stage2Loading ? '启动中…' : '开始测评'}
+          </Button>
+        )}
+      </div>
+
       <div className="rounded-lg border border-terminal p-3">
         <div className="mb-2 text-xs text-text-secondary">当前 Task</div>
         {selectedTask ? (
@@ -365,6 +423,8 @@ function RunProgress({ run, selectedTask }: { run: AleRun | AleRunSummary | null
             <div className="grid gap-2 md:grid-cols-2">
               <InfoLine label="目录" value={selectedTask.taskDir ?? '-'} />
               <InfoLine label="证据" value={selectedTask.evidencePath ?? '-'} />
+              <InfoLine label="S2 得分" value={selectedTask.stage2Score ?? '-'} />
+              <InfoLine label="S2 耗时(s)" value={selectedTask.stage2DurationS ?? '-'} />
             </div>
           </div>
         ) : (
@@ -576,6 +636,88 @@ function InfoLine({ label, value }: { label: string; value: string | number }) {
     <div className="rounded-md border border-terminal px-3 py-2">
       <div className="text-xs text-text-secondary">{label}</div>
       <div className="truncate text-xs">{String(value)}</div>
+    </div>
+  )
+}
+
+function Stage2Panel({
+  run,
+  tasks,
+  stage2Loading,
+  onStartStage2,
+}: {
+  run: AleRun | AleRunSummary | null
+  tasks: AleRun['tasks']
+  stage2Loading: boolean
+  onStartStage2: () => void
+}) {
+  if (!run) {
+    return <div className="h-full overflow-y-auto px-4 py-6 text-sm text-text-secondary custom-scrollbar">选择一个 run 查看 Stage2</div>
+  }
+  const stage2Tasks = tasks.filter((t) => t.stage2Status)
+  const completed = stage2Tasks.filter((t) => t.stage2Status === 'completed').length
+  const failed = stage2Tasks.filter((t) => t.stage2Status === 'failed').length
+  const avgScore = stage2Tasks.reduce((s, t) => s + (t.stage2Score ?? 0), 0) / (stage2Tasks.length || 1)
+
+  return (
+    <div className="h-full space-y-4 overflow-y-auto p-4 custom-scrollbar">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-bold">Stage2 测评</span>
+        <StatusPill status={run.stage2Status ?? (run.status === 'COMPLETED' ? 'ready' : 'waiting')} />
+      </div>
+
+      {run.status === 'COMPLETED' && run.stage2Status !== 'RUNNING' && run.stage2Status !== 'COMPLETED' && (
+        <Button size="sm" onClick={onStartStage2} disabled={stage2Loading} className="w-full">
+          {stage2Loading ? <Loading size="sm" /> : <Icon icon="mdi:play" className="mr-1 h-4 w-4" />}
+          {stage2Loading ? '启动中…' : '开始测评'}
+        </Button>
+      )}
+
+      {run.stage2Status === 'RUNNING' && (
+        <div className="space-y-2">
+          <div className="h-2 overflow-hidden rounded-full bg-tertiary">
+            <div className="h-full rounded-full bg-green" style={{ width: `${run.stage2Progress ?? 0}%` }} />
+          </div>
+          <div className="text-xs text-text-secondary">执行中… {run.stage2Progress ?? 0}%</div>
+        </div>
+      )}
+
+      {stage2Tasks.length > 0 && (
+        <>
+          <div className="grid gap-2 text-xs md:grid-cols-4">
+            <InfoLine label="Task 数" value={stage2Tasks.length} />
+            <InfoLine label="完成" value={completed} />
+            <InfoLine label="失败" value={failed} />
+            <InfoLine label="均分" value={avgScore.toFixed(3)} />
+          </div>
+
+          <div className="space-y-2">
+            {stage2Tasks.map((task) => (
+              <div key={task.id} className="rounded-lg border border-terminal p-3 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-xs font-medium">{task.taskId}</span>
+                  <StatusPill status={task.stage2Status ?? '-'} />
+                </div>
+                <div className="grid gap-2 text-xs md:grid-cols-3">
+                  <InfoLine label="S2 得分" value={task.stage2Score ?? '-'} />
+                  <InfoLine label="S2 耗时(s)" value={task.stage2DurationS ?? '-'} />
+                  <InfoLine label="S1 证据" value={task.evidencePath ? '有' : '-'} />
+                </div>
+                {task.stage2Error ? (
+                  <div className="text-xs text-error truncate">{task.stage2Error}</div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {stage2Tasks.length === 0 && run.stage2Status === 'RUNNING' && (
+        <div className="text-xs text-text-secondary text-center py-6">等待首个 task 完成…</div>
+      )}
+      {stage2Tasks.length === 0 && !run.stage2Status && (
+        <div className="text-xs text-text-secondary text-center py-6">Stage1 完成后可启动 Stage2 测评</div>
+      )}
     </div>
   )
 }

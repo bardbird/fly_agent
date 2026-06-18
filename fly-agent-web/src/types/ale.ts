@@ -44,11 +44,16 @@ export interface AleTask {
   scenario?: string
   difficulty?: string
   status: string
+  stage2Status?: string
   score?: number
+  stage2Score?: number
+  stage2DurationS?: number
   taskDir?: string
   evidencePath?: string
+  stage2ResultDir?: string
   summary?: string
   errorMessage?: string
+  stage2Error?: string
   createdAt?: string
   updatedAt?: string
 }
@@ -61,6 +66,8 @@ export interface AleRunSummary {
   scenario: string
   difficulty: string
   status: AleRunStatus
+  stage2Status?: string
+  stage2Progress?: number
   progressPercent: number
   totalTasks: number
   completedTasks: number
@@ -87,6 +94,8 @@ export interface AleRun extends AleRunSummary {
   codexModel: string
   startedAt?: string
   finishedAt?: string
+  stage2StartedAt?: string
+  stage2FinishedAt?: string
   createdAt?: string
   updatedAt?: string
   tasks: AleTask[]

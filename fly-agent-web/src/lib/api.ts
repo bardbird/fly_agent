@@ -224,6 +224,28 @@ export async function getAleRunLog(id: number, lines = 400): Promise<string[]> {
   return Array.isArray(linesData) ? linesData : []
 }
 
+// ── Stage 2 ──────────────────────────────────────────────────────────────────
+
+export async function startAleStage2(runId: number): Promise<AleRun> {
+  return unwrapResult(await api.post<ApiResult<AleRun>>(`/ale/stage2/runs/${runId}/start`))
+}
+
+export async function listAleStage2Runs(): Promise<AleRunSummary[]> {
+  const runs = unwrapResult(await api.get<ApiResult<AleRunSummary[]>>('/ale/stage2/runs'))
+  return Array.isArray(runs) ? runs : []
+}
+
+export async function getAleStage2Run(id: number): Promise<AleRun> {
+  return unwrapResult(await api.get<ApiResult<AleRun>>('/ale/stage2/runs/detail', { params: { id } }))
+}
+
+export async function getAleStage2Log(id: number, lines = 400): Promise<string[]> {
+  const linesData = unwrapResult(
+    await api.get<ApiResult<string[]>>('/ale/stage2/runs/log', { params: { id, lines } })
+  )
+  return Array.isArray(linesData) ? linesData : []
+}
+
 export async function listSweTasks(): Promise<SweTask[]> {
   const tasks = unwrapResult(await api.get<ApiResult<SweTask[]>>('/swe/tasks'))
   return Array.isArray(tasks) ? tasks.map(normalizeTask) : []

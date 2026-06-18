@@ -15,6 +15,8 @@ public class AleRunSummaryDTO {
     private String scenario;
     private String difficulty;
     private String status;
+    private String stage2Status;
+    private Integer stage2Progress;
     private Integer progressPercent;
     private Integer totalTasks;
     private Integer completedTasks;

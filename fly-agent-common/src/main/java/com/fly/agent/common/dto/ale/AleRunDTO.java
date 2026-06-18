@@ -23,6 +23,8 @@ public class AleRunDTO {
     private Integer targetCount;
     private String codexModel;
     private String status;
+    private String stage2Status;
+    private Integer stage2Progress;
     private Integer progressPercent;
     private Integer totalTasks;
     private Integer completedTasks;
@@ -34,6 +36,8 @@ public class AleRunDTO {
     private String errorMessage;
     private LocalDateTime startedAt;
     private LocalDateTime finishedAt;
+    private LocalDateTime stage2StartedAt;
+    private LocalDateTime stage2FinishedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<AleTaskDTO> tasks = new ArrayList<>();
