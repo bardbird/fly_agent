@@ -1,4 +1,0 @@
-interface:
-  display_name: "ALE Task Runner"
-  short_description: "Execute ALE stage 2 — run verified task packages through the ALE framework with Claude Code"
-  default_prompt: "Use the ALE task runner skill to execute stage-2 evaluation on verified task packages."

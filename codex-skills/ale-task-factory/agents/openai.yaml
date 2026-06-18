@@ -1,4 +1,0 @@
-interface:
-  display_name: "ALE Task Factory"
-  short_description: "Generate ALE-native task packages with task_card.json, main.py, graders, and oracle evidence"
-  default_prompt: "Use the ALE task factory skill to generate the task described in the plan."
