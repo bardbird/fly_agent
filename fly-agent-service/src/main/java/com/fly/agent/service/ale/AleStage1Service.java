@@ -40,7 +40,7 @@ import java.util.stream.Collectors;
 public class AleStage1Service {
 
     private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(2);
-    private static final String DEFAULT_MODEL = "gpt-5";
+    private static final String DEFAULT_MODEL = "gpt-5.5";
     private static final int DEFAULT_TARGET_COUNT = 1;
     private static final String SKILL_ROOT = "codex-skills/ale-task-factory";
 
