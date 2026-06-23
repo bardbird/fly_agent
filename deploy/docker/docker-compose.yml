@@ -124,6 +124,9 @@ services:
       SWE_OPUS_ATTEMPTS: ${SWE_OPUS_ATTEMPTS:-8}
       SWE_OPUS_MAX_STEPS_SCHEDULE: ${SWE_OPUS_MAX_STEPS_SCHEDULE:-180,50,10}
       SWE_MODEL_TIMEOUT_SECONDS: ${SWE_MODEL_TIMEOUT_SECONDS:-3600}
+      ALE_OUTPUT_ROOT: ${ALE_OUTPUT_ROOT:-/data/fly-agent/ale-runs}
+      ALE_QUEUE_DIR: ${ALE_QUEUE_DIR:-/data/fly-agent/ale-runs/.queue}
+      ALE_FRAMEWORK_ROOT: ${ALE_FRAMEWORK_ROOT:-/home/ubuntu/agents-last-exam}
     ports:
       - "${SERVER_PORT:-8080}:8080"
     volumes:
@@ -131,6 +134,7 @@ services:
       - ${FLY_AGENT_LOG_DIR:-/data/fly-agent/logs}:/app/logs
       - ${SWE_AGENT_HOST_ROOT:-/opt/fly-agent/swe-agent}:/opt/fly-agent/swe-agent:ro
       - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
+      - ${ALE_RUNS_HOST_DIR:-/data/fly-agent/ale-runs}:/data/fly-agent/ale-runs
     networks:
       - fly-agent
 
