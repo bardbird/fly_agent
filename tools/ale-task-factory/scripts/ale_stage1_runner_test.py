@@ -69,6 +69,17 @@ class CheckExactTaskIdsTest(unittest.TestCase):
             self.assertIn("t02", str(cm.exception))
             self.assertIn("t03", str(cm.exception))
 
+    def test_detects_all_missing_when_nothing_generated(self):
+        with tempfile.TemporaryDirectory() as d:
+            # codex 什么都没生成（tasks/ 不存在）
+            with self.assertRaises(ValueError) as cm:
+                r.check_exact_task_ids(Path(d), ["d/t01", "d/t02"])
+            msg = str(cm.exception)
+            self.assertIn("t01", msg)
+            self.assertIn("t02", msg)
+            # extra 应为空
+            self.assertIn("extra=[]", msg)
+
 
 class CheckAleVenvTest(unittest.TestCase):
     def test_failure_is_fatal_not_downgrade(self):

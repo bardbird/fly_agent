@@ -581,7 +581,6 @@ def write_summary(
         "outputs": [
             str(output_root / "request.json"),
             str(output_root / "plan.json"),
-            str(output_root / "codex.log"),
         ],
     }
     (output_root / "summary.json").write_text(
@@ -684,6 +683,8 @@ def main() -> int:
             return 4
 
         prog("oracle_validating", 70)
+        # TaskRequest 仅为 validate_generated_tasks 的 API 兼容而构造；
+        # 批量流程下实际任务由 _discover_task_dirs 发现，per-task 字段（task_id/title 等）刻意留空。
         req = TaskRequest(domain=request.get("domain", ""), task_id="",
                           title="", scenario=request.get("scenario", ""),
                           difficulty=request.get("difficulty", "medium"),
