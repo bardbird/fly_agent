@@ -30,6 +30,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ale_progress import write_progress
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -64,65 +66,37 @@ def _write_json(path: Path, data: dict) -> None:
         f.write("\n")
 
 
+def load_trigger(path: Path) -> dict:
+    """读取并校验 stage2 触发文件。"""
+    data = _read_json(path)
+    if data.get("type") != "stage2":
+        raise ValueError(f"trigger type != stage2: {data.get('type')}")
+    stage2 = data.get("stage2") or {}
+    for key in ("framework_root",):
+        if not stage2.get(key):
+            raise ValueError(f"trigger missing stage2.{key}")
+    return data
+
+
 # ── stage-1 summary parsing ──────────────────────────────────────────────────
 
 def get_verified_tasks(run_dir: Path) -> list[dict]:
-    """Discover verified tasks from either oracle_validation in summary.json
-    or by scanning oracle-evidence.json files in task directories."""
+    """只接受 summary.json → oracle_validation.by_task[status=="verified"]。
+
+    无 summary / 无 verified / 结构异常 → 返回 []，由 main 写 phase=failed。
+    不扫描 oracle-evidence.json，不据 main.py/task_card.json 猜测（删除全部 fallback）。
+    """
     summary_path = run_dir / "summary.json"
-
-    # Try oracle_validation in summary.json first
-    if summary_path.exists():
+    if not summary_path.exists():
+        return []
+    try:
         summary = _read_json(summary_path)
-        oracle = summary.get("oracle_validation", {})
-        by_task = oracle.get("by_task", [])
-        verified_from_summary = [t for t in by_task if t.get("status") == "verified"]
-        if verified_from_summary:
-            return verified_from_summary
-
-    # Fallback: scan per-task oracle-evidence.json
-    verified = []
-    tasks_root = run_dir / "tasks"
-    if tasks_root.is_dir():
-        for domain_dir in sorted(tasks_root.iterdir()):
-            if not domain_dir.is_dir():
-                continue
-            for task_dir in sorted(domain_dir.iterdir()):
-                evidence_path = task_dir / "oracle-logs" / "oracle-evidence.json"
-                if not evidence_path.is_file():
-                    continue
-                try:
-                    evidence = _read_json(evidence_path)
-                    if evidence.get("status") == "verified" and evidence.get("oracle", {}).get("score", 0) >= 1.0:
-                        verified.append({
-                            "task_id": evidence.get("task_id", f"{domain_dir.name}/{task_dir.name}"),
-                            "status": "verified",
-                            "oracle_score": evidence["oracle"]["score"],
-                            "dry_run_ok": evidence.get("ale_dry_run_ok", True),
-                            "task_loader_ok": evidence.get("task_loader_ok", True),
-                            "evidence_ok": True,
-                        })
-                except (json.JSONDecodeError, KeyError):
-                    continue
-
-    if not verified:
-        # Last fallback: any task dir with main.py is considered verified
-        if tasks_root.is_dir():
-            for domain_dir in sorted(tasks_root.iterdir()):
-                if not domain_dir.is_dir():
-                    continue
-                for task_dir in sorted(domain_dir.iterdir()):
-                    if (task_dir / "main.py").is_file() and (task_dir / "task_card.json").is_file():
-                        verified.append({
-                            "task_id": f"{domain_dir.name}/{task_dir.name}",
-                            "status": "verified",
-                            "oracle_score": None,
-                            "dry_run_ok": True,
-                            "task_loader_ok": True,
-                            "evidence_ok": False,
-                        })
-
-    return verified
+    except (json.JSONDecodeError, OSError):
+        return []
+    by_task = summary.get("oracle_validation", {}).get("by_task", [])
+    if not isinstance(by_task, list):
+        return []
+    return [t for t in by_task if isinstance(t, dict) and t.get("status") == "verified"]
 
 
 # ── prepare ──────────────────────────────────────────────────────────────────
@@ -179,26 +153,18 @@ cleanup_mode: delete
 
 # ── execute ──────────────────────────────────────────────────────────────────
 
-def run_one_task(
-    framework_root: Path,
-    exp_yaml: Path,
-    task_id: str,
-    timeout_s: int,
-) -> subprocess.CompletedProcess[str]:
-    """Invoke ``ale_run run`` for a single task."""
+def run_one_task(framework_root, exp_yaml, task_id, timeout_s):
+    """Invoke ale_run for a single task; output streams to parent stdout/stderr."""
     uv = _find_uv()
-    cmd = [
-        uv, "run", "python", "-m", "ale_run", "run",
-        str(exp_yaml),
-        "--task", task_id,
-    ]
+    cmd = [uv, "run", "python", "-m", "ale_run", "run", str(exp_yaml), "--task", task_id]
     print(f"  [{task_id}] $ {' '.join(cmd)}")
     return subprocess.run(
         cmd,
         cwd=str(framework_root),
-        capture_output=True,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
         text=True,
-        timeout=timeout_s + 300,  # extra buffer for setup/teardown
+        timeout=timeout_s + 300,
         check=False,
     )
 
@@ -367,100 +333,71 @@ def write_summary(run_dir: Path, task_results: list[dict], agent: str, model: st
 def main() -> int:
     parser = argparse.ArgumentParser(description="ALE Stage 2 Runner")
     parser.add_argument("--run-dir", required=True, help="Stage-1 output directory")
-    parser.add_argument(
-        "--framework-root",
-        default="/home/ubuntu/agents-last-exam",
-        help="ALE framework root",
-    )
-    parser.add_argument(
-        "--agent",
-        default="claude_code",
-        help="Agent harness to use (default: claude_code)",
-    )
-    parser.add_argument(
-        "--model",
-        default="claude-sonnet-4-6",
-        help="Model for the agent (default: claude-sonnet-4-6)",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=7200,
-        help="Per-task wall-clock timeout in seconds (default: 7200)",
-    )
+    parser.add_argument("--from-trigger", required=True, help="trigger json path")
     args = parser.parse_args()
 
     run_dir = Path(args.run_dir).expanduser().resolve()
-    framework_root = Path(args.framework_root).expanduser().resolve()
+    trigger = load_trigger(Path(args.from_trigger).expanduser().resolve())
+    s2 = trigger["stage2"]
+    framework_root = Path(s2.get("framework_root", ".")).expanduser().resolve()
+    agent = s2.get("agent", "claude_code")
+    model = s2.get("model", "claude-sonnet-4-6")
+    timeout = int(s2.get("timeout", 7200))
 
-    if not run_dir.is_dir():
-        raise SystemExit(f"run-dir does not exist: {run_dir}")
-    if not (framework_root / "ale_run").is_dir():
-        raise SystemExit(f"ALE framework root is invalid: {framework_root}")
+    progress = run_dir / "stage2_progress.json"
+    def prog(phase, percent, **kw):
+        write_progress(progress, stage="stage2", phase=phase, percent=percent, **kw)
 
-    # ── Phase 1: Prepare ─────────────────────────────────────────────────
-    print(f"[stage2] Run dir: {run_dir}")
-    verified = get_verified_tasks(run_dir)
-    if not verified:
-        print("[stage2] No verified tasks found — nothing to run.")
-        write_summary(run_dir, [], args.agent, args.model)
-        return 0
+    try:
+        if not (framework_root / "ale_run").is_dir():
+            prog("failed", 100, message=f"ALE framework root invalid: {framework_root}")
+            return 2
 
-    print(f"[stage2] Verified tasks: {len(verified)}")
-    for t in verified:
-        print(f"  - {t['task_id']}")
+        prog("prepare", 5)
+        verified = get_verified_tasks(run_dir)
+        if not verified:
+            prog("failed", 100, message="no verified tasks in summary.json")
+            return 0  # 非 runner 崩溃：如实记录，退出 0
 
-    exp_yaml = prepare_tasks(run_dir, framework_root, verified)
-    log_root = run_dir / "logs" / "ale"
+        exp_yaml = prepare_tasks(run_dir, framework_root, verified)
+        log_root = run_dir / "logs" / "ale"
+        task_results = []
+        total = len(verified)
+        failed = 0
+        for i, t in enumerate(verified):
+            task_id = t["task_id"]
+            prog("task_running", 10 + int(80 * i / total),
+                 counts={"total": total, "completed": i},
+                 current_task=task_id)
+            print(f"\n[stage2] [{i+1}/{total}] {task_id}")
+            domain, task_name = task_id.split("/", 1)
+            task_card_path = run_dir / "tasks" / domain / task_name / "task_card.json"
+            task_timeout = timeout
+            if task_card_path.exists():
+                try:
+                    task_timeout = _read_json(task_card_path).get("vm", {}).get("timeout_s", timeout)
+                except (json.JSONDecodeError, KeyError):
+                    pass
+            import time
+            t0 = time.monotonic()
+            proc = run_one_task(framework_root, exp_yaml, task_id, task_timeout)
+            elapsed = time.monotonic() - t0
+            result = collect_task_result(run_dir, log_root, task_id, proc, elapsed)
+            if result["status"] == "failed" and result["error"] is None:
+                result["error"] = f"ale_run exit code {proc.returncode}"
+            task_results.append(result)
+            if result["status"] == "failed":
+                failed += 1
 
-    # ── Phase 2: Execute ─────────────────────────────────────────────────
-    task_results = []
-    failed = 0
-    for i, t in enumerate(verified):
-        task_id = t["task_id"]
-        print(f"\n[stage2] [{i+1}/{len(verified)}] {task_id}")
-
-        # Read timeout from task_card.json if present
-        domain, task_name = task_id.split("/", 1)
-        task_card_path = run_dir / "tasks" / domain / task_name / "task_card.json"
-        timeout_s = args.timeout
-        if task_card_path.exists():
-            try:
-                card = _read_json(task_card_path)
-                timeout_s = card.get("vm", {}).get("timeout_s", args.timeout)
-            except (json.JSONDecodeError, KeyError):
-                pass
-
-        t0 = time.monotonic()
-        proc = run_one_task(framework_root, exp_yaml, task_id, timeout_s)
-        elapsed = time.monotonic() - t0
-
-        result = collect_task_result(run_dir, log_root, task_id, proc, elapsed)
-        if result["status"] == "failed" and result["error"] is None:
-            result["error"] = (proc.stderr or proc.stdout or "ale_run exit code " + str(proc.returncode))[:2000]
-        task_results.append(result)
-
-        status = result["status"]
-        print(f"  → {status}  score={result['score']}  {elapsed:.0f}s")
-        if status == "failed":
-            failed += 1
-
-    # ── Phase 3: Summarize ───────────────────────────────────────────────
-    print(f"\n[stage2] Writing summary …")
-    summary = write_summary(run_dir, task_results, args.agent, args.model)
-    counts = summary["counts"]
-    print(
-        f"[stage2] Done.  "
-        f"total={counts['total']} "
-        f"completed={counts['completed']} "
-        f"failed={counts['failed']} "
-        f"avg_score={summary['avg_score']}"
-    )
-
-    # Keep symlinks for debugging — user can clean up manually
-    # (symlinks are recreated on each run anyway)
-
-    return 1 if failed > 0 else 0
+        prog("summarizing", 95, counts={"total": total, "completed": total - failed, "failed": failed})
+        summary = write_summary(run_dir, task_results, agent, model)
+        counts = summary["counts"]
+        prog("done", 100, counts=counts,
+             message=f"completed={counts['completed']} failed={counts['failed']}")
+        return 1 if failed > 0 else 0
+    except Exception as exc:  # try/except：任何异常写终态 failed
+        prog("failed", 100, message=f"runner crashed: {type(exc).__name__}: {exc}")
+        raise
 
 
 if __name__ == "__main__":
