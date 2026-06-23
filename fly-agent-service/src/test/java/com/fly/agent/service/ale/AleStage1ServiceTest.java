@@ -63,4 +63,20 @@ class AleStage1ServiceTest {
         assertEquals(1, tasks.size());
         assertEquals("computing_math/task_authoring_01", tasks.get(0).get("task_id"));
     }
+
+    @Test
+    void getOptionsReturnsConfiguredCodexModels() {
+        AleRunMapper runMapper = mock(AleRunMapper.class);
+        AleTaskMapper taskMapper = mock(AleTaskMapper.class);
+        AleExecutionGateway gateway = mock(AleExecutionGateway.class);
+        AleProperties props = new AleProperties();
+        props.setCodexModels(java.util.List.of("gpt-5.5", "glm-5"));
+        when(runMapper.selectList(any())).thenReturn(java.util.List.of());
+        AleStage1Service svc = new AleStage1Service(runMapper, taskMapper, gateway, props);
+
+        List<String> modelValues = svc.getOptions().getCodexModels().stream()
+                .map(com.fly.agent.common.dto.ale.AleOptionDTO::getValue).toList();
+        assertTrue(modelValues.contains("gpt-5.5"));
+        assertTrue(modelValues.contains("glm-5"));
+    }
 }
