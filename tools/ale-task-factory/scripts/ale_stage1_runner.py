@@ -21,7 +21,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -74,41 +74,37 @@ class OracleCheck:
     blocked_reason: str = ""
 
 
-# ── plan builder ─────────────────────────────────────────────────────────────
-
-
-def build_plan(request: TaskRequest) -> dict[str, Any]:
-    task_dir = Path("tasks") / request.domain / request.task_id
-    return {
-        "task": asdict(request),
-        "task_dir": str(task_dir),
-        "framework_root": request.framework_root,
-        "framework_tasks_root": str(Path(request.framework_root) / "tasks"),
-        "stages": [
-            "brief",
-            "draft",
-            "scaffold",
-            "oracle_validate",
-        ],
-        "requirements": {
-            "oracle_must_pass": True,
-            "no_stage2_model_evaluation": True,
-            "ale_native_main_py": True,
-            "reference_hidden": True,
-        },
-        # NEW: runner will execute programmatic validation after Codex
-        "post_codex_validation": {
-            "enabled": True,
-            "levels": ["ale_dry_run", "task_loader", "oracle_evidence"],
-        },
-    }
-
-
 # ── codex invocation ─────────────────────────────────────────────────────────
 
 
+def _estimate_codex_progress(run_dir: Path) -> int:
+    """据 run_dir 已生成产物估算 codex 阶段进度（base 20）。"""
+    pct = 20
+    stages = run_dir / "generated" / "stages"
+    if (stages / "brief.md").exists():
+        pct = max(pct, 40)
+    if (stages / "draft.md").exists():
+        pct = max(pct, 55)
+    if (stages / "scaffold.md").exists():
+        pct = max(pct, 70)
+    # main.py / task_card.json 出现 = 任务已脚手架化
+    try:
+        for _ in run_dir.rglob("main.py"):
+            pct = max(pct, 85)
+            break
+    except OSError:
+        pass
+    try:
+        for _ in run_dir.rglob("oracle-evidence.json"):
+            pct = max(pct, 90)
+            break
+    except OSError:
+        pass
+    return pct
+
+
 def run_codex(
-    plan_path: Path, output_dir: Path, cwd: Path, framework_root: Path
+    plan_path: Path, output_dir: Path, cwd: Path, framework_root: Path, codex_model: str
 ) -> int:
     """codex exec：输出透传到父进程 stdout/stderr（daemon 重定向到 stage1.log）。返回退出码。"""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -117,6 +113,8 @@ def run_codex(
         "exec",
         "--cd",
         str(cwd),
+        "--model",
+        codex_model,
         "--dangerously-bypass-approvals-and-sandbox",
         (
             f"Use the ALE task factory skill to produce the batch described in {plan_path}. "
@@ -636,6 +634,7 @@ def main() -> int:
     framework_root = Path(s1["framework_root"]).expanduser().resolve()
     tasks_contract = s1["tasks"]
     request = s1.get("request", {})
+    codex_model = s1.get("codex_model", "gpt-5.5")
     expected_ids = [t["task_id"] for t in tasks_contract]
 
     progress = run_dir / "stage1_progress.json"
@@ -670,7 +669,21 @@ def main() -> int:
         plan_path.write_text(json.dumps(batch_plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
         prog("codex_running", 20)
-        exit_code = run_codex(plan_path, run_dir, Path.cwd(), framework_root)
+        import threading
+        stop = threading.Event()
+        def _watch():
+            while not stop.wait(5):
+                try:
+                    prog("codex_running", _estimate_codex_progress(run_dir))
+                except Exception:
+                    pass  # watcher 失败不影响主流程
+        watcher = threading.Thread(target=_watch, daemon=True)
+        watcher.start()
+        try:
+            exit_code = run_codex(plan_path, run_dir, Path.cwd(), framework_root, codex_model)
+        finally:
+            stop.set()
+            watcher.join(timeout=10)
         if exit_code != 0:
             prog("failed", 100, message=f"codex exit code {exit_code}")
             return exit_code

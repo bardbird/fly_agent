@@ -105,11 +105,31 @@ class RunCodexStreamsStdoutTest(unittest.TestCase):
             fake_run.return_value = P()
             with tempfile.TemporaryDirectory() as d:
                 rc = r.run_codex(plan_path=Path(d) / "plan.json", output_dir=Path(d),
-                                 cwd=Path(d), framework_root=Path(d))
+                                 cwd=Path(d), framework_root=Path(d), codex_model="gpt-5.5")
             self.assertEqual(rc, 0)
             kwargs = fake_run.call_args.kwargs
             self.assertIs(kwargs.get("stdout"), sys.stdout)  # 透传，不再 open(codex.log)
             self.assertNotIn("capture_output", kwargs)
+            args = fake_run.call_args.args[0]  # cmd list
+            self.assertIn("--model", args)
+            self.assertIn("gpt-5.5", args)
+
+
+class EstimateCodexProgressTest(unittest.TestCase):
+    def test_base_when_nothing_generated(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(r._estimate_codex_progress(Path(d)), 20)
+
+    def test_advances_with_artifacts(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            (base / "generated" / "stages").mkdir(parents=True)
+            (base / "generated" / "stages" / "brief.md").write_text("x", encoding="utf-8")
+            self.assertEqual(r._estimate_codex_progress(base), 40)
+            task_dir = base / "tasks" / "d" / "t01"
+            task_dir.mkdir(parents=True)
+            (task_dir / "main.py").write_text("x", encoding="utf-8")
+            self.assertEqual(r._estimate_codex_progress(base), 85)
 
 
 if __name__ == "__main__":

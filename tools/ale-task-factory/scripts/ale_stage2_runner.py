@@ -361,7 +361,7 @@ def main() -> int:
         verified = get_verified_tasks(run_dir)
         if not verified:
             prog("failed", 100, message="no verified tasks in summary.json")
-            return 0  # 非 runner 崩溃：如实记录，退出 0
+            return 1
 
         exp_yaml = prepare_tasks(run_dir, framework_root, verified)
         log_root = run_dir / "logs" / "ale"
