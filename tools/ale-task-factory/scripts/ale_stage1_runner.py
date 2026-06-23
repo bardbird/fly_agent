@@ -26,6 +26,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ale_progress import write_progress
+
 # ── data classes ────────────────────────────────────────────────────────────
 
 
@@ -107,9 +109,9 @@ def build_plan(request: TaskRequest) -> dict[str, Any]:
 
 def run_codex(
     plan_path: Path, output_dir: Path, cwd: Path, framework_root: Path
-) -> subprocess.CompletedProcess[str]:
+) -> int:
+    """codex exec：输出透传到父进程 stdout/stderr（daemon 重定向到 stage1.log）。返回退出码。"""
     output_dir.mkdir(parents=True, exist_ok=True)
-    log_path = output_dir / "codex.log"
     cmd = [
         "codex",
         "exec",
@@ -127,19 +129,17 @@ def run_codex(
     env["ALE_OUTPUT_ROOT"] = str(output_dir.resolve())
     env["ALE_FRAMEWORK_ROOT"] = str(framework_root.resolve())
     env["ALE_STAGE1"] = "true"
-    with log_path.open("a", encoding="utf-8") as log:
-        log.write(f"$ {' '.join(cmd)}\n")
-        log.flush()
-        proc = subprocess.run(
-            cmd,
-            cwd=cwd,
-            env=env,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            text=True,
-            check=False,
-        )
-    return proc
+    print(f"$ {' '.join(cmd)}")
+    proc = subprocess.run(
+        cmd,
+        cwd=cwd,
+        env=env,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        text=True,
+        check=False,
+    )
+    return proc.returncode
 
 
 # ── oracle validation ────────────────────────────────────────────────────────
@@ -151,6 +151,17 @@ def _find_uv() -> str:
         if subprocess.run(["which", candidate], capture_output=True, text=True).returncode == 0:
             return candidate
     return "uv"  # fallback
+
+
+def check_ale_venv(framework_root: Path) -> bool:
+    """返回 ALE venv 是否就绪；不在此处副作用，由 main 决定写 failed（绝不降级 skip）。"""
+    uv = _find_uv()
+    result = subprocess.run(
+        [uv, "run", "python", "-c", "import cua_bench"],
+        cwd=str(framework_root), capture_output=True, text=True,
+        timeout=30, check=False,
+    )
+    return result.returncode == 0
 
 
 def run_ale_dry_run(
@@ -579,130 +590,116 @@ def write_summary(
     return summary
 
 
+# ── trigger / contract helpers ────────────────────────────────────────────────
+
+
+def load_trigger(path: Path) -> dict:
+    """读取并校验 stage1 触发文件（exact task 契约）。"""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("type") != "stage1":
+        raise ValueError(f"trigger type != stage1: {data.get('type')}")
+    stage1 = data.get("stage1") or {}
+    tasks = stage1.get("tasks")
+    if not isinstance(tasks, list) or not tasks:
+        raise ValueError("trigger stage1.tasks must be a non-empty list")
+    for t in tasks:
+        if not (isinstance(t, dict) and t.get("task_id")):
+            raise ValueError(f"trigger stage1.tasks entry invalid: {t!r}")
+    if not stage1.get("framework_root"):
+        raise ValueError("trigger missing stage1.framework_root")
+    return data
+
+
+def check_exact_task_ids(output_dir: Path, expected_task_ids: list[str]) -> None:
+    """校验 codex 生成且仅生成 expected task_ids；多/少/不匹配 → ValueError。"""
+    discovered = {f"{d}/{n}" for d, n, _ in _discover_task_dirs(output_dir)}
+    expected = set(expected_task_ids)
+    missing = expected - discovered
+    extra = discovered - expected
+    if missing or extra:
+        raise ValueError(
+            f"task id mismatch: missing={sorted(missing)} extra={sorted(extra)}"
+        )
+
+
 # ── main ─────────────────────────────────────────────────────────────────────
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="ALE Stage 1 Runner — generate tasks + programmatic oracle validation"
-    )
-    parser.add_argument("--domain", required=True)
-    parser.add_argument("--task-id", required=True)
-    parser.add_argument("--title", required=True)
-    parser.add_argument("--scenario", required=True)
-    parser.add_argument("--difficulty", required=True, choices=["easy", "medium", "hard"])
-    parser.add_argument("--input-mode", required=True)
-    parser.add_argument("--output-mode", required=True)
-    parser.add_argument("--verification-mode", required=True)
-    parser.add_argument("--reference-strategy", required=True)
-    parser.add_argument(
-        "--framework-root", default="/Users/liuyifei/Liu/github/agents-last-exam"
-    )
-    parser.add_argument("--note", default="")
-    parser.add_argument("--output-root", required=True)
-    parser.add_argument(
-        "--skip-oracle-validation",
-        action="store_true",
-        help="Skip programmatic oracle validation (not recommended)",
-    )
+    parser = argparse.ArgumentParser(description="ALE Stage 1 Runner (batch)")
+    parser.add_argument("--run-dir", required=True, help="output root for this run")
+    parser.add_argument("--from-trigger", required=True, help="trigger json path")
     args = parser.parse_args()
 
-    framework_root = Path(args.framework_root).expanduser().resolve()
-    if not (framework_root / "ale_run").is_dir() or not (framework_root / "tasks").is_dir():
-        raise SystemExit(f"ALE framework root is invalid: {framework_root}")
+    run_dir = Path(args.run_dir).expanduser().resolve()
+    trigger = load_trigger(Path(args.from_trigger).expanduser().resolve())
+    s1 = trigger["stage1"]
+    framework_root = Path(s1["framework_root"]).expanduser().resolve()
+    tasks_contract = s1["tasks"]
+    request = s1.get("request", {})
+    expected_ids = [t["task_id"] for t in tasks_contract]
 
-    # For dry-run / TaskLoader the venv must exist
-    uv = _find_uv()
-    if not args.skip_oracle_validation:
-        uv_check = subprocess.run(
-            [uv, "run", "python", "-c", "import cua_bench"],
-            cwd=str(framework_root),
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-        if uv_check.returncode != 0:
-            print(
-                f"⚠  ALE venv may not be ready ({uv} run python -c 'import cua_bench' failed).\n"
-                f"   Run `cd {framework_root} && uv sync` first.\n"
-                f"   Continuing without oracle validation — run with --skip-oracle-validation to suppress.",
-                file=sys.stderr,
-            )
-            args.skip_oracle_validation = True
+    progress = run_dir / "stage1_progress.json"
+    def prog(phase, percent, **kw):
+        write_progress(progress, stage="stage1", phase=phase, percent=percent, **kw)
 
-    request = TaskRequest(
-        domain=args.domain,
-        task_id=args.task_id,
-        title=args.title,
-        scenario=args.scenario,
-        difficulty=args.difficulty,
-        input_mode=args.input_mode,
-        output_mode=args.output_mode,
-        verification_mode=args.verification_mode,
-        reference_strategy=args.reference_strategy,
-        framework_root=str(framework_root),
-        note=args.note,
-    )
+    try:
+        if not run_dir.is_dir():
+            prog("failed", 100, message=f"run_dir not found: {run_dir}")
+            return 2
+        if not (framework_root / "ale_run").is_dir():
+            prog("failed", 100, message=f"ALE framework root invalid: {framework_root}")
+            return 2
 
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    output_root = Path(args.output_root) / f"{args.domain}__{args.task_id}__{run_id}"
-    output_root.mkdir(parents=True, exist_ok=True)
+        prog("starting", 5, counts={"total": len(expected_ids)})
 
-    # Phase 1 — write inputs
-    request_path = output_root / "request.json"
-    plan_path = output_root / "plan.json"
-    request_path.write_text(
-        json.dumps(asdict(request), indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
-    plan_path.write_text(
-        json.dumps(build_plan(request), indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+        if not check_ale_venv(framework_root):
+            # 不降级 skip：venv 缺即 failed，不产出 verified summary
+            prog("failed", 100, message="ALE venv not ready: run `uv sync` in framework root")
+            return 3
 
-    # Phase 2 — Codex generation
-    print(f"[{run_id}] Running codex exec …")
-    proc = run_codex(plan_path, output_root, Path.cwd(), framework_root)
-    codex_ok = proc.returncode == 0
-    print(f"[{run_id}] Codex exited with {proc.returncode} {'✓' if codex_ok else '✗'}")
+        request_path = run_dir / "request.json"
+        plan_path = run_dir / "plan.json"
+        request_path.write_text(json.dumps(request, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        batch_plan = {
+            "run_dir": str(run_dir),
+            "framework_root": str(framework_root),
+            "tasks": tasks_contract,          # exact 契约：codex 必须生成这些 id
+            "stages": ["brief", "draft", "scaffold", "oracle_validate"],
+            "requirements": {"oracle_must_pass": True, "no_stage2_model_evaluation": True},
+        }
+        plan_path.write_text(json.dumps(batch_plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    # Phase 3 — Oracle validation (NEW)
-    oracle_checks: list[OracleCheck] = []
-    if args.skip_oracle_validation:
-        print(f"[{run_id}] Oracle validation SKIPPED (--skip-oracle-validation)")
-    else:
-        print(f"[{run_id}] Running oracle validation …")
-        oracle_checks = validate_generated_tasks(output_root, framework_root, request)
-        for chk in oracle_checks:
-            icon = "✓" if chk.status == "verified" else ("⊘" if chk.status == "blocked" else "✗")
-            print(
-                f"  {icon} {chk.task_id}: {chk.status}"
-                + (f" (score={chk.oracle_score})" if chk.oracle_score is not None else "")
-                + (f" [blocked: {chk.blocked_reason}]" if chk.blocked_reason else "")
-                + (
-                    f" [errors: {chk.task_loader_error} {chk.evidence_error}]"
-                    if not chk.dry_run_ok or not chk.task_loader_ok or not chk.evidence_ok
-                    else ""
-                )
-            )
+        prog("codex_running", 20)
+        exit_code = run_codex(plan_path, run_dir, Path.cwd(), framework_root)
+        if exit_code != 0:
+            prog("failed", 100, message=f"codex exit code {exit_code}")
+            return exit_code
 
-    # Phase 4 — Write enhanced summary
-    summary = write_summary(output_root, request, run_id, proc.returncode, oracle_checks)
-    overall = summary["status"]
-    counts = summary.get("oracle_validation", {}).get("counts", {})
-    print(
-        f"[{run_id}] Done.  "
-        f"Codex={'OK' if codex_ok else 'FAIL'},  "
-        f"Oracle={overall},  "
-        f"verified={counts.get('verified', 0)}, "
-        f"blocked={counts.get('blocked', 0)}, "
-        f"failed={counts.get('failed', 0)}"
-    )
+        # exact 契约校验：生成且仅生成 expected_ids
+        try:
+            check_exact_task_ids(run_dir, expected_ids)
+        except ValueError as e:
+            prog("failed", 100, message=f"task id contract violation: {e}")
+            return 4
 
-    # Exit code: 0 only if codex passed AND no oracle failures
-    if not codex_ok:
-        return proc.returncode
-    failed_tasks = sum(1 for c in oracle_checks if c.status == "failed")
-    return 1 if failed_tasks > 0 else 0
+        prog("oracle_validating", 70)
+        req = TaskRequest(domain=request.get("domain", ""), task_id="",
+                          title="", scenario=request.get("scenario", ""),
+                          difficulty=request.get("difficulty", "medium"),
+                          input_mode="", output_mode="", verification_mode="",
+                          reference_strategy="", framework_root=str(framework_root))
+        oracle_checks = validate_generated_tasks(run_dir, framework_root, req)
+        summary = write_summary(run_dir, req, str(trigger.get("run_id", "")), exit_code, oracle_checks)
+
+        counts = summary.get("oracle_validation", {}).get("counts", {})
+        failed = counts.get("failed", 0)
+        prog("done", 100, counts=counts,
+             message=f"verified={counts.get('verified',0)} blocked={counts.get('blocked',0)} failed={failed}")
+        return 1 if failed > 0 else 0
+    except Exception as exc:
+        prog("failed", 100, message=f"runner crashed: {type(exc).__name__}: {exc}")
+        raise
 
 
 if __name__ == "__main__":
