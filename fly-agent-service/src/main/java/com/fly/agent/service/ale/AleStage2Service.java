@@ -14,13 +14,11 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +35,7 @@ public class AleStage2Service {
 
     private final AleRunMapper runMapper;
     private final AleTaskMapper taskMapper;
+    private final AleExecutionGateway gateway;
     private final AleProperties properties;
 
     /** Start stage-2 execution for a completed stage-1 run. */
@@ -86,75 +85,46 @@ public class AleStage2Service {
 
     public List<String> tailLog(Long runId, int lines) {
         AleRunEntity run = runMapper.selectById(runId);
-        if (run == null || !StringUtils.hasText(run.getLogPath())) {
+        if (run == null || !StringUtils.hasText(run.getOutputRoot())) {
             return List.of();
         }
-        Path logPath = Path.of(run.getLogPath());
-        if (!Files.exists(logPath)) {
-            return List.of();
-        }
-        try {
-            List<String> all = Files.readAllLines(logPath, StandardCharsets.UTF_8);
-            int from = Math.max(0, all.size() - Math.max(lines, 1));
-            return all.subList(from, all.size());
-        } catch (IOException e) {
-            return List.of("failed to read log: " + e.getMessage());
-        }
+        return gateway.tailLog(Path.of(run.getOutputRoot()), "stage2", lines);
     }
 
     // ── internal ──────────────────────────────────────────────────────────────
-
-    private static final String STAGE2_QUEUE_DIR = "/data/fly-agent/ale-runs/.stage2-queue";
 
     private void executeStage2(Long runId) {
         AleRunEntity run = runMapper.selectById(runId);
         if (run == null) return;
         Path runDir = Path.of(run.getOutputRoot());
-
         try {
-            // Write trigger file for host-side daemon
-            Path queueDir = Path.of(STAGE2_QUEUE_DIR);
-            Files.createDirectories(queueDir);
-            Path trigger = queueDir.resolve(runId + ".json");
-            String payload = com.alibaba.fastjson2.JSON.toJSONString(
-                    java.util.Map.of("run_id", runId, "run_dir", runDir.toString()));
-            Files.writeString(trigger, payload);
+            Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("type", "stage2");
+            payload.put("run_id", runId);
+            payload.put("run_dir", runDir.toString());
+            Map<String, Object> s2 = new java.util.LinkedHashMap<>();
+            s2.put("framework_root", properties.getFrameworkRoot());
+            s2.put("agent", "claude_code");
+            s2.put("model", "claude-sonnet-4-6");
+            s2.put("timeout", 7200);
+            payload.put("stage2", s2);
 
-            log.info("Stage2 trigger written: {}", trigger);
+            AleExecutionGateway.StageResult result = gateway.dispatchAndWait(
+                    runId, runDir, payload, p -> updateStage2Progress(runId, p));
 
-            // Poll for completion (daemon removes trigger when done)
-            int lastProgress = 0;
-            updateStage2Progress(runId, lastProgress);
-            while (Files.exists(trigger)) {
-                Thread.sleep(3000);
-                int progress = estimateStage2Progress(runDir);
-                if (progress > lastProgress) {
-                    lastProgress = progress;
-                    updateStage2Progress(runId, lastProgress);
-                }
-            }
-
-            // Collect results from stage2_summary.json
             Path summaryPath = runDir.resolve("stage2_summary.json");
             if (Files.exists(summaryPath)) {
                 parseAndApplyResults(runId, runDir, summaryPath);
             }
 
-            // Determine exit from summary
-            boolean ok = false;
-            if (Files.exists(summaryPath)) {
-                String raw = Files.readString(summaryPath);
-                ok = raw.contains("\"completed\"") && raw.contains("\"failed\": 0") || raw.contains("\"failed\":0");
-            }
-
             AleRunEntity update = new AleRunEntity();
             update.setId(runId);
-            update.setStage2Status(ok ? "COMPLETED" : "FAILED");
+            update.setStage2Status(result.isDone() ? "COMPLETED" : "FAILED");
             update.setStage2Progress(100);
             update.setStage2FinishedAt(LocalDateTime.now());
             update.setStage2SummaryPath(summaryPath.toString());
+            if (result.isFailed()) update.setErrorMessage(result.message());
             runMapper.updateById(update);
-
         } catch (Exception e) {
             log.error("Stage2 execution failed", e);
             AleRunEntity update = new AleRunEntity();
@@ -164,40 +134,6 @@ public class AleStage2Service {
             update.setStage2FinishedAt(LocalDateTime.now());
             runMapper.updateById(update);
         }
-    }
-
-    private String findRunnerScript() {
-        // Look for the runner script relative to project root
-        Path script = Path.of("tools/ale-task-factory/scripts/ale_stage2_runner.py");
-        if (Files.exists(script)) return script.toAbsolutePath().toString();
-        // Fallback: inside container, tools are at /app/tools
-        script = Path.of("/app/tools/ale-task-factory/scripts/ale_stage2_runner.py");
-        if (Files.exists(script)) return script.toAbsolutePath().toString();
-        return "tools/ale-task-factory/scripts/ale_stage2_runner.py";
-    }
-
-    private int estimateStage2Progress(Path runDir) {
-        int progress = 5;
-        Path resultsDir = runDir.resolve("results");
-        if (Files.exists(resultsDir)) {
-            progress = 20;
-            try {
-                long count = Files.list(resultsDir)
-                        .filter(Files::isDirectory)
-                        .count();
-                progress = Math.max(progress, 20 + (int) (count * 10));
-            } catch (IOException ignored) {}
-        }
-        Path summaryPath = runDir.resolve("stage2_summary.json");
-        try {
-            if (Files.exists(summaryPath)) {
-                String raw = Files.readString(summaryPath);
-                if (raw.contains("\"avg_score\"")) {
-                    progress = 100;
-                }
-            }
-        } catch (IOException ignored) {}
-        return Math.min(progress, 99);
     }
 
     @SuppressWarnings("unchecked")
