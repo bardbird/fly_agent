@@ -81,5 +81,28 @@ class RunOneTaskStreamsStdoutTest(unittest.TestCase):
             self.assertIsNotNone(kwargs.get("stdout"))    # 透传到父进程 stdout
 
 
+class PrepareTasksTest(unittest.TestCase):
+    def test_installs_local_task_data_for_docker_provider(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            run_dir = root / "run"
+            framework = root / "framework"
+            task = run_dir / "tasks" / "business_finance" / "task_authoring_01"
+            (task / "input").mkdir(parents=True)
+            (task / "reference").mkdir()
+            (task / "main.py").write_text("x", encoding="utf-8")
+            (task / "task_card.json").write_text("{}", encoding="utf-8")
+            (task / "input" / "brief.md").write_text("visible", encoding="utf-8")
+            (task / "reference" / "answer.json").write_text("hidden", encoding="utf-8")
+
+            r.prepare_tasks(run_dir, framework, [{"task_id": "business_finance/task_authoring_01"}])
+
+            linked = framework / "tasks" / "business_finance" / "task_authoring_01"
+            self.assertTrue(linked.is_symlink())
+            data = framework / "task-data" / "business_finance" / "task_authoring_01" / "base"
+            self.assertEqual((data / "input" / "brief.md").read_text(encoding="utf-8"), "visible")
+            self.assertEqual((data / "reference" / "answer.json").read_text(encoding="utf-8"), "hidden")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -19,6 +19,8 @@ Produce ALE-native task packages that are ready for stage-2 model execution only
 6. Keep hidden reference material outside agent-visible input/output paths. Stage-1 oracle validation may read it only to prove the grader can score a known-good output.
 7. Do not run real model evaluation in stage 1.
 8. Finish by writing a concise `summary.json` with counts, generated task ids, domains, statuses, task dirs, and evidence paths.
+9. Do not enumerate, search, summarize, or bulk-read the official ALE task corpus under `<framework-root>/tasks`. This includes broad `rg`, `find`, `ls -R`, `xargs sed`, or similar commands over that tree.
+10. If framework examples are needed, read only these allowlisted files: `<framework-root>/tasks/demo/hello/main.py`, `<framework-root>/tasks/demo/hello/task_card.json`, `<framework-root>/tasks/legal/legal_dr_fees_01/main.py`, and `<framework-root>/tasks/legal/legal_dr_fees_01/task_card.json`. Framework API files under `<framework-root>/ale_run/` and shared helpers matching `<framework-root>/tasks/common_*.py` or `<framework-root>/tasks/linux_runtime.py` may be read.
 
 ## Required Output Layout
 

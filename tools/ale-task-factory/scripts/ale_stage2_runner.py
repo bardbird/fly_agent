@@ -139,8 +139,12 @@ def prepare_tasks(
 
         dst.parent.mkdir(parents=True, exist_ok=True)
         if dst.is_symlink() or dst.exists():
-            dst.unlink()
+            if dst.is_dir() and not dst.is_symlink():
+                shutil.rmtree(dst)
+            else:
+                dst.unlink()
         dst.symlink_to(src.resolve(), target_is_directory=True)
+        install_task_data(src, framework_root, domain, task_name)
         lines.append(task_id)
 
     task_list_path.parent.mkdir(parents=True, exist_ok=True)
@@ -161,6 +165,22 @@ cleanup_mode: delete
 """
     exp_yaml.write_text(exp_content, encoding="utf-8")
     return exp_yaml
+
+
+def install_task_data(src: Path, framework_root: Path, domain: str, task_name: str) -> None:
+    """Copy generated task data into ALE's local Docker task-data layout."""
+    data_root = framework_root / "task-data" / domain / task_name / "base"
+    data_root.mkdir(parents=True, exist_ok=True)
+    for name in ("input", "software", "reference"):
+        source = src / name
+        target = data_root / name
+        if target.is_symlink() or target.exists():
+            if target.is_dir() and not target.is_symlink():
+                shutil.rmtree(target)
+            else:
+                target.unlink()
+        if source.is_dir():
+            shutil.copytree(source, target)
 
 
 # ── execute ──────────────────────────────────────────────────────────────────

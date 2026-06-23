@@ -113,6 +113,10 @@ class RunCodexStreamsStdoutTest(unittest.TestCase):
             args = fake_run.call_args.args[0]  # cmd list
             self.assertIn("--model", args)
             self.assertIn("gpt-5.5", args)
+            prompt = args[-1]
+            self.assertIn("Do not enumerate, search, or read the official ALE tasks corpus", prompt)
+            self.assertIn("tasks/demo/hello/main.py", prompt)
+            self.assertIn("rg/find", prompt)
 
 
 class EstimateCodexProgressTest(unittest.TestCase):

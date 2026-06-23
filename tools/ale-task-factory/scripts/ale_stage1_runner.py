@@ -120,7 +120,13 @@ def run_codex(
             f"Use the ALE task factory skill to produce the batch described in {plan_path}. "
             f"Use ALE framework root {framework_root}. "
             f"Write all generated artifacts under {output_dir}. "
-            f"Do not run stage-2 model evaluation."
+            f"Do not run stage-2 model evaluation. "
+            f"Do not enumerate, search, or read the official ALE tasks corpus under "
+            f"{framework_root / 'tasks'} except these exact framework examples if needed: "
+            f"tasks/demo/hello/main.py, tasks/demo/hello/task_card.json, "
+            f"tasks/legal/legal_dr_fees_01/main.py, and tasks/legal/legal_dr_fees_01/task_card.json. "
+            f"Framework API files under ale_run/ and tasks/common_*.py may be read, "
+            f"but commands such as rg/find over {framework_root / 'tasks'} are forbidden."
         ),
     ]
     env = os.environ.copy()
