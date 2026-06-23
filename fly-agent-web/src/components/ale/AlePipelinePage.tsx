@@ -267,17 +267,27 @@ function Stage1Panel({
           <div className="border-b border-terminal px-4 py-2 text-xs font-bold">运行记录</div>
           <div className="max-h-[400px] divide-y divide-terminal overflow-y-auto custom-scrollbar">
             {runs.map((run) => (
-              <button
+              <div
                 key={run.runId}
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelectRun(run.runId)}
-                className={cn('w-full px-3 py-2 text-left hover:bg-primary-50', selectedRunId === run.runId && 'bg-cyan/10')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') onSelectRun(run.runId)
+                }}
+                className={cn('w-full cursor-pointer px-3 py-2 text-left hover:bg-primary-50', selectedRunId === run.runId && 'bg-cyan/10')}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0 text-xs truncate">{run.runKey}</div>
-                  <StatusPill status={run.status} compact />
+                  <div className="min-w-0 select-text truncate text-xs" onClick={(event) => event.stopPropagation()}>{run.runKey}</div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <CopyButton value={run.runKey} label="复制 run key" />
+                    <StatusPill status={run.status} compact />
+                  </div>
                 </div>
-                <div className="text-[10px] text-text-secondary">{run.domain} · {run.progressPercent}%</div>
-              </button>
+                <div className="select-text text-[10px] text-text-secondary" onClick={(event) => event.stopPropagation()}>
+                  {run.domain} · {run.progressPercent}%
+                </div>
+              </div>
             ))}
             {runs.length === 0 && <div className="px-4 py-6 text-xs text-text-secondary text-center">暂无记录</div>}
           </div>
@@ -327,16 +337,24 @@ function Stage1Panel({
           <div className="border-b border-terminal px-4 py-2 text-xs font-bold">Task 列表</div>
           <div className="max-h-[300px] divide-y divide-terminal overflow-y-auto custom-scrollbar">
             {tasks.map((task) => (
-              <button
+              <div
                 key={task.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelectTask(task.id)}
-                className={cn('w-full px-3 py-2 text-left hover:bg-primary-50', selectedTask?.id === task.id && 'bg-cyan/10')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') onSelectTask(task.id)
+                }}
+                className={cn('w-full cursor-pointer px-3 py-2 text-left hover:bg-primary-50', selectedTask?.id === task.id && 'bg-cyan/10')}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs truncate">{task.taskId}</span>
-                  <StatusPill status={task.status} compact />
+                  <span className="select-text truncate text-xs" onClick={(event) => event.stopPropagation()}>{task.taskId}</span>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <CopyButton value={task.taskId} label="复制 task id" />
+                    <StatusPill status={task.status} compact />
+                  </div>
                 </div>
-              </button>
+              </div>
             ))}
             {tasks.length === 0 && <div className="px-4 py-6 text-xs text-text-secondary text-center">暂无 task</div>}
           </div>
@@ -344,14 +362,14 @@ function Stage1Panel({
       </div>
 
       {/* logs */}
-      <div className="rounded-lg border border-terminal bg-white flex flex-col max-h-[700px]">
+      <div className="flex max-h-[700px] min-h-[420px] min-w-0 flex-col rounded-lg border border-terminal bg-white">
         <div className="flex items-center justify-between border-b border-terminal px-4 py-2">
           <span className="text-xs font-bold">日志</span>
           <button onClick={onRefreshLog} className="text-xs text-cyan flex items-center gap-1">
             <Icon icon="mdi:refresh" className="h-3 w-3" />刷新
           </button>
         </div>
-        <pre ref={logRef} className="flex-1 overflow-y-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-5 custom-scrollbar">
+        <pre ref={logRef} className="min-h-0 w-full min-w-0 max-w-full flex-1 overflow-auto whitespace-pre p-3 font-mono text-[11px] leading-5 custom-scrollbar">
           {logLines.length > 0 ? logLines.join('\n') : '暂无日志'}
         </pre>
       </div>
@@ -383,16 +401,24 @@ function Stage2Panel({
           <h2 className="mb-3 text-sm font-bold">选择 Stage 1 Run</h2>
           <div className="max-h-[500px] divide-y divide-terminal overflow-y-auto custom-scrollbar">
             {runs.filter((r) => r.status === 'COMPLETED').map((run) => (
-              <button
+              <div
                 key={run.runId}
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelectRun(run.runId)}
-                className={cn('w-full px-3 py-2 text-left hover:bg-primary-50', selectedRunId === run.runId && 'bg-cyan/10')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') onSelectRun(run.runId)
+                }}
+                className={cn('w-full cursor-pointer px-3 py-2 text-left hover:bg-primary-50', selectedRunId === run.runId && 'bg-cyan/10')}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs truncate">{run.runKey}</span>
-                  <span className="text-[10px] text-text-secondary">{run.totalTasks} tasks</span>
+                  <span className="select-text truncate text-xs" onClick={(event) => event.stopPropagation()}>{run.runKey}</span>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <CopyButton value={run.runKey} label="复制 run key" />
+                    <span className="text-[10px] text-text-secondary">{run.totalTasks} tasks</span>
+                  </div>
                 </div>
-              </button>
+              </div>
             ))}
             {runs.filter((r) => r.status === 'COMPLETED').length === 0 && (
               <div className="px-4 py-6 text-xs text-text-secondary text-center">无已完成 run</div>
@@ -449,8 +475,11 @@ function Stage2Panel({
               {stage2Tasks.map((task) => (
                 <div key={task.id} className="px-3 py-2 space-y-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs truncate">{task.taskId}</span>
-                    <StatusPill status={task.stage2Status ?? '-'} compact />
+                    <span className="select-text truncate text-xs">{task.taskId}</span>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <CopyButton value={task.taskId} label="复制 task id" />
+                      <StatusPill status={task.stage2Status ?? '-'} compact />
+                    </div>
                   </div>
                   <div className="flex gap-3 text-[10px] text-text-secondary">
                     <span>得分: {task.stage2Score ?? '-'}</span>
@@ -483,6 +512,23 @@ function StatusPill({ status, compact }: { status: string; compact?: boolean }) 
     <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-medium', tone, compact && 'shrink-0')}>
       {status === 'completed' ? '完成' : status === 'failed' ? '失败' : status === 'RUNNING' ? '执行中' : status}
     </span>
+  )
+}
+
+function CopyButton({ value, label }: { value: string; label: string }) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={(event) => {
+        event.stopPropagation()
+        void navigator.clipboard?.writeText(value)
+      }}
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-text-secondary hover:bg-primary-50 hover:text-cyan"
+    >
+      <Icon icon="mdi:content-copy" className="h-3.5 w-3.5" />
+    </button>
   )
 }
 

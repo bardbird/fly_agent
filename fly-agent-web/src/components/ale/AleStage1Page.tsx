@@ -266,27 +266,35 @@ export function AleStage1Page() {
             </div>
             <div className="min-h-0 flex-1 divide-y divide-terminal overflow-y-auto custom-scrollbar">
               {filteredRuns.map((run) => (
-                <button
+                <div
                   key={run.runId}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedRunId(run.runId)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') setSelectedRunId(run.runId)
+                  }}
                   className={cn(
-                    'w-full px-3 py-2 text-left transition-colors hover:bg-primary-50',
+                    'w-full cursor-pointer px-3 py-2 text-left transition-colors hover:bg-primary-50',
                     selectedRunId === run.runId ? 'bg-primary-50' : ''
                   )}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
+                    <div className="min-w-0 select-text" onClick={(event) => event.stopPropagation()}>
                       <div className="truncate text-xs font-medium leading-5">{run.runKey}</div>
                       <div className="truncate text-[11px] leading-4 text-text-secondary">
                         {run.domain} · {run.scenario} · {run.difficulty}
                       </div>
                     </div>
-                    <div className="shrink-0 text-right text-[11px] leading-4 text-text-secondary">
+                    <div className="flex shrink-0 items-center gap-2">
+                      <CopyButton value={run.runKey} label="复制 run key" />
+                    <div className="text-right text-[11px] leading-4 text-text-secondary">
                       <div>{run.status}</div>
                       <div>{run.progressPercent}%</div>
                     </div>
+                    </div>
                   </div>
-                </button>
+                </div>
               ))}
               {runs.length === 0 ? <div className="px-4 py-6 text-sm text-text-secondary">暂无运行记录</div> : null}
               {runs.length > 0 && filteredRuns.length === 0 ? <div className="px-4 py-6 text-sm text-text-secondary">当前筛选无结果</div> : null}
@@ -456,22 +464,30 @@ function TaskExplorer({
           <div key={domain} className="border-b border-terminal">
             <div className="bg-primary-50 px-4 py-2 text-xs font-medium text-text-secondary">{domain}</div>
             {tasksByDomain[domain].map((task) => (
-              <button
+              <div
                 key={task.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelect(task.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') onSelect(task.id)
+                }}
                 className={cn(
-                  'w-full px-4 py-3 text-left transition-colors hover:bg-primary-50',
+                  'w-full cursor-pointer px-4 py-3 text-left transition-colors hover:bg-primary-50',
                   selectedTask?.id === task.id ? 'bg-cyan/10' : ''
                 )}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
+                  <div className="min-w-0 select-text" onClick={(event) => event.stopPropagation()}>
                     <div className="truncate text-sm font-medium">{task.taskId}</div>
                     <div className="truncate text-xs text-text-secondary">{task.title}</div>
                   </div>
-                  <StatusPill status={task.status} compact />
+                  <div className="flex shrink-0 items-center gap-1">
+                    <CopyButton value={task.taskId} label="复制 task id" />
+                    <StatusPill status={task.status} compact />
+                  </div>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         ))}
@@ -527,7 +543,7 @@ function RunLogs({ lines, onRefresh }: { lines: string[]; onRefresh: () => void 
       </div>
       <pre
         ref={logRef}
-        className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words px-4 py-3 font-mono text-[11px] leading-5 text-text-primary custom-scrollbar"
+        className="min-h-0 w-full min-w-0 max-w-full flex-1 overflow-auto whitespace-pre px-4 py-3 font-mono text-[11px] leading-5 text-text-primary custom-scrollbar"
       >
         {lines.length > 0 ? lines.join('\n') : '暂无日志'}
       </pre>
@@ -545,6 +561,23 @@ function StatusPill({ status, compact = false }: { status: string; compact?: boo
     <span className={cn('rounded-full border px-2 py-0.5 text-xs', tone, compact ? 'shrink-0' : '')}>
       {status}
     </span>
+  )
+}
+
+function CopyButton({ value, label }: { value: string; label: string }) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={(event) => {
+        event.stopPropagation()
+        void navigator.clipboard?.writeText(value)
+      }}
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-text-secondary hover:bg-primary-50 hover:text-cyan"
+    >
+      <Icon icon="mdi:content-copy" className="h-3.5 w-3.5" />
+    </button>
   )
 }
 

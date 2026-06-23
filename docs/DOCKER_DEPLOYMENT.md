@@ -65,6 +65,60 @@ Docker 标准输出日志仍可用：
 ./scripts/docker-deploy.sh logs fly-agent-web
 ```
 
+## ALE 宿主 daemon
+
+ALE stage 1/2 在 Docker 部署下不是由 `fly-agent-server` 容器直接执行。server 只会把触发文件写入共享队列：
+
+```bash
+/data/fly-agent/ale-runs/.queue
+```
+
+宿主机必须启动 `ale-daemon.service` 来消费该队列，并在宿主环境中拉起 `codex`、ALE runner 和 `uv`。如果未启动，前端会看到 stage 1 停在 `starting`/`RUNNING`，队列中残留 `*.json` 触发文件。
+
+一次性安装并启动 systemd 服务：
+
+```bash
+sudo tee /etc/systemd/system/ale-daemon.service >/dev/null <<'EOF'
+[Unit]
+Description=ALE host daemon
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/gitee/fly_agent
+Environment=ALE_QUEUE_DIR=/data/fly-agent/ale-runs/.queue
+Environment=ALE_FRAMEWORK_ROOT=/home/ubuntu/agents-last-exam
+Environment=PATH=/home/ubuntu/.local/bin:/home/ubuntu/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/bin/bash /home/ubuntu/gitee/fly_agent/scripts/ale_daemon.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now ale-daemon
+```
+
+检查运行状态和日志：
+
+```bash
+systemctl status ale-daemon --no-pager
+journalctl -u ale-daemon -f
+```
+
+同时确认 `fly-agent-server` 容器和宿主机共享同一个 ALE run 目录：
+
+```bash
+docker exec fly-agent-fly-agent-server-1 ls -la /data/fly-agent/ale-runs/.queue
+ls -la /data/fly-agent/ale-runs/.queue
+```
+
+更完整的 ALE 宿主执行说明见 `docs/ale/ALE-deploy-host-daemon.md`。
+
 ## SWE-agent 放置位置
 
 不建议把 `SWE-agent` checkout 放在当前代码目录下。它是外部运行时工具，生命周期和业务代码不同，放在仓库下会让 Docker build context、备份和发布边界都变重。
