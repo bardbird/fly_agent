@@ -30,11 +30,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 RUN git config --system --add safe.directory /opt/fly-agent/swe-agent
 
-# Install Node.js 22.x + Codex CLI
+# Node.js 保留（SWE 等模块依赖）；codex CLI 已移出容器，由宿主 daemon 调用（见 docs/ale/ALE-deploy-host-daemon.md）
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/* \
-    && npm install -g @openai/codex@latest
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
