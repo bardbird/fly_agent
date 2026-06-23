@@ -153,7 +153,7 @@ cleanup_mode: delete
 
 # ── execute ──────────────────────────────────────────────────────────────────
 
-def run_one_task(framework_root, exp_yaml, task_id, timeout_s):
+def run_one_task(framework_root: Path, exp_yaml: Path, task_id: str, timeout_s: int) -> subprocess.CompletedProcess[str]:
     """Invoke ale_run for a single task; output streams to parent stdout/stderr."""
     uv = _find_uv()
     cmd = [uv, "run", "python", "-m", "ale_run", "run", str(exp_yaml), "--task", task_id]
@@ -231,7 +231,7 @@ def collect_task_result(
     else:
         # No ALE run dir — use process output for error info
         result["status"] = "failed"
-        result["error"] = (proc.stderr or proc.stdout or "unknown error")[:2000]
+        result["error"] = "ale_run produced no run directory (output unavailable in streaming mode)"[:2000]
 
     if proc.returncode != 0 and result["status"] != "completed":
         result["status"] = "failed"
@@ -349,6 +349,10 @@ def main() -> int:
         write_progress(progress, stage="stage2", phase=phase, percent=percent, **kw)
 
     try:
+        if not run_dir.is_dir():
+            prog("failed", 100, message=f"run_dir not found: {run_dir}")
+            return 2
+
         if not (framework_root / "ale_run").is_dir():
             prog("failed", 100, message=f"ALE framework root invalid: {framework_root}")
             return 2
@@ -378,7 +382,6 @@ def main() -> int:
                     task_timeout = _read_json(task_card_path).get("vm", {}).get("timeout_s", timeout)
                 except (json.JSONDecodeError, KeyError):
                     pass
-            import time
             t0 = time.monotonic()
             proc = run_one_task(framework_root, exp_yaml, task_id, task_timeout)
             elapsed = time.monotonic() - t0

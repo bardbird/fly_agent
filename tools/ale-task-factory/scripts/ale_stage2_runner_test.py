@@ -52,6 +52,22 @@ class LoadTriggerTest(unittest.TestCase):
             self.assertEqual(payload["type"], "stage2")
             self.assertEqual(payload["stage2"]["framework_root"], "/fw")
 
+    def test_rejects_wrong_type(self):
+        with tempfile.TemporaryDirectory() as d:
+            trigger = Path(d) / "trig.json"
+            _write(trigger, {"type": "stage1", "run_id": 1, "run_dir": d,
+                             "stage1": {"framework_root": "/fw", "tasks": []}})
+            with self.assertRaises(ValueError):
+                r.load_trigger(trigger)
+
+    def test_rejects_missing_framework_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            trigger = Path(d) / "trig.json"
+            _write(trigger, {"type": "stage2", "run_id": 1, "run_dir": d,
+                             "stage2": {"agent": "claude_code"}})  # 无 framework_root
+            with self.assertRaises(ValueError):
+                r.load_trigger(trigger)
+
 
 class RunOneTaskStreamsStdoutTest(unittest.TestCase):
     def test_no_capture_output_and_streams_stdout(self):
