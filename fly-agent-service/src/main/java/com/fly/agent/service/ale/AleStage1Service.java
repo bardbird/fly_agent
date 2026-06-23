@@ -25,10 +25,8 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -40,12 +38,11 @@ import java.util.stream.Collectors;
 public class AleStage1Service {
 
     private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(2);
-    private static final String DEFAULT_MODEL = "gpt-5.5";
     private static final int DEFAULT_TARGET_COUNT = 1;
-    private static final String SKILL_ROOT = "codex-skills/ale-task-factory";
 
     private final AleRunMapper runMapper;
     private final AleTaskMapper taskMapper;
+    private final AleExecutionGateway gateway;
     private final AleProperties properties;
 
     public AleOptionsResponse getOptions() {
@@ -132,7 +129,6 @@ public class AleStage1Service {
         run.setFailedTasks(0);
         run.setBlockedTasks(0);
         run.setOutputRoot(runDir.toString());
-        run.setLogPath(runDir.resolve("codex.log").toString());
         run.setSummaryPath(runDir.resolve("summary.json").toString());
         run.setCreatedAt(now);
         run.setUpdatedAt(now);
@@ -169,20 +165,10 @@ public class AleStage1Service {
 
     public List<String> tailLog(Long runId, int lines) {
         AleRunEntity run = runMapper.selectById(runId);
-        if (run == null || !StringUtils.hasText(run.getLogPath())) {
+        if (run == null || !StringUtils.hasText(run.getOutputRoot())) {
             return List.of();
         }
-        Path logPath = Path.of(run.getLogPath());
-        if (!Files.exists(logPath)) {
-            return List.of();
-        }
-        try {
-            List<String> all = Files.readAllLines(logPath, StandardCharsets.UTF_8);
-            int from = Math.max(0, all.size() - Math.max(lines, 1));
-            return all.subList(from, all.size());
-        } catch (IOException e) {
-            return List.of("failed to read log: " + e.getMessage());
-        }
+        return gateway.tailLog(Path.of(run.getOutputRoot()), "stage1", lines);
     }
 
     private void executeRun(Long runId, AleRunRequest request, Path runDir) {
@@ -192,39 +178,47 @@ public class AleStage1Service {
         }
         try {
             updateRun(runId, AleRunStatus.RUNNING, 10, null);
-            Path requestPath = runDir.resolve("request.json");
-            Path planPath = runDir.resolve("plan.json");
-            Files.writeString(requestPath, toJson(request), StandardCharsets.UTF_8);
-            Files.writeString(planPath, buildPlanJson(request, runDir), StandardCharsets.UTF_8);
+            Files.writeString(runDir.resolve("request.json"), toJson(request));
 
             List<AleTaskEntity> tasks = createTasks(runId, request);
             updateTaskSummary(runId, tasks);
             markTasksStatus(runId, "RUNNING", null);
 
-            Path logPath = runDir.resolve("codex.log");
-            List<String> command = buildCommand(planPath, runDir, request);
-            int exitCode = runCodex(command, Path.of(".").toAbsolutePath().normalize(), logPath, runDir, runId);
-            // Parse the enhanced summary.json for per-task oracle results
+            List<Map<String, String>> taskContract = tasks.stream()
+                    .map(t -> Map.of("task_id", t.getTaskId(), "title",
+                            t.getTitle() == null ? "" : t.getTitle()))
+                    .toList();
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("type", "stage1");
+            payload.put("run_id", runId);
+            payload.put("run_dir", runDir.toString());
+            Map<String, Object> stage1 = new LinkedHashMap<>();
+            stage1.put("framework_root", frameworkRoot().toString());
+            stage1.put("codex_model", request.getCodexModel());
+            stage1.put("tasks", taskContract);
+            stage1.put("request", toJsonMap(request));
+            payload.put("stage1", stage1);
+
+            AleExecutionGateway.StageResult result = gateway.dispatchAndWait(
+                    runId, runDir, payload, percent -> updateProgressPercent(runId, percent));
+
             List<OracleTaskResult> oracleResults = parseOracleResults(runDir, tasks);
             applyOracleResults(runId, oracleResults);
             updateTaskCounts(runId, oracleResults);
 
-            if (exitCode == 0 && !hasFailedTasks(oracleResults)) {
+            if (result.isDone() && !hasFailedTasks(oracleResults)) {
                 writeSummaryIfMissing(runDir, runId, request, tasks, "COMPLETED", null);
                 updateRun(runId, AleRunStatus.COMPLETED, 100, null);
-            } else if (exitCode == 0 && allTasksBlocked(oracleResults)) {
-                String message = "all tasks blocked by oracle validation";
-                writeSummaryIfMissing(runDir, runId, request, tasks, "BLOCKED", message);
-                updateRun(runId, AleRunStatus.BLOCKED, 100, message);
-            } else if (exitCode == 0) {
-                String message = "some tasks failed or blocked — see per-task status";
-                writeSummaryIfMissing(runDir, runId, request, tasks, "COMPLETED", message);
-                updateRun(runId, AleRunStatus.COMPLETED, 100, message);
+            } else if (result.isDone() && allTasksBlocked(oracleResults)) {
+                writeSummaryIfMissing(runDir, runId, request, tasks, "BLOCKED", "all tasks blocked");
+                updateRun(runId, AleRunStatus.BLOCKED, 100, "all tasks blocked");
+            } else if (result.isDone()) {
+                writeSummaryIfMissing(runDir, runId, request, tasks, "COMPLETED", "some tasks failed/blocked");
+                updateRun(runId, AleRunStatus.COMPLETED, 100, "some tasks failed/blocked");
             } else {
-                String message = "codex exit code " + exitCode;
-                markTasksStatus(runId, "FAILED", message);
-                writeSummaryIfMissing(runDir, runId, request, tasks, "FAILED", message);
-                updateRun(runId, AleRunStatus.FAILED, 100, message);
+                markTasksStatus(runId, "FAILED", result.message());
+                writeSummaryIfMissing(runDir, runId, request, tasks, "FAILED", result.message());
+                updateRun(runId, AleRunStatus.FAILED, 100, result.message());
             }
         } catch (Exception e) {
             log.error("ALE stage1 run failed", e);
@@ -237,6 +231,28 @@ public class AleStage1Service {
             }
             updateRun(runId, AleRunStatus.FAILED, 100, e.getMessage());
         }
+    }
+
+    private void updateProgressPercent(Long runId, int percent) {
+        AleRunEntity u = new AleRunEntity();
+        u.setId(runId);
+        u.setProgressPercent(percent);
+        runMapper.updateById(u);
+    }
+
+    private Map<String, Object> toJsonMap(AleRunRequest r) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("domain", r.getDomain());
+        m.put("discipline", r.getDiscipline());
+        m.put("scenario", r.getScenario());
+        m.put("difficulty", r.getDifficulty());
+        m.put("input_mode", r.getInputMode());
+        m.put("output_mode", r.getOutputMode());
+        m.put("verification_mode", r.getVerificationMode());
+        m.put("reference_strategy", r.getReferenceStrategy());
+        m.put("target_count", r.getTargetCount());
+        m.put("codex_model", r.getCodexModel());
+        return m;
     }
 
     private List<AleTaskEntity> createTasks(Long runId, AleRunRequest request) {
@@ -331,14 +347,8 @@ public class AleStage1Service {
     }
 
     private OracleTaskResult findOracleResult(List<OracleTaskResult> results, String taskId) {
-        // taskId format: "domain/task_name" — try exact match first, then suffix match
         for (OracleTaskResult r : results) {
             if (taskId.equals(r.taskId())) {
-                return r;
-            }
-        }
-        for (OracleTaskResult r : results) {
-            if (taskId.endsWith(r.taskId()) || r.taskId().endsWith(taskId)) {
                 return r;
             }
         }
@@ -445,14 +455,6 @@ public class AleStage1Service {
         return null;
     }
 
-    private void updateProgress(Long runId, int progress) {
-        AleRunEntity update = new AleRunEntity();
-        update.setId(runId);
-        update.setProgressPercent(progress);
-        update.setUpdatedAt(LocalDateTime.now());
-        runMapper.updateById(update);
-    }
-
     private void updateRun(Long runId, AleRunStatus status, int progress, String errorMessage) {
         AleRunEntity update = new AleRunEntity();
         update.setId(runId);
@@ -466,116 +468,6 @@ public class AleStage1Service {
         }
         update.setUpdatedAt(LocalDateTime.now());
         runMapper.updateById(update);
-    }
-
-    private List<String> buildCommand(Path planPath, Path runDir, AleRunRequest request) {
-        List<String> command = new ArrayList<>();
-        command.add(properties.getCodexBinary());
-        command.add("exec");
-        command.add("--cd");
-        command.add(Path.of(".").toAbsolutePath().normalize().toString());
-        command.add("--dangerously-bypass-approvals-and-sandbox");
-        command.add("--model");
-        command.add(StringUtils.hasText(request.getCodexModel()) ? request.getCodexModel() : DEFAULT_MODEL);
-        command.add("Use the ALE task factory skill to generate the run described in " + planPath.toAbsolutePath()
-                + ". Use ALE framework root " + frameworkRoot().toAbsolutePath()
-                + ". Write logs and artifacts under " + runDir.toAbsolutePath()
-                + ". Do not run stage-2 model evaluation.");
-        return command;
-    }
-
-    private int runCodex(List<String> command, Path cwd, Path logPath, Path runDir, Long runId) throws IOException, InterruptedException {
-        Files.writeString(logPath,
-                "$ " + String.join(" ", command) + System.lineSeparator()
-                        + "ALE_OUTPUT_ROOT=" + runDir.toAbsolutePath() + System.lineSeparator()
-                        + "ALE_FRAMEWORK_ROOT=" + frameworkRoot().toAbsolutePath() + System.lineSeparator(),
-                StandardCharsets.UTF_8,
-                java.nio.file.StandardOpenOption.CREATE,
-                java.nio.file.StandardOpenOption.APPEND);
-        ProcessBuilder builder = new ProcessBuilder(command);
-        builder.directory(cwd.toFile());
-        builder.redirectErrorStream(true);
-        builder.redirectOutput(ProcessBuilder.Redirect.appendTo(logPath.toFile()));
-        Map<String, String> env = builder.environment();
-        env.put("ALE_OUTPUT_ROOT", runDir.toAbsolutePath().toString());
-        env.put("ALE_FRAMEWORK_ROOT", frameworkRoot().toAbsolutePath().toString());
-        env.put("ALE_STAGE1", "true");
-        Process process = builder.start();
-        process.getOutputStream().close();
-        int lastProgress = 25;
-        updateProgress(runId, lastProgress);
-        while (process.isAlive()) {
-            Thread.sleep(3000);
-            int nextProgress = Math.max(lastProgress, estimateProgress(runDir, logPath));
-            if (nextProgress > lastProgress) {
-                lastProgress = nextProgress;
-                updateProgress(runId, lastProgress);
-            }
-        }
-        int exit = process.waitFor();
-        Files.writeString(logPath, System.lineSeparator() + "exitCode=" + exit + System.lineSeparator(), StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND);
-        return exit;
-    }
-
-    private int estimateProgress(Path runDir, Path logPath) {
-        int progress = 25;
-        long logSize = logSize(logPath);
-        if (logSize > 0) {
-            progress = 35;
-        }
-        if (logSize > 4_000) {
-            progress = 45;
-        }
-        if (logSize > 16_000) {
-            progress = 55;
-        }
-        if (Files.exists(runDir.resolve("generated/stages/brief.md"))) {
-            progress = Math.max(progress, 60);
-        }
-        if (Files.exists(runDir.resolve("generated/stages/draft.md"))) {
-            progress = Math.max(progress, 70);
-        }
-        if (Files.exists(runDir.resolve("generated/stages/scaffold.md"))) {
-            progress = Math.max(progress, 80);
-        }
-        if (hasGeneratedTasks(runDir)) {
-            progress = Math.max(progress, 88);
-        }
-        if (Files.exists(runDir.resolve("summary.json"))) {
-            progress = Math.max(progress, 95);
-        }
-        // Oracle evidence files indicate per-task validation has run
-        if (hasOracleEvidence(runDir)) {
-            progress = Math.max(progress, 98);
-        }
-        return progress;
-    }
-
-    private long logSize(Path logPath) {
-        try {
-            return Files.exists(logPath) ? Files.size(logPath) : 0;
-        } catch (IOException e) {
-            return 0;
-        }
-    }
-
-    private boolean hasGeneratedTasks(Path runDir) {
-        try (var paths = Files.find(runDir, 5, (path, attrs) ->
-                attrs.isRegularFile() && ("main.py".equals(path.getFileName().toString())
-                        || "task_card.json".equals(path.getFileName().toString())))) {
-            return paths.findFirst().isPresent();
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    private boolean hasOracleEvidence(Path runDir) {
-        try (var paths = Files.find(runDir, 8, (path, attrs) ->
-                attrs.isRegularFile() && "oracle-evidence.json".equals(path.getFileName().toString()))) {
-            return paths.findFirst().isPresent();
-        } catch (IOException e) {
-            return false;
-        }
     }
 
     private void writeSummaryIfMissing(Path runDir, Long runId, AleRunRequest request, List<AleTaskEntity> tasks, String status, String errorMessage) throws IOException {
@@ -634,74 +526,9 @@ public class AleStage1Service {
     }
 
     private List<AleOptionDTO> codexModelOptions() {
-        Set<String> models = new LinkedHashSet<>();
-        Path configPath = codexConfigPath();
-        if (Files.exists(configPath)) {
-            try {
-                String section = "";
-                for (String rawLine : Files.readAllLines(configPath, StandardCharsets.UTF_8)) {
-                    String line = rawLine.trim();
-                    if (line.isEmpty() || line.startsWith("#")) {
-                        continue;
-                    }
-                    if (line.startsWith("[") && line.endsWith("]")) {
-                        section = line.substring(1, line.length() - 1);
-                        continue;
-                    }
-                    if (section.isEmpty() && line.startsWith("model")) {
-                        addTomlKeyValueModel(models, line);
-                    } else if ("tui.model_availability_nux".equals(section)) {
-                        addTomlQuotedKeyModel(models, line);
-                    }
-                }
-            } catch (IOException e) {
-                log.warn("failed to read Codex config {}", configPath, e);
-            }
-        }
-        if (models.isEmpty()) {
-            models.add(DEFAULT_MODEL);
-            models.add("gpt-5-mini");
-            models.add("gpt-5-codex");
-        }
-        return models.stream().map(model -> new AleOptionDTO(model, model)).toList();
-    }
-
-    private Path codexConfigPath() {
-        String codexHome = System.getenv("CODEX_HOME");
-        Path home = StringUtils.hasText(codexHome)
-                ? Path.of(codexHome)
-                : Path.of(System.getProperty("user.home"), ".codex");
-        return home.resolve("config.toml");
-    }
-
-    private void addTomlKeyValueModel(Set<String> models, String line) {
-        int index = line.indexOf('=');
-        if (index < 0) {
-            return;
-        }
-        String key = line.substring(0, index).trim();
-        if (!"model".equals(key)) {
-            return;
-        }
-        addTomlString(models, line.substring(index + 1));
-    }
-
-    private void addTomlQuotedKeyModel(Set<String> models, String line) {
-        int end = line.indexOf('"', 1);
-        if (!line.startsWith("\"") || end <= 1) {
-            return;
-        }
-        models.add(line.substring(1, end));
-    }
-
-    private void addTomlString(Set<String> models, String rawValue) {
-        String value = rawValue.trim();
-        if (value.startsWith("\"")) {
-            int end = value.indexOf('"', 1);
-            if (end > 1) {
-                models.add(value.substring(1, end));
-            }
-        }
+        return properties.getCodexModels().stream()
+                .map(m -> new AleOptionDTO(m, m))
+                .toList();
     }
 
     private String buildRunKey(AleRunRequest request) {
@@ -728,22 +555,5 @@ public class AleStage1Service {
 
     private String toJson(Object value) {
         return com.alibaba.fastjson2.JSON.toJSONString(value, com.alibaba.fastjson2.JSONWriter.Feature.PrettyFormat);
-    }
-
-    private String buildPlanJson(AleRunRequest request, Path runDir) {
-        Map<String, Object> plan = new LinkedHashMap<>();
-        plan.put("runKey", runDir.getFileName().toString());
-        plan.put("request", request);
-        plan.put("outputRoot", runDir.toAbsolutePath().toString());
-        plan.put("skillRoot", SKILL_ROOT);
-        plan.put("frameworkRoot", frameworkRoot().toString());
-        plan.put("frameworkTasksRoot", frameworkRoot().resolve("tasks").toString());
-        plan.put("steps", List.of("brief", "draft", "scaffold", "oracle_validate"));
-        plan.put("requirements", Map.of(
-                "aleNativeMainPy", true,
-                "oracleMustPassBeforeStage2", true,
-                "noStage2ModelEvaluation", true,
-                "summaryJsonMustIncludeEvidence", true));
-        return toJson(plan);
     }
 }
