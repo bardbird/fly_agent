@@ -66,6 +66,18 @@ def _write_json(path: Path, data: dict) -> None:
         f.write("\n")
 
 
+def _read_agent_model(framework_root: Path, fallback: str) -> str:
+    yaml_path = framework_root / "configs" / "agents" / "claude_code.yaml"
+    try:
+        for line in yaml_path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("model:"):
+                return stripped.split(":", 1)[1].strip().strip("'\"") or fallback
+    except OSError:
+        pass
+    return fallback
+
+
 def load_trigger(path: Path) -> dict:
     """读取并校验 stage2 触发文件。"""
     data = _read_json(path)
@@ -341,7 +353,7 @@ def main() -> int:
     s2 = trigger["stage2"]
     framework_root = Path(s2.get("framework_root", ".")).expanduser().resolve()
     agent = s2.get("agent", "claude_code")
-    model = s2.get("model", "claude-sonnet-4-6")
+    model = _read_agent_model(framework_root, s2.get("model", "claude-sonnet-4-6"))
     timeout = int(s2.get("timeout", 7200))
 
     progress = run_dir / "stage2_progress.json"
@@ -359,6 +371,9 @@ def main() -> int:
 
         prog("prepare", 5)
         verified = get_verified_tasks(run_dir)
+        selected_task_ids = set(s2.get("task_ids") or [])
+        if selected_task_ids:
+            verified = [task for task in verified if task.get("task_id") in selected_task_ids]
         if not verified:
             prog("failed", 100, message="no verified tasks in summary.json")
             return 1

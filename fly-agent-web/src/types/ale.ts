@@ -34,6 +34,53 @@ export interface AleRunRequest {
   codexModel: string
 }
 
+export interface AleClaudeCodeConfig {
+  model?: string
+  provider?: string
+  baseUrl?: string
+  cliVersion?: string
+  maxThinkingTokens?: number | null
+  apiKeySet?: boolean
+  authTokenSet?: boolean
+  apiKeyPreview?: string
+  authTokenPreview?: string
+}
+
+export interface AleClaudeCodeConfigRequest {
+  model?: string
+  provider?: string
+  baseUrl?: string
+  cliVersion?: string
+  maxThinkingTokens?: number | null
+  apiKey?: string
+  authToken?: string
+}
+
+export interface AleStage2TaskReview {
+  taskId: string
+  status?: string
+  score?: number
+  error?: string
+  needsAttention?: boolean
+  summary?: string
+  evidence?: string[]
+  suggestedFixes?: string[]
+}
+
+export interface AleStage2Review {
+  runId: number
+  runKey?: string
+  status?: string
+  averageScore?: number
+  needsAttention?: boolean
+  analysisSource?: string
+  summary?: string
+  likelyCauses?: string[]
+  suggestedFixes?: string[]
+  tasks?: AleStage2TaskReview[]
+  artifactHint?: string
+}
+
 export interface AleTask {
   id: number
   runId: number

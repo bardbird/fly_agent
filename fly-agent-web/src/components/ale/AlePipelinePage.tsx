@@ -1,17 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@iconify/react'
+import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Loading } from '@/components/ui/loading'
 import { cn } from '@/lib/utils'
 import {
+  downloadAleStage2Artifacts,
+  downloadAleStage2TaskArtifacts,
+  getAleClaudeCodeConfig,
   getAleOptions,
   getAleRun,
   getAleRunLog,
+  getAleStage2AgentLog,
+  getAleStage2TaskReview,
   listAleRuns,
+  saveAleClaudeCodeConfig,
   startAleRun,
   startAleStage2,
+  startAleStage2Task,
 } from '@/lib/api'
-import type { AleOptionsResponse, AleRun, AleRunRequest, AleRunSummary } from '@/types/ale'
+import type { AleClaudeCodeConfig, AleOptionsResponse, AleRun, AleRunRequest, AleRunSummary, AleStage2TaskReview } from '@/types/ale'
 
 // ── constants ────────────────────────────────────────────────────────────────
 
@@ -62,15 +70,25 @@ export function AlePipelinePage() {
   const [selectedRun, setSelectedRun] = useState<AleRun | null>(null)
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null)
   const [logLines, setLogLines] = useState<string[]>([])
+  const [agentLogLines, setAgentLogLines] = useState<string[]>([])
+  const [taskReviews, setTaskReviews] = useState<Record<number, AleStage2TaskReview>>({})
+  const [claudeConfig, setClaudeConfig] = useState<AleClaudeCodeConfig | null>(null)
+  const [claudeDraft, setClaudeDraft] = useState<AleClaudeCodeConfig & { apiKey?: string; authToken?: string }>({})
+  const [configSaving, setConfigSaving] = useState(false)
+  const [artifactDownloadingTaskId, setArtifactDownloadingTaskId] = useState<number | null>(null)
+  const [reviewLoadingTaskId, setReviewLoadingTaskId] = useState<number | null>(null)
+  const [rerunningTaskId, setRerunningTaskId] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [stage2Loading, setStage2Loading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const logRef = useRef<HTMLPreElement>(null)
+  const agentLogRef = useRef<HTMLPreElement>(null)
 
   // ── init + poll ────────────────────────────────────────────────────────
 
   useEffect(() => {
     getAleOptions().then(setOptions).catch(() => {})
+    void refreshClaudeConfig()
     refreshRuns()
   }, [])
 
@@ -84,7 +102,9 @@ export function AlePipelinePage() {
         if (run?.stage2Status === 'RUNNING' && step === 'stage1') setStep('stage2')
       })
       void refreshRunLog(selectedRunId)
+      void refreshAgentLog(selectedRunId)
       void refreshRuns(false)
+      void refreshClaudeConfig(false)
     }, 3000)
     return () => window.clearInterval(timer)
   }, [selectedRunId, step])
@@ -92,6 +112,10 @@ export function AlePipelinePage() {
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [logLines])
+
+  useEffect(() => {
+    if (agentLogRef.current) agentLogRef.current.scrollTop = agentLogRef.current.scrollHeight
+  }, [agentLogLines])
 
   // ── data ───────────────────────────────────────────────────────────────
 
@@ -113,6 +137,61 @@ export function AlePipelinePage() {
     setLogLines(lines)
   }
 
+  async function refreshAgentLog(id: number) {
+    const lines = await getAleStage2AgentLog(id, 500)
+    setAgentLogLines(lines)
+  }
+
+  async function refreshTaskReview(taskId: number) {
+    if (!selectedRunId) return
+    setReviewLoadingTaskId(taskId)
+    try {
+      const review = await getAleStage2TaskReview(selectedRunId, taskId)
+      setTaskReviews((prev) => ({ ...prev, [taskId]: review }))
+    } catch (err) { setError(err instanceof Error ? err.message : 'AI 回顾失败') }
+    finally { setReviewLoadingTaskId(null) }
+  }
+
+  async function refreshClaudeConfig(syncDraft = true) {
+    const next = await getAleClaudeCodeConfig()
+    setClaudeConfig(next)
+    if (syncDraft) setClaudeDraft(next)
+  }
+
+  async function handleSaveClaudeConfig() {
+    setConfigSaving(true)
+    setError(null)
+    try {
+      const next = await saveAleClaudeCodeConfig({
+        model: claudeDraft.model,
+        provider: claudeDraft.provider,
+        baseUrl: claudeDraft.baseUrl,
+        cliVersion: claudeDraft.cliVersion,
+        maxThinkingTokens: claudeDraft.maxThinkingTokens,
+        apiKey: claudeDraft.apiKey,
+        authToken: claudeDraft.authToken,
+      })
+      setClaudeConfig(next)
+      setClaudeDraft(next)
+    } catch (err) { setError(err instanceof Error ? err.message : '保存 Claude Code 配置失败') }
+    finally { setConfigSaving(false) }
+  }
+
+  async function handleDownloadArtifacts(taskId?: number) {
+    if (!selectedRunId) return
+    setArtifactDownloadingTaskId(taskId ?? 0)
+    setError(null)
+    try {
+      const blob = taskId
+        ? await downloadAleStage2TaskArtifacts(selectedRunId, taskId)
+        : await downloadAleStage2Artifacts(selectedRunId)
+      downloadBlob(blob, taskId
+        ? `ale-stage2-run-${selectedRunId}-task-${taskId}-artifacts.zip`
+        : `ale-stage2-run-${selectedRunId}-artifacts.zip`)
+    } catch (err) { setError(err instanceof Error ? err.message : '下载产物失败') }
+    finally { setArtifactDownloadingTaskId(null) }
+  }
+
   async function handleStartStage1() {
     setLoading(true)
     setError(null)
@@ -131,9 +210,29 @@ export function AlePipelinePage() {
     try {
       const updated = await startAleStage2(selectedRunId)
       setSelectedRun(updated)
+      setTaskReviews({})
+      setAgentLogLines([])
       setStep('stage2')
     } catch (err) { setError(err instanceof Error ? err.message : 'Stage2 启动失败') }
     finally { setStage2Loading(false) }
+  }
+
+  async function handleRerunTask(taskId: number) {
+    if (!selectedRunId) return
+    setRerunningTaskId(taskId)
+    setError(null)
+    try {
+      const updated = await startAleStage2Task(selectedRunId, taskId)
+      setSelectedRun(updated)
+      setTaskReviews((prev) => {
+        const next = { ...prev }
+        delete next[taskId]
+        return next
+      })
+      setAgentLogLines([])
+      setStep('stage2')
+    } catch (err) { setError(err instanceof Error ? err.message : 'Task 重跑失败') }
+    finally { setRerunningTaskId(null) }
   }
 
   // ── derived ────────────────────────────────────────────────────────────
@@ -211,6 +310,22 @@ export function AlePipelinePage() {
             onSelectRun={setSelectedRunId}
             selectedRun={selectedRun}
             tasks={tasks}
+            claudeConfig={claudeConfig}
+            claudeDraft={claudeDraft}
+            onChangeClaudeDraft={setClaudeDraft}
+            configSaving={configSaving}
+            onRefreshConfig={() => refreshClaudeConfig(true)}
+            onSaveConfig={handleSaveClaudeConfig}
+            agentLogLines={agentLogLines}
+            agentLogRef={agentLogRef}
+            onRefreshAgentLog={() => selectedRunId && refreshAgentLog(selectedRunId)}
+            taskReviews={taskReviews}
+            reviewLoadingTaskId={reviewLoadingTaskId}
+            onRefreshTaskReview={refreshTaskReview}
+            artifactDownloadingTaskId={artifactDownloadingTaskId}
+            onDownloadArtifacts={handleDownloadArtifacts}
+            rerunningTaskId={rerunningTaskId}
+            onRerunTask={handleRerunTask}
             stage2Loading={stage2Loading}
             onStartStage2={handleStartStage2}
           />
@@ -382,10 +497,24 @@ function Stage1Panel({
 function Stage2Panel({
   runs, selectedRunId, onSelectRun,
   selectedRun, tasks,
+  claudeConfig, claudeDraft, onChangeClaudeDraft, configSaving, onRefreshConfig, onSaveConfig,
+  agentLogLines, agentLogRef, onRefreshAgentLog,
+  taskReviews, reviewLoadingTaskId, onRefreshTaskReview,
+  artifactDownloadingTaskId, onDownloadArtifacts,
+  rerunningTaskId, onRerunTask,
   stage2Loading, onStartStage2,
 }: {
   runs: AleRunSummary[]; selectedRunId: number | null; onSelectRun: (id: number) => void
   selectedRun: AleRun | null; tasks: AleRun['tasks']
+  claudeConfig: AleClaudeCodeConfig | null
+  claudeDraft: AleClaudeCodeConfig & { apiKey?: string; authToken?: string }
+  onChangeClaudeDraft: (draft: AleClaudeCodeConfig & { apiKey?: string; authToken?: string }) => void
+  configSaving: boolean; onRefreshConfig: () => void; onSaveConfig: () => void
+  agentLogLines: string[]; agentLogRef: React.RefObject<HTMLPreElement | null>; onRefreshAgentLog: () => void
+  taskReviews: Record<number, AleStage2TaskReview>
+  reviewLoadingTaskId: number | null; onRefreshTaskReview: (taskId: number) => void
+  artifactDownloadingTaskId: number | null; onDownloadArtifacts: (taskId?: number) => void
+  rerunningTaskId: number | null; onRerunTask: (taskId: number) => void
   stage2Loading: boolean; onStartStage2: () => void
 }) {
   const stage2Tasks = tasks.filter((t) => t.stage2Status)
@@ -397,6 +526,30 @@ function Stage2Panel({
     <div className="grid gap-4 lg:grid-cols-[1fr_1.5fr_1.5fr]">
       {/* run selector */}
       <div className="space-y-3">
+        <div className="rounded-lg border border-terminal bg-white p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-bold">Claude Code 配置</h2>
+            <button onClick={onRefreshConfig} className="flex items-center gap-1 text-xs text-cyan">
+              <Icon icon="mdi:refresh" className="h-3 w-3" />刷新
+            </button>
+          </div>
+          <div className="space-y-2">
+            <TextField label="模型" value={claudeDraft.model ?? ''} onChange={(v) => onChangeClaudeDraft({ ...claudeDraft, model: v })} />
+            <TextField label="Base URL" value={claudeDraft.baseUrl ?? ''} onChange={(v) => onChangeClaudeDraft({ ...claudeDraft, baseUrl: v })} />
+            <div className="grid grid-cols-2 gap-2">
+              <TextField label="Provider" value={claudeDraft.provider ?? 'direct'} onChange={(v) => onChangeClaudeDraft({ ...claudeDraft, provider: v })} />
+              <TextField label="Thinking" value={String(claudeDraft.maxThinkingTokens ?? '')} onChange={(v) => onChangeClaudeDraft({ ...claudeDraft, maxThinkingTokens: v ? Number(v) : null })} />
+            </div>
+            <TextField label="CLI 版本" value={claudeDraft.cliVersion ?? ''} onChange={(v) => onChangeClaudeDraft({ ...claudeDraft, cliVersion: v })} />
+            <TextField label={`API Key ${claudeConfig?.apiKeyPreview ? `(${claudeConfig.apiKeyPreview})` : ''}`} value={claudeDraft.apiKey ?? ''} onChange={(v) => onChangeClaudeDraft({ ...claudeDraft, apiKey: v })} password />
+            <TextField label={`Auth Token ${claudeConfig?.authTokenPreview ? `(${claudeConfig.authTokenPreview})` : ''}`} value={claudeDraft.authToken ?? ''} onChange={(v) => onChangeClaudeDraft({ ...claudeDraft, authToken: v })} password />
+          </div>
+          <Button size="sm" onClick={onSaveConfig} disabled={configSaving} className="mt-3 w-full">
+            {configSaving ? <Loading size="sm" /> : <Icon icon="mdi:content-save" className="mr-1 h-4 w-4" />}
+            保存配置
+          </Button>
+        </div>
+
         <div className="rounded-lg border border-terminal bg-white p-4">
           <h2 className="mb-3 text-sm font-bold">选择 Stage 1 Run</h2>
           <div className="max-h-[500px] divide-y divide-terminal overflow-y-auto custom-scrollbar">
@@ -435,10 +588,10 @@ function Stage2Panel({
             {selectedRun?.stage2Status && <StatusPill status={selectedRun.stage2Status} />}
           </div>
 
-          {(selectedRun?.status === 'COMPLETED' && (!selectedRun?.stage2Status || selectedRun.stage2Status === 'FAILED')) && (
+          {(selectedRun?.status === 'COMPLETED' && !selectedRun.stage2Status) && (
             <Button size="sm" onClick={onStartStage2} disabled={stage2Loading} className="w-full">
               {stage2Loading ? <Loading size="sm" /> : <Icon icon="mdi:play-circle" className="mr-1 h-4 w-4" />}
-              {selectedRun.stage2Status === 'FAILED' ? '重新测评' : stage2Loading ? '启动中…' : '开始测评'}
+              {stage2Loading ? '启动中…' : '开始测评'}
             </Button>
           )}
 
@@ -473,20 +626,18 @@ function Stage2Panel({
             <div className="border-b border-terminal px-4 py-2 text-xs font-bold">Task 结果</div>
             <div className="max-h-[400px] divide-y divide-terminal overflow-y-auto custom-scrollbar">
               {stage2Tasks.map((task) => (
-                <div key={task.id} className="px-3 py-2 space-y-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="select-text truncate text-xs">{task.taskId}</span>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <CopyButton value={task.taskId} label="复制 task id" />
-                      <StatusPill status={task.stage2Status ?? '-'} compact />
-                    </div>
-                  </div>
-                  <div className="flex gap-3 text-[10px] text-text-secondary">
-                    <span>得分: {task.stage2Score ?? '-'}</span>
-                    <span>耗时: {task.stage2DurationS != null ? `${task.stage2DurationS}s` : '-'}</span>
-                  </div>
-                  {task.stage2Error && <div className="text-[10px] text-rose-600 truncate">{task.stage2Error}</div>}
-                </div>
+                <Stage2TaskResult
+                  key={task.id}
+                  task={task}
+                  review={taskReviews[task.id]}
+                  reviewLoading={reviewLoadingTaskId === task.id}
+                  downloading={artifactDownloadingTaskId === task.id}
+                  rerunning={rerunningTaskId === task.id}
+                  stage2Running={selectedRun?.stage2Status === 'RUNNING'}
+                  onReview={() => onRefreshTaskReview(task.id)}
+                  onDownload={() => onDownloadArtifacts(task.id)}
+                  onRerun={() => onRerunTask(task.id)}
+                />
               ))}
             </div>
           </div>
@@ -494,17 +645,110 @@ function Stage2Panel({
       </div>
 
       {/* agent log placeholder */}
-      <div className="rounded-lg border border-terminal bg-white p-4">
-        <h2 className="text-sm font-bold mb-3">Agent 日志</h2>
-        <div className="text-xs text-text-secondary text-center py-12">
-          完成 Stage 2 测评后可查看 agent 执行日志
+      <div className="flex max-h-[820px] min-h-[520px] min-w-0 flex-col rounded-lg border border-terminal bg-white">
+        <div className="flex items-center justify-between border-b border-terminal px-4 py-2">
+          <h2 className="text-sm font-bold">Agent 日志</h2>
+          <button onClick={onRefreshAgentLog} className="flex items-center gap-1 text-xs text-cyan">
+            <Icon icon="mdi:refresh" className="h-3 w-3" />刷新
+          </button>
         </div>
+        <pre ref={agentLogRef} className="min-h-0 w-full min-w-0 max-w-full flex-1 overflow-auto whitespace-pre p-3 font-mono text-[11px] leading-5 custom-scrollbar">
+          {agentLogLines.length > 0 ? agentLogLines.join('\n') : '暂无 agent 日志'}
+        </pre>
       </div>
     </div>
   )
 }
 
+function Stage2TaskResult({
+  task, review, reviewLoading, downloading, rerunning, stage2Running,
+  onReview, onDownload, onRerun,
+}: {
+  task: AleRun['tasks'][number]
+  review?: AleStage2TaskReview
+  reviewLoading: boolean
+  downloading: boolean
+  rerunning: boolean
+  stage2Running: boolean
+  onReview: () => void
+  onDownload: () => void
+  onRerun: () => void
+}) {
+  const score = task.stage2Score
+  const needsAttention = task.stage2Status !== 'completed' || score == null || score < 0.95 || Boolean(task.stage2Error)
+  const hasStage2Artifact = Boolean(task.stage2Status || task.stage2ResultDir)
+  const fixes = review?.suggestedFixes ?? []
+  return (
+    <div className="px-3 py-2 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="select-text min-w-0 truncate text-xs">{task.taskId}</span>
+        <div className="flex shrink-0 items-center gap-1">
+          <CopyButton value={task.taskId} label="复制 task id" />
+          <StatusPill status={task.stage2Status ?? '-'} compact />
+        </div>
+      </div>
+      <div className="flex gap-3 text-[10px] text-text-secondary">
+        <span>得分: {score ?? '-'}</span>
+        <span>耗时: {task.stage2DurationS != null ? `${task.stage2DurationS}s` : '-'}</span>
+      </div>
+      {task.stage2Error && <div className="text-[10px] text-rose-600 break-words">{task.stage2Error}</div>}
+
+      {hasStage2Artifact && (
+        <div className="flex flex-wrap gap-2">
+          {needsAttention && (
+            <Button size="sm" variant="outline" onClick={onReview} disabled={reviewLoading || stage2Running} className="h-7 px-2 text-[11px]">
+              {reviewLoading ? <TinyButtonLoading /> : <Icon icon="mdi:brain" className="mr-1 h-3.5 w-3.5" />}
+              回顾
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={onDownload} disabled={downloading} className="h-7 px-2 text-[11px]">
+            {downloading ? <TinyButtonLoading /> : <Icon icon="mdi:download" className="mr-1 h-3.5 w-3.5" />}
+            下载
+          </Button>
+          {needsAttention && (
+            <Button size="sm" onClick={onRerun} disabled={rerunning || stage2Running} className="h-7 px-2 text-[11px]">
+              {rerunning ? <TinyButtonLoading /> : <Icon icon="mdi:restart" className="mr-1 h-3.5 w-3.5" />}
+              重跑
+            </Button>
+          )}
+        </div>
+      )}
+
+      {review && needsAttention && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px]">
+          <div className="break-words text-text-primary">{review.summary ?? '暂无回顾摘要'}</div>
+          {review.evidence?.length ? (
+            <div className="mt-1 break-words text-text-secondary">{review.evidence[0]}</div>
+          ) : null}
+          {fixes.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {dedupeStrings(fixes).slice(0, 2).map((item, idx) => (
+                <div key={idx} className="break-words text-text-secondary">{item}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── shared components ────────────────────────────────────────────────────────
+
+function TinyButtonLoading() {
+  return (
+    <span className="mr-1 inline-flex h-3 w-4 items-center justify-center gap-0.5">
+      {[0, 1, 2].map((i) => (
+        <motion.span
+          key={i}
+          animate={{ y: [0, -2, 0], opacity: [0.55, 1, 0.55] }}
+          transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.1 }}
+          className="h-[3px] w-[3px] rounded-full bg-cyan"
+        />
+      ))}
+    </span>
+  )
+}
 
 function StatusPill({ status, compact }: { status: string; compact?: boolean }) {
   const tone = STATUS_TONE[status] ?? 'border-terminal bg-white text-text-secondary'
@@ -558,4 +802,37 @@ function SelectField({
       </select>
     </label>
   )
+}
+
+function TextField({
+  label, value, onChange, password,
+}: {
+  label: string; value: string; onChange: (v: string) => void; password?: boolean
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-xs">
+      <span className="text-text-secondary">{label}</span>
+      <input
+        type={password ? 'password' : 'text'}
+        className="h-9 min-w-0 rounded-lg border border-terminal bg-white px-3 text-xs outline-none focus:border-cyan"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  )
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
+function dedupeStrings(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)))
 }

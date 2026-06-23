@@ -19,7 +19,16 @@ import type {
   SweTaskCreateRequest,
   SweTaskFromCandidateRequest,
 } from '@/types/swe'
-import type { AleOptionsResponse, AleRun, AleRunRequest, AleRunSummary } from '@/types/ale'
+import type {
+  AleClaudeCodeConfig,
+  AleClaudeCodeConfigRequest,
+  AleOptionsResponse,
+  AleRun,
+  AleRunRequest,
+  AleRunSummary,
+  AleStage2Review,
+  AleStage2TaskReview,
+} from '@/types/ale'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -230,6 +239,18 @@ export async function startAleStage2(runId: number): Promise<AleRun> {
   return unwrapResult(await api.post<ApiResult<AleRun>>(`/ale/stage2/runs/${runId}/start`))
 }
 
+export async function startAleStage2Task(runId: number, taskId: number): Promise<AleRun> {
+  return unwrapResult(await api.post<ApiResult<AleRun>>(`/ale/stage2/runs/${runId}/tasks/${taskId}/start`))
+}
+
+export async function getAleClaudeCodeConfig(): Promise<AleClaudeCodeConfig> {
+  return unwrapResult(await api.get<ApiResult<AleClaudeCodeConfig>>('/ale/stage2/config'))
+}
+
+export async function saveAleClaudeCodeConfig(data: AleClaudeCodeConfigRequest): Promise<AleClaudeCodeConfig> {
+  return unwrapResult(await api.post<ApiResult<AleClaudeCodeConfig>>('/ale/stage2/config', data))
+}
+
 export async function listAleStage2Runs(): Promise<AleRunSummary[]> {
   const runs = unwrapResult(await api.get<ApiResult<AleRunSummary[]>>('/ale/stage2/runs'))
   return Array.isArray(runs) ? runs : []
@@ -244,6 +265,31 @@ export async function getAleStage2Log(id: number, lines = 400): Promise<string[]
     await api.get<ApiResult<string[]>>('/ale/stage2/runs/log', { params: { id, lines } })
   )
   return Array.isArray(linesData) ? linesData : []
+}
+
+export async function getAleStage2AgentLog(id: number, lines = 400): Promise<string[]> {
+  const linesData = unwrapResult(
+    await api.get<ApiResult<string[]>>(`/ale/stage2/runs/${id}/agent-log`, { params: { lines } })
+  )
+  return Array.isArray(linesData) ? linesData : []
+}
+
+export async function getAleStage2Review(id: number): Promise<AleStage2Review> {
+  return unwrapResult(await api.get<ApiResult<AleStage2Review>>(`/ale/stage2/runs/${id}/review`))
+}
+
+export async function getAleStage2TaskReview(runId: number, taskId: number): Promise<AleStage2TaskReview> {
+  return unwrapResult(await api.get<ApiResult<AleStage2TaskReview>>(`/ale/stage2/runs/${runId}/tasks/${taskId}/review`))
+}
+
+export async function downloadAleStage2Artifacts(runId: number): Promise<Blob> {
+  const response = await api.get(`/ale/stage2/runs/${runId}/artifacts.zip`, { responseType: 'blob' })
+  return response.data
+}
+
+export async function downloadAleStage2TaskArtifacts(runId: number, taskId: number): Promise<Blob> {
+  const response = await api.get(`/ale/stage2/runs/${runId}/tasks/${taskId}/artifacts.zip`, { responseType: 'blob' })
+  return response.data
 }
 
 export async function listSweTasks(): Promise<SweTask[]> {

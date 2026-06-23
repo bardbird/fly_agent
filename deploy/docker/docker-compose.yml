@@ -135,6 +135,7 @@ services:
       - ${SWE_AGENT_HOST_ROOT:-/opt/fly-agent/swe-agent}:/opt/fly-agent/swe-agent:ro
       - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
       - ${ALE_RUNS_HOST_DIR:-/data/fly-agent/ale-runs}:/data/fly-agent/ale-runs
+      - ${ALE_FRAMEWORK_ROOT:-/home/ubuntu/agents-last-exam}:${ALE_FRAMEWORK_ROOT:-/home/ubuntu/agents-last-exam}
     networks:
       - fly-agent
 
