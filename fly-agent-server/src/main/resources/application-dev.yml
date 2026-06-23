@@ -45,5 +45,9 @@ swe:
 
 ale:
   codex-binary: ${ALE_CODEX_BINARY:codex}
-  output-root: ${ALE_OUTPUT_ROOT:ale-runs}
-  framework-root: ${ALE_FRAMEWORK_ROOT:/Users/liuyifei/Liu/github/agents-last-exam}
+  output-root: ${ALE_OUTPUT_ROOT:/data/fly-agent/ale-runs}
+  framework-root: ${ALE_FRAMEWORK_ROOT:/home/ubuntu/agents-last-exam}
+  queue-dir: ${ALE_QUEUE_DIR:/data/fly-agent/ale-runs/.queue}
+  codex-models: ${ALE_CODEX_MODELS:gpt-5.5,gpt-5-mini,gpt-5-codex}
+  stage1-timeout-minutes: ${ALE_STAGE1_TIMEOUT_MIN:90}
+  stage2-timeout-minutes: ${ALE_STAGE2_TIMEOUT_MIN:240}
