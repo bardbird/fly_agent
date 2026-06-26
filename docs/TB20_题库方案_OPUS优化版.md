@@ -7,7 +7,7 @@
 
 - https://harborframework.com/docs/running-tbench
 - https://harborframework.com/docs/tasks
-- https://github.com/harbor-framework/terminal-bench
+- https://github.com/harbor-framework/terminal-bench-2
 
 
 # 生产体系分工
