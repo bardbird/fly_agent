@@ -103,10 +103,34 @@ class AleStage2ServiceTest {
         Path runDir = Files.createTempDirectory("ale-stage2-artifacts-");
         Files.createDirectories(runDir.resolve("tasks/domain/task_a"));
         Files.writeString(runDir.resolve("summary.json"), "{\"run\":\"stage1\"}");
+        Files.writeString(runDir.resolve("stage1.log"), "oracle validation log\n");
+        Files.writeString(runDir.resolve("stage1_progress.json"), "{\"phase\":\"oracle\"}");
+        Files.writeString(runDir.resolve("request.json"), "{\"request\":true}");
+        Files.writeString(runDir.resolve("plan.json"), "{\"plan\":true}");
+        Files.writeString(runDir.resolve("dry_run_agent.yaml"), "agent: dry-run\n");
+        Files.writeString(runDir.resolve("dry_run_environment.yaml"), "environment: dry-run\n");
+        Files.writeString(runDir.resolve("dry_run_experiment.yaml"), "experiment: dry-run\n");
         Files.writeString(runDir.resolve("tasks/domain/task_a/task_card.json"), "{\"task\":\"card\"}");
+        Files.writeString(runDir.resolve("tasks/domain/task_a/main.py"), "def evaluate(): pass\n");
+        Files.createDirectories(runDir.resolve("tasks/domain/task_a/oracle-logs"));
+        Files.writeString(runDir.resolve("tasks/domain/task_a/oracle-logs/oracle-evidence.json"), "{\"status\":\"verified\"}");
+        Files.createDirectories(runDir.resolve("tasks/domain/task_a/__pycache__"));
+        Files.writeString(runDir.resolve("tasks/domain/task_a/__pycache__/main.cpython-312.pyc"), "bytecode");
         Files.createDirectories(runDir.resolve("results/domain__task_a"));
         Files.writeString(runDir.resolve("results/domain__task_a/result.json"),
                 "{\"task_id\":\"domain/task_a\",\"status\":\"failed\",\"score\":0.0}");
+        Path rawAleDir = runDir.resolve("logs/ale/ale_stage2_demo/claude_code/model/domain__task_a/v0/20260623_161419");
+        Files.createDirectories(rawAleDir.resolve("origin_log/claude-code"));
+        Files.createDirectories(rawAleDir.resolve("output"));
+        Files.writeString(rawAleDir.resolve("run.json"), "{\"status\":\"failed\",\"score\":0.0}");
+        Files.writeString(rawAleDir.resolve("eval_result.json"), "{\"score\":0.0}");
+        Files.writeString(rawAleDir.resolve("events.jsonl"), "{\"event\":\"started\"}\n");
+        Files.writeString(rawAleDir.resolve("trajectory.json"), "{\"steps\":[]}");
+        Files.writeString(rawAleDir.resolve("origin_log/claude-code/transcript.jsonl"), "{\"type\":\"result\"}\n");
+        Files.writeString(rawAleDir.resolve("output/task_package.json"), "{\"answer\":true}");
+        Path otherAleDir = runDir.resolve("logs/ale/ale_stage2_demo/claude_code/model/domain__task_b/v0/20260623_161420");
+        Files.createDirectories(otherAleDir);
+        Files.writeString(otherAleDir.resolve("run.json"), "{\"status\":\"completed\",\"score\":1.0}");
 
         AleRunMapper runMapper = mock(AleRunMapper.class);
         AleTaskMapper taskMapper = mock(AleTaskMapper.class);
@@ -123,9 +147,72 @@ class AleStage2ServiceTest {
         AleStage2Service svc = new AleStage2Service(runMapper, taskMapper, mock(AleExecutionGateway.class), new AleProperties());
         byte[] zipBytes = svc.buildTaskArtifactsZip(10L, 20L);
 
-        assertTrue(zipContains(zipBytes, "stage1/summary.json"));
-        assertTrue(zipContains(zipBytes, "stage1/tasks/domain/task_a/task_card.json"));
-        assertTrue(zipContains(zipBytes, "stage2/results/domain__task_a/result.json"));
+        assertTrue(zipContains(zipBytes, "domain/task_a/task_card.json"));
+        assertTrue(zipContains(zipBytes, "domain/task_a/main.py"));
+        assertTrue(zipContains(zipBytes, "domain/task_a/oracle/summary.json"));
+        assertTrue(zipContains(zipBytes, "domain/task_a/oracle/stage1.log"));
+        assertTrue(zipContains(zipBytes, "domain/task_a/oracle/stage1_progress.json"));
+        assertTrue(zipContains(zipBytes, "domain/task_a/oracle/request.json"));
+        assertTrue(zipContains(zipBytes, "domain/task_a/oracle/plan.json"));
+        assertTrue(zipContains(zipBytes, "domain/task_a/oracle/dry_run_agent.yaml"));
+        assertTrue(zipContains(zipBytes, "domain/task_a/oracle/dry_run_environment.yaml"));
+        assertTrue(zipContains(zipBytes, "domain/task_a/oracle/dry_run_experiment.yaml"));
+        assertTrue(zipContains(zipBytes, "domain/task_a/oracle/oracle-logs/oracle-evidence.json"));
+        assertTrue(zipContains(zipBytes, "domain/task_a/ale/result.json"));
+        assertTrue(zipContains(zipBytes,
+                "domain/task_a/ale/runs/v0/20260623_161419/run.json"));
+        assertTrue(zipContains(zipBytes,
+                "domain/task_a/ale/runs/v0/20260623_161419/eval_result.json"));
+        assertTrue(zipContains(zipBytes,
+                "domain/task_a/ale/runs/v0/20260623_161419/events.jsonl"));
+        assertTrue(zipContains(zipBytes,
+                "domain/task_a/ale/runs/v0/20260623_161419/trajectory.json"));
+        assertTrue(zipContains(zipBytes,
+                "domain/task_a/ale/runs/v0/20260623_161419/origin_log/claude-code/transcript.jsonl"));
+        assertTrue(zipContains(zipBytes,
+                "domain/task_a/ale/runs/v0/20260623_161419/output/task_package.json"));
+        assertFalse(zipContains(zipBytes, "domain/task_a/oracle-logs/oracle-evidence.json"));
+        assertFalse(zipContains(zipBytes, "domain/task_a/__pycache__/main.cpython-312.pyc"));
+        assertFalse(zipContains(zipBytes, "oracle/summary.json"));
+        assertFalse(zipContains(zipBytes, "ale/result.json"));
+        assertFalse(zipContains(zipBytes,
+                "domain/task_a/ale/runs/ale_stage2_demo/claude_code/model/domain__task_a/v0/20260623_161419/run.json"));
+        assertFalse(zipContains(zipBytes,
+                "domain/task_a/ale/runs/v0/20260623_161420/run.json"));
+    }
+
+    @Test
+    void buildArtifactsZipIncludesAllRawAleRuns() throws Exception {
+        Path runDir = Files.createTempDirectory("ale-stage2-run-artifacts-");
+        Files.writeString(runDir.resolve("summary.json"), "{\"run\":\"stage1\"}");
+        Files.createDirectories(runDir.resolve("results/domain__task_a"));
+        Files.writeString(runDir.resolve("results/domain__task_a/result.json"), "{\"status\":\"completed\"}");
+        Path taskA = runDir.resolve("logs/ale/ale_stage2_demo/claude_code/model/domain__task_a/v0/20260623_161419");
+        Path taskB = runDir.resolve("logs/ale/ale_stage2_demo/claude_code/model/domain__task_b/v0/20260623_161420");
+        Files.createDirectories(taskA);
+        Files.createDirectories(taskB);
+        Files.writeString(taskA.resolve("run.json"), "{\"task\":\"a\"}");
+        Files.writeString(taskA.resolve("trajectory.json"), "{\"steps\":[\"a\"]}");
+        Files.writeString(taskB.resolve("run.json"), "{\"task\":\"b\"}");
+        Files.writeString(taskB.resolve("events.jsonl"), "{\"event\":\"b\"}\n");
+
+        AleRunMapper runMapper = mock(AleRunMapper.class);
+        AleRunEntity run = new AleRunEntity();
+        run.setId(11L);
+        run.setOutputRoot(runDir.toString());
+        when(runMapper.selectById(11L)).thenReturn(run);
+
+        AleStage2Service svc = new AleStage2Service(runMapper, mock(AleTaskMapper.class), mock(AleExecutionGateway.class), new AleProperties());
+        byte[] zipBytes = svc.buildArtifactsZip(11L);
+
+        assertTrue(zipContains(zipBytes,
+                "stage2/logs/ale/ale_stage2_demo/claude_code/model/domain__task_a/v0/20260623_161419/run.json"));
+        assertTrue(zipContains(zipBytes,
+                "stage2/logs/ale/ale_stage2_demo/claude_code/model/domain__task_a/v0/20260623_161419/trajectory.json"));
+        assertTrue(zipContains(zipBytes,
+                "stage2/logs/ale/ale_stage2_demo/claude_code/model/domain__task_b/v0/20260623_161420/run.json"));
+        assertTrue(zipContains(zipBytes,
+                "stage2/logs/ale/ale_stage2_demo/claude_code/model/domain__task_b/v0/20260623_161420/events.jsonl"));
     }
 
     private boolean zipContains(byte[] zipBytes, String name) throws Exception {

@@ -195,13 +195,7 @@ public class AleStage2Service {
                 addIfExists(zip, runDir.resolve("stage2_summary.json"), "stage2_summary.json");
                 addIfExists(zip, runDir.resolve("stage2.log"), "stage2.log");
                 addTree(zip, runDir.resolve("results"), "results");
-                Path latest = latestAleRunDir(runDir);
-                if (latest != null) {
-                    addIfExists(zip, latest.resolve("run.json"), "ale-run/run.json");
-                    addIfExists(zip, latest.resolve("eval_result.json"), "ale-run/eval_result.json");
-                    addTree(zip, latest.resolve("output"), "ale-run/output");
-                    addTree(zip, latest.resolve("origin_log"), "ale-run/origin_log");
-                }
+                addTree(zip, runDir.resolve("logs/ale"), "stage2/logs/ale");
             }
             return out.toByteArray();
         } catch (IOException e) {
@@ -225,21 +219,15 @@ public class AleStage2Service {
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             try (ZipOutputStream zip = new ZipOutputStream(out, StandardCharsets.UTF_8)) {
-                addIfExists(zip, runDir.resolve("summary.json"), "stage1/summary.json");
-                addTaskPackage(zip, runDir, task.getTaskId());
-                addTree(zip, runDir.resolve("oracle-logs"), "stage1/oracle-logs");
-                addIfExists(zip, runDir.resolve("exp.yaml"), "stage2/exp.yaml");
-                addIfExists(zip, runDir.resolve("stage2_progress.json"), "stage2/stage2_progress.json");
-                addIfExists(zip, runDir.resolve("stage2_summary.json"), "stage2/stage2_summary.json");
-                addIfExists(zip, runDir.resolve("stage2.log"), "stage2/stage2.log");
-                addTree(zip, resultDirFor(runDir, task.getTaskId()), "stage2/results/" + taskSlug(task.getTaskId()));
-                Path latest = latestAleRunDirForTask(runDir, task.getTaskId());
-                if (latest != null) {
-                    addIfExists(zip, latest.resolve("run.json"), "stage2/ale-run/run.json");
-                    addIfExists(zip, latest.resolve("eval_result.json"), "stage2/ale-run/eval_result.json");
-                    addTree(zip, latest.resolve("output"), "stage2/ale-run/output");
-                    addTree(zip, latest.resolve("origin_log"), "stage2/ale-run/origin_log");
-                }
+                addTaskPackageForDelivery(zip, runDir, task.getTaskId());
+                String taskRoot = task.getTaskId();
+                addOracleArtifactsForTask(zip, runDir, task.getTaskId(), taskRoot + "/oracle");
+                addIfExists(zip, runDir.resolve("exp.yaml"), taskRoot + "/ale/exp.yaml");
+                addIfExists(zip, runDir.resolve("stage2_progress.json"), taskRoot + "/ale/stage2_progress.json");
+                addIfExists(zip, runDir.resolve("stage2_summary.json"), taskRoot + "/ale/stage2_summary.json");
+                addIfExists(zip, runDir.resolve("stage2.log"), taskRoot + "/ale/stage2.log");
+                addTree(zip, resultDirFor(runDir, task.getTaskId()), taskRoot + "/ale");
+                addAleRunDirsForTask(zip, runDir, task.getTaskId(), taskRoot + "/ale/runs");
             }
             return out.toByteArray();
         } catch (IOException e) {
@@ -813,13 +801,12 @@ public class AleStage2Service {
 
     private Path latestAleRunDirForTask(Path runDir, String taskId) {
         if (!hasText(taskId)) return latestAleRunDir(runDir);
-        String slug = taskId.replace("/", "__");
         Path root = runDir.resolve("logs/ale");
         if (!Files.isDirectory(root)) return null;
         try (Stream<Path> stream = Files.walk(root)) {
             return stream
                     .filter(p -> Files.isRegularFile(p.resolve("run.json")) || Files.exists(p.resolve("origin_log/claude-code/transcript.jsonl")))
-                    .filter(p -> p.toString().contains(slug))
+                    .filter(p -> isAleRunDirForTask(p, taskId))
                     .max(Comparator.comparingLong(this::mtime))
                     .orElse(null);
         } catch (IOException e) {
@@ -875,11 +862,78 @@ public class AleStage2Service {
         }
     }
 
+    private void addAleRunDirsForTask(ZipOutputStream zip, Path runDir, String taskId, String prefix) throws IOException {
+        Path root = runDir.resolve("logs/ale");
+        if (!Files.isDirectory(root) || !hasText(taskId)) return;
+        try (Stream<Path> stream = Files.walk(root)) {
+            for (Path aleDir : stream
+                    .filter(p -> Files.isRegularFile(p.resolve("run.json"))
+                            || Files.exists(p.resolve("origin_log/claude-code/transcript.jsonl")))
+                    .filter(p -> isAleRunDirForTask(p, taskId))
+                    .sorted(Comparator.comparing(Path::toString))
+                    .toList()) {
+                addTree(zip, aleDir, prefix + "/" + aleRunDeliveryName(aleDir));
+            }
+        }
+    }
+
+    private String aleRunDeliveryName(Path aleDir) {
+        Path timestamp = aleDir.getFileName();
+        Path version = aleDir.getParent() == null ? null : aleDir.getParent().getFileName();
+        if (timestamp == null) return "run";
+        if (version == null) return timestamp.toString();
+        return version + "/" + timestamp;
+    }
+
+    private void addTaskPackageForDelivery(ZipOutputStream zip, Path runDir, String taskId) throws IOException {
+        Path taskDir = taskDirFor(runDir, taskId);
+        if (taskDir == null || !Files.isDirectory(taskDir)) return;
+        String prefix = taskId;
+        try (Stream<Path> stream = Files.walk(taskDir)) {
+            for (Path path : stream.filter(Files::isRegularFile).toList()) {
+                Path relativePath = taskDir.relativize(path);
+                if (isNonDeliveryTaskFile(relativePath)) continue;
+                String relative = relativePath.toString().replace('\\', '/');
+                addFile(zip, path, prefix + "/" + relative);
+            }
+        }
+    }
+
+    private void addOracleArtifactsForTask(ZipOutputStream zip, Path runDir, String taskId, String prefix) throws IOException {
+        addIfExists(zip, runDir.resolve("summary.json"), prefix + "/summary.json");
+        addIfExists(zip, runDir.resolve("stage1.log"), prefix + "/stage1.log");
+        addIfExists(zip, runDir.resolve("stage1_progress.json"), prefix + "/stage1_progress.json");
+        addIfExists(zip, runDir.resolve("request.json"), prefix + "/request.json");
+        addIfExists(zip, runDir.resolve("plan.json"), prefix + "/plan.json");
+        addIfExists(zip, runDir.resolve("dry_run_agent.yaml"), prefix + "/dry_run_agent.yaml");
+        addIfExists(zip, runDir.resolve("dry_run_environment.yaml"), prefix + "/dry_run_environment.yaml");
+        addIfExists(zip, runDir.resolve("dry_run_experiment.yaml"), prefix + "/dry_run_experiment.yaml");
+        Path taskDir = taskDirFor(runDir, taskId);
+        if (taskDir != null) {
+            addTree(zip, taskDir.resolve("oracle-logs"), prefix + "/oracle-logs");
+        }
+    }
+
     private void addTaskPackage(ZipOutputStream zip, Path runDir, String taskId) throws IOException {
-        if (!hasText(taskId) || !taskId.contains("/")) return;
+        Path taskDir = taskDirFor(runDir, taskId);
+        if (taskDir == null) return;
         String[] parts = taskId.split("/", 2);
-        Path taskDir = runDir.resolve("tasks").resolve(parts[0]).resolve(parts[1]);
         addTree(zip, taskDir, "stage1/tasks/" + parts[0] + "/" + parts[1]);
+    }
+
+    private Path taskDirFor(Path runDir, String taskId) {
+        if (!hasText(taskId) || !taskId.contains("/")) return null;
+        String[] parts = taskId.split("/", 2);
+        return runDir.resolve("tasks").resolve(parts[0]).resolve(parts[1]);
+    }
+
+    private boolean isNonDeliveryTaskFile(Path relativePath) {
+        String relative = relativePath.toString().replace('\\', '/');
+        if (relative.equals("oracle-logs") || relative.startsWith("oracle-logs/")) return true;
+        for (Path part : relativePath) {
+            if ("__pycache__".equals(part.toString())) return true;
+        }
+        return relative.endsWith(".pyc");
     }
 
     private void addIfExists(ZipOutputStream zip, Path path, String name) throws IOException {
@@ -907,6 +961,14 @@ public class AleStage2Service {
         } catch (IOException e) {
             return 0L;
         }
+    }
+
+    private boolean isAleRunDirForTask(Path path, String taskId) {
+        String slug = taskSlug(taskId);
+        for (Path part : path) {
+            if (slug.equals(part.toString())) return true;
+        }
+        return path.toString().contains(slug);
     }
 
     private static boolean hasText(String value) {
