@@ -14,7 +14,7 @@ Take stage-1-verified task packages and execute them through the ALE framework w
 A stage-1 output directory under `<ale-runs>/<run-id>/` containing:
 - `summary.json` — parsed to find `verified` tasks
 - `tasks/<domain>/<task_name>/` — task packages with `task_card.json`, `main.py`, `input/`, `reference/`
-- `oracle-logs/oracle-evidence.json` — proof the task passed oracle validation
+- `tasks/<domain>/<task_name>/oracle-logs/oracle-evidence.json` — proof the task passed oracle validation
 
 Only tasks with `status: "verified"` in stage-1 `summary.json` are eligible for stage 2.
 
@@ -42,12 +42,13 @@ Only tasks with `status: "verified"` in stage-1 `summary.json` are eligible for 
 2. **One task at a time.** `concurrency: 1`. Serial execution is safer for Docker resource management.
 3. **Use `--task` filter per run.** Generate one `exp.yaml` and invoke `ale_run run exp.yaml --task <domain>/<task_name>` for each task. This avoids restarts interfering across tasks.
 4. **Agent is Claude Code.** Always use `configs/agents/claude_code.yaml` with the `direct` provider. The `secret/.env` file provides API keys.
-5. **Environment is Docker.** Always use `configs/environments/docker.yaml`. Never use GCP in stage 2.
-6. **Task data source is `local:task-data`.** Already configured in `docker.yaml`. The framework expects `task-data/` under the ALE root.
-7. **Read timeout from task_card.json.** Each task card has `timeout_s`. Pass it as `wall_time_s` in `exp.yaml`. Default 7200s.
-8. **Cleanup after each task.** `cleanup_mode: delete` — destroy the Docker container after scoring to free disk.
-9. **Accumulate results per task.** After each task finishes, immediately collect its result and write `results/<domain>__<task_name>/result.json`. Do not wait for all tasks.
-10. **Do not modify stage-1 task packages.** The `tasks/` directory is read-only input.
+5. **Environment is Docker.** Base the stage-2 environment on `configs/environments/docker.yaml`. Never use GCP in stage 2.
+6. **Force local output collection.** The current official `configs/environments/docker.yaml` may set `output_path: null`; generate a run-local copy with `output_path: local` so ALE writes agent output under each run directory.
+7. **Task data source is `local:task-data`.** The framework expects `task-data/` under the ALE root. For generated tasks, stage 2 must copy `tasks/<domain>/<task_name>/{input,software,reference}` to `<framework-root>/task-data/<domain>/<task_name>/base/{input,software,reference}` before running.
+8. **Read timeout from task_card.json.** Current official tasks usually use `vm.timeout`; examples may use `vm.timeout_s`. Accept both, defaulting to 7200s.
+9. **Cleanup after each task.** `cleanup_mode: delete` — destroy the Docker container after scoring to free disk.
+10. **Accumulate results per task.** After each task finishes, immediately collect its result and write `results/<domain>__<task_name>/result.json`. Do not wait for all tasks.
+11. **Do not modify stage-1 task packages.** The `tasks/` directory is read-only input; task-data copies and framework symlinks are disposable stage-2 setup.
 
 ## Execution Flow
 
@@ -55,24 +56,34 @@ Only tasks with `status: "verified"` in stage-1 `summary.json` are eligible for 
 
 1. Read `<run-dir>/summary.json`. Collect all `verified` task IDs.
 2. For each verified task, ensure the task exists in `<run-dir>/tasks/<domain>/<task_name>/` and has both `task_card.json` and `main.py`.
-3. Symlink each verified task into the ALE framework's `tasks/` tree so `TaskLoader` can find them:
+3. Symlink each verified task into the ALE framework's `tasks/` tree so `TaskLoader` can find it:
    ```bash
    ln -sf <run-dir>/tasks/<domain>/<task_name> <framework-root>/tasks/<domain>/<task_name>
    ```
-4. Write `exp.yaml` to `<run-dir>/exp.yaml`:
+4. Copy task data into the ALE Docker data layout:
+   ```bash
+   mkdir -p <framework-root>/task-data/<domain>/<task_name>/base
+   cp -a <run-dir>/tasks/<domain>/<task_name>/input <framework-root>/task-data/<domain>/<task_name>/base/input
+   cp -a <run-dir>/tasks/<domain>/<task_name>/software <framework-root>/task-data/<domain>/<task_name>/base/software  # when present
+   cp -a <run-dir>/tasks/<domain>/<task_name>/reference <framework-root>/task-data/<domain>/<task_name>/base/reference
+   ```
+5. Generate run-local config copies:
+   - `configs/claude_code_stage2.yaml`: copied from official Claude Code config, with `config.provider: direct` unless the trigger explicitly chooses another provider.
+   - `configs/docker_stage2.yaml`: copied from official Docker config, with `task_data_source: local:task-data` and `output_path: local`.
+6. Write `exp.yaml` to `<run-dir>/exp.yaml`:
    ```yaml
    name: ale_stage2_<run_key>
    secret_file: secret/.env
    agents:
-     - configs/agents/claude_code.yaml
-   environment: configs/environments/docker.yaml
+     - <run-dir>/configs/claude_code_stage2.yaml
+   environment: <run-dir>/configs/docker_stage2.yaml
    tasks: selected_tasks/stage2_<run_key>.txt
    output:
      root: <run-dir>/logs/ale
    concurrency: 1
    cleanup_mode: delete
    ```
-5. Write the task list file to the ALE framework's `selected_tasks/` directory.
+7. Write the task list file to the ALE framework's `selected_tasks/` directory.
 
 ### Phase 2 ─ Execute (per task loop)
 
@@ -85,7 +96,7 @@ For each verified task:
    ```
    This boots the Docker container, runs Claude Code, evaluates, and cleans up.
 
-2. **On completion**: find the latest run directory under `<run-dir>/logs/ale/ale_stage2_<run_key>/claude_code/<model>/<task_slug>/v0/<timestamp>/`.
+2. **On completion**: find the latest run directory under `<run-dir>/logs/ale/claude_code/<model>/<domain>__<task_name>/v0/<timestamp>/` or the equivalent ALE `RunWriter` layout for the installed version. Match by exact task slug `<domain>__<task_name>`, not by a loose domain substring.
 
 3. **Collect artifacts**:
    - Read `run.json` → extract `status`, `score`, `duration_s`, `error`
@@ -110,7 +121,7 @@ For each verified task:
 
 1. Read all `results/*/result.json` files.
 2. Compute aggregate stats.
-3. Write final `summary.json` to `<run-dir>/summary.json` (overwrite stage-1 summary).
+3. Write final `stage2_summary.json` to `<run-dir>/stage2_summary.json`. Do not overwrite the stage-1 `summary.json`, because it is the verification contract and audit trail.
 
 ## Failure Handling
 
@@ -119,6 +130,7 @@ For each verified task:
 - **Task times out**: ALE framework handles timeout internally, marks status `timeout`. Collect the partial result normally.
 - **Grading fails**: `evaluate()` throws → ALE marks eval as failed. Collect what is available.
 - **Disk full**: abort the entire run. Do not continue when disk space is below 20 GB.
+- **Missing `task-data/` or Docker image**: abort before task execution with an infrastructure error. The Docker provider requires the ALE task-data archive and `agentslastexam/ale-ubuntu22-docker` image or a pullable equivalent.
 
 ## Quality Bar
 

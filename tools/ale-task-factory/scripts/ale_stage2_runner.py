@@ -78,6 +78,55 @@ def _read_agent_model(framework_root: Path, fallback: str) -> str:
     return fallback
 
 
+def _replace_yaml_scalar(text: str, key: str, value: str) -> str:
+    """Replace a simple top-level or nested scalar assignment in a yaml file."""
+    lines = text.splitlines()
+    replaced = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        if stripped.startswith(f"{key}:"):
+            indent = line[: len(line) - len(line.lstrip())]
+            lines[i] = f"{indent}{key}: {value}"
+            replaced = True
+    if not replaced:
+        lines.append(f"{key}: {value}")
+    return "\n".join(lines) + "\n"
+
+
+def write_stage2_agent_config(
+    framework_root: Path,
+    run_dir: Path,
+    *,
+    model: str,
+    provider: str,
+) -> Path:
+    """Create a run-local Claude Code config with the requested provider/model."""
+    src = framework_root / "configs" / "agents" / "claude_code.yaml"
+    dst = run_dir / "configs" / "claude_code_stage2.yaml"
+    text = src.read_text(encoding="utf-8")
+    if model:
+        text = _replace_yaml_scalar(text, "model", model)
+    if provider:
+        text = _replace_yaml_scalar(text, "provider", provider)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(text, encoding="utf-8")
+    return dst
+
+
+def write_stage2_environment_config(framework_root: Path, run_dir: Path) -> Path:
+    """Create a run-local Docker env config that gathers agent output locally."""
+    src = framework_root / "configs" / "environments" / "docker.yaml"
+    dst = run_dir / "configs" / "docker_stage2.yaml"
+    text = src.read_text(encoding="utf-8")
+    text = _replace_yaml_scalar(text, "task_data_source", "local:task-data")
+    text = _replace_yaml_scalar(text, "output_path", "local")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(text, encoding="utf-8")
+    return dst
+
+
 def load_trigger(path: Path) -> dict:
     """读取并校验 stage2 触发文件。"""
     data = _read_json(path)
@@ -117,6 +166,9 @@ def prepare_tasks(
     run_dir: Path,
     framework_root: Path,
     verified_tasks: list[dict],
+    *,
+    model: str,
+    provider: str,
 ) -> Path:
     """Symlink verified tasks into framework + write task list + exp.yaml.
 
@@ -150,18 +202,23 @@ def prepare_tasks(
     task_list_path.parent.mkdir(parents=True, exist_ok=True)
     task_list_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    agent_config = write_stage2_agent_config(
+        framework_root, run_dir, model=model, provider=provider,
+    )
+    env_config = write_stage2_environment_config(framework_root, run_dir)
+
     exp_yaml = run_dir / "exp.yaml"
     exp_content = f"""name: ale_stage2_{run_key}
 secret_file: {framework_root}/secret/.env
 agents:
-  - {framework_root}/configs/agents/claude_code.yaml
-environment: {framework_root}/configs/environments/docker.yaml
+  - {agent_config}
+environment: {env_config}
 tasks: {task_list_path}
 output:
   root: {run_dir}/logs/ale
 concurrency: 1
 cleanup_mode: delete
-# wall_time_s is intentionally omitted — ALE reads timeout_s from each task's metadata
+# wall_time_s is intentionally omitted — ALE reads vm.timeout/vm.timeout_s from task metadata
 """
     exp_yaml.write_text(exp_content, encoding="utf-8")
     return exp_yaml
@@ -218,9 +275,10 @@ def collect_task_result(
     # Best-effort find the ALE run directory
     ale_run_dirs = _find_run_dirs(log_root)
     ale_dir = None
+    task_slug = task_id.strip("/").replace("/", "__")
     for d in ale_run_dirs:
-        # d is like .../v0/<timestamp> — check its ancestor's task slug
-        if task_name.replace("/", "_") in str(d) or domain in str(d.parent.parent):
+        # d is like .../<task_slug>/v0/<timestamp>
+        if d.parent.parent.name == task_slug:
             ale_dir = d
             break
 
@@ -323,6 +381,16 @@ def _extract_shell_log(agent_log_dir: Path) -> None:
         pass
 
 
+def read_task_timeout(task_card_path: Path, fallback: int) -> int:
+    """Read ALE task timeout, accepting both current vm.timeout and old timeout_s."""
+    try:
+        vm = _read_json(task_card_path).get("vm", {})
+        raw = vm.get("timeout_s", vm.get("timeout", fallback))
+        return int(raw)
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return fallback
+
+
 # ── summarize ────────────────────────────────────────────────────────────────
 
 def write_summary(run_dir: Path, task_results: list[dict], agent: str, model: str) -> dict:
@@ -373,7 +441,8 @@ def main() -> int:
     s2 = trigger["stage2"]
     framework_root = Path(s2.get("framework_root", ".")).expanduser().resolve()
     agent = s2.get("agent", "claude_code")
-    model = _read_agent_model(framework_root, s2.get("model", "claude-sonnet-4-6"))
+    model = s2.get("model") or _read_agent_model(framework_root, "claude-sonnet-4-6")
+    provider = s2.get("provider", "direct")
     timeout = int(s2.get("timeout", 7200))
 
     progress = run_dir / "stage2_progress.json"
@@ -398,7 +467,13 @@ def main() -> int:
             prog("failed", 100, message="no verified tasks in summary.json")
             return 1
 
-        exp_yaml = prepare_tasks(run_dir, framework_root, verified)
+        exp_yaml = prepare_tasks(
+            run_dir,
+            framework_root,
+            verified,
+            model=model,
+            provider=provider,
+        )
         log_root = run_dir / "logs" / "ale"
         task_results = []
         total = len(verified)
@@ -411,12 +486,7 @@ def main() -> int:
             print(f"\n[stage2] [{i+1}/{total}] {task_id}")
             domain, task_name = task_id.split("/", 1)
             task_card_path = run_dir / "tasks" / domain / task_name / "task_card.json"
-            task_timeout = timeout
-            if task_card_path.exists():
-                try:
-                    task_timeout = _read_json(task_card_path).get("vm", {}).get("timeout_s", timeout)
-                except (json.JSONDecodeError, KeyError):
-                    pass
+            task_timeout = read_task_timeout(task_card_path, timeout)
             t0 = time.monotonic()
             proc = run_one_task(framework_root, exp_yaml, task_id, task_timeout)
             elapsed = time.monotonic() - t0

@@ -136,5 +136,60 @@ class EstimateCodexProgressTest(unittest.TestCase):
             self.assertEqual(r._estimate_codex_progress(base), 85)
 
 
+class ValidateGeneratedTasksTest(unittest.TestCase):
+    def test_links_task_before_dry_run_and_loader(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            output = root / "run"
+            framework = root / "framework"
+            task = output / "tasks" / "d" / "t01"
+            task.mkdir(parents=True)
+            (task / "main.py").write_text("x", encoding="utf-8")
+            (task / "task_card.json").write_text("{}", encoding="utf-8")
+            _write(task / "oracle-logs" / "oracle-evidence.json", {
+                "task_id": "d/t01",
+                "status": "verified",
+                "oracle": {
+                    "score": 1.0,
+                    "grader_check_ok": True,
+                    "details": "ok",
+                },
+                "blocked_reason": None,
+            })
+
+            def fake_dry_run(framework_root: Path, task_path: str):
+                self.assertTrue((framework_root / "tasks" / "d" / "t01").is_symlink())
+                return {"ok": True, "output": task_path, "error": None}
+
+            def fake_loader(_uv: str, framework_root: Path, loader_path: str):
+                self.assertEqual(loader_path, "tasks/d/t01")
+                self.assertTrue((framework_root / "tasks" / "d" / "t01").is_symlink())
+                return {"ok": True, "error": ""}
+
+            with mock.patch.object(r, "run_ale_dry_run", side_effect=fake_dry_run), \
+                 mock.patch.object(r, "_invoke_task_loader", side_effect=fake_loader), \
+                 mock.patch.object(r, "_find_uv", return_value="uv"):
+                checks = r.validate_generated_tasks(
+                    output,
+                    framework,
+                    r.TaskRequest(
+                        domain="d",
+                        task_id="t01",
+                        title="",
+                        scenario="",
+                        difficulty="easy",
+                        input_mode="",
+                        output_mode="",
+                        verification_mode="",
+                        reference_strategy="",
+                        framework_root=str(framework),
+                    ),
+                )
+
+            self.assertEqual(len(checks), 1)
+            self.assertEqual(checks[0].status, "verified")
+            self.assertFalse((framework / "tasks" / "d" / "t01").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

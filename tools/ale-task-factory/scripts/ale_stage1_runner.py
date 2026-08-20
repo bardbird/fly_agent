@@ -380,21 +380,31 @@ def validate_generated_tasks(
     results: list[OracleCheck] = []
     for domain, task_name, task_dir in task_dirs:
         task_id = f"{domain}/{task_name}"
-        rel_path = str(task_dir.relative_to(output_dir))
 
         check = OracleCheck(task_id=task_id, status="failed")
 
-        # Level 1 ─ ALE dry-run
-        dry_result = run_ale_dry_run(framework_root, f"{domain}/{task_name}")
+        # Level 1/2 need the generated task visible under framework_root/tasks/.
+        # Link once, run both checks, then remove the link. Running dry-run
+        # before linking makes new generated tasks invisible to TaskLoader.
+        link_error = _install_output_task_link(framework_root, output_dir, domain, task_name)
+        if link_error:
+            dry_result = {"ok": False, "output": "", "error": link_error}
+            loader_result = {"ok": False, "error": link_error}
+        else:
+            try:
+                # Level 1 ─ ALE dry-run
+                dry_result = run_ale_dry_run(framework_root, f"{domain}/{task_name}")
+
+                # Level 2 ─ TaskLoader
+                uv = _find_uv()
+                loader_result = _invoke_task_loader(
+                    uv, framework_root, f"tasks/{domain}/{task_name}"
+                )
+            finally:
+                _remove_output_task_link(framework_root, domain, task_name)
+
         check.dry_run_ok = dry_result["ok"]
         check.dry_run_output = dry_result.get("output", "")
-
-        # Level 2 ─ TaskLoader
-        # The task is under output_dir/tasks/<domain>/<task_name>, not in
-        # framework_root/tasks/.  Copy / symlink so TaskLoader can find it.
-        loader_result = _run_task_loader_for_output_task(
-            framework_root, output_dir, domain, task_name
-        )
         check.task_loader_ok = loader_result["ok"]
         check.task_loader_error = loader_result.get("error", "")
 
@@ -419,6 +429,47 @@ def validate_generated_tasks(
         results.append(check)
 
     return results
+
+
+def _install_output_task_link(
+    framework_root: Path,
+    output_dir: Path,
+    domain: str,
+    task_name: str,
+) -> str:
+    """Expose a generated task under framework_root/tasks/ for ALE checks."""
+    src = output_dir / "tasks" / domain / task_name
+    link = framework_root / "tasks" / domain / task_name
+
+    if not (src / "main.py").is_file():
+        return f"main.py not found at {src}"
+
+    link.parent.mkdir(parents=True, exist_ok=True)
+    if link.is_symlink():
+        try:
+            link.unlink()
+        except OSError as exc:
+            return f"could not remove stale task symlink {link}: {exc}"
+    elif link.exists():
+        return (
+            f"cannot link generated task {domain}/{task_name}: "
+            f"{link} already exists and is not a symlink"
+        )
+
+    try:
+        link.symlink_to(src.resolve(), target_is_directory=True)
+    except OSError as exc:
+        return f"could not symlink {src} -> {link}: {exc}"
+    return ""
+
+
+def _remove_output_task_link(framework_root: Path, domain: str, task_name: str) -> None:
+    link = framework_root / "tasks" / domain / task_name
+    if link.is_symlink():
+        try:
+            link.unlink()
+        except OSError:
+            pass
 
 
 def _run_task_loader_for_output_task(

@@ -21,6 +21,7 @@ Produce ALE-native task packages that are ready for stage-2 model execution only
 8. Finish by writing a concise `summary.json` with counts, generated task ids, domains, statuses, task dirs, and evidence paths.
 9. Do not enumerate, search, summarize, or bulk-read the official ALE task corpus under `<framework-root>/tasks`. This includes broad `rg`, `find`, `ls -R`, `xargs sed`, or similar commands over that tree.
 10. If framework examples are needed, read only these allowlisted files: `<framework-root>/tasks/demo/hello/main.py`, `<framework-root>/tasks/demo/hello/task_card.json`, `<framework-root>/tasks/legal/legal_dr_fees_01/main.py`, and `<framework-root>/tasks/legal/legal_dr_fees_01/task_card.json`. Framework API files under `<framework-root>/ale_run/` and shared helpers matching `<framework-root>/tasks/common_*.py` or `<framework-root>/tasks/linux_runtime.py` may be read.
+11. Stage-2 runs use the ALE Docker provider. Generate Ubuntu-native, CPU-only tasks unless the run plan explicitly opts into another provider. Do not generate Windows, GPU, licensed-software, nested-Docker, Apptainer, or Singularity tasks for the default Docker pipeline.
 
 ## Required Output Layout
 
@@ -37,8 +38,9 @@ Produce ALE-native task packages that are ready for stage-2 model execution only
         ├── scripts/
         │   ├── score_<task>.py
         │   └── test_score_<task>.py
-        ├── input/
-        ├── reference/
+        ├── input/                    # copied by stage 2 to <framework-root>/task-data/<domain>/<task>/base/input
+        ├── software/                 # optional; copied to task-data when present
+        ├── reference/                # hidden; copied to task-data only for post-agent evaluation
         ├── oracle/
         │   └── expected_output/
         └── oracle-logs/
@@ -47,18 +49,32 @@ Produce ALE-native task packages that are ready for stage-2 model execution only
 
 ## ALE Interface Checks
 
-- `task_card.json` must contain at least `taskId`, `title`, `summary`, `category`, and `vm` with `snapshot`, `vcpus`, `memory_gb`, `disk_gb`, and `timeout_s`.
+- `task_card.json` must contain at least `taskId`, `title`, `summary`, `category`, and `vm.snapshot`.
+- For new Docker-compatible tasks, prefer the current official task-card style:
+  ```json
+  "vm": {
+    "machineType": "c4-standard-4",
+    "snapshot": "cpu-free-ubuntu",
+    "timeout": 7200
+  }
+  ```
+  `vm.timeout_s`, `vm.vcpus`, `vm.memory_gb`, and `vm.disk_gb` remain accepted by ALE examples, but most current official tasks use `vm.timeout` and `vm.machineType`.
+- `vm.snapshot` must be `cpu-free-ubuntu` for the default local Docker pipeline. Other snapshots require a different stage-2 provider and must be marked blocked unless the run plan explicitly supports them.
 - `main.py` must be importable with the local ALE repository on `PYTHONPATH` and must expose a load function decorated with `@cb.tasks_config(split="train")`.
 - `load()` should return `cb.Task` objects whose metadata includes visible input paths, output paths, and hidden reference paths.
-- `start()` prepares output and validates staged visible input. It should not synthesize the hidden answer in the workspace.
+- Prefer the official `LinuxTaskConfig`/`BaseTaskSetup` pattern when available. `load()` metadata must include `domain_name`, `task_name`, `variant_name`, `input_dir`, `software_dir`, `reference_dir`, and `remote_output_dir` so the Docker `local:task-data` backend can stage files.
+- `start()` prepares output and validates staged visible input. It should not synthesize input data or hidden answers in the workspace; stage-2 copies `input/`, optional `software/`, and later `reference/` from the generated package into ALE's `task-data/` layout.
 - `evaluate()` scores only submitted output against hidden reference data and returns a one-item score list.
+- If a task needs evaluator API keys, declare `evaluatorCredentials` in `task_card.json` and mark the task unsuitable for high-volume Docker production unless those secrets are provisioned. Avoid agent-time credentials unless the run plan explicitly supplies `secret/agent_time` files.
 
 ## Quality Bar
 
 - Task prompt is self-contained: visible input paths, required output paths, file format, allowed tools, forbidden shortcuts, and scoring boundaries.
 - Reference answer is not visible to the agent.
 - Oracle evidence proves every generated task passed non-LLM validation with score `1.0` using a known-good output before model evaluation.
-- The batch favors diversity across domain, discipline, workflow type, data shape, and required artifact type.
+- The batch favors diversity across official ALE `taxonomy.domain_code` / `taxonomy.subdomain_code`, discipline, workflow type, data shape, and required artifact type.
+- For high-volume Docker production, favor official subdomains already well covered by `selected_tasks/docker_support.txt`: genomics, public health, cell/imaging biology, math/operations research, data analytics, compliance/regulatory, AI/CS research, quantum, clinical trials, accounting, economics, chemistry/materials, clinical diagnostics, and biomolecular structure/design.
+- Avoid default Docker production for visual media, Windows-only GUI workflows, cybersecurity reversing tools, licensed CAD/CAM/DAW software, GPU workloads, precision agriculture Windows/GIS workflows, and nested container runtimes.
 - Duplicate detection should use normalized title, domain, task intent, input/output schema, and grader target behavior.
 
 ## Oracle Evidence Schema
@@ -97,6 +113,25 @@ Oracle validation is a **two-gate** process:
    - **Level 3** — `oracle-evidence.json` schema check: file exists, JSON valid, `score >= 1.0` for `verified`, `blocked_reason` present for `blocked`
 
 A task is marked `verified` only when all three levels pass and `oracle-evidence.json` has `status: "verified"`.
+
+`summary.json` must expose the stage-2 contract exactly:
+
+```json
+{
+  "oracle_validation": {
+    "by_task": [
+      {
+        "task_id": "<domain>/<task_name>",
+        "status": "verified | blocked | failed",
+        "oracle_score": 1.0,
+        "evidence_path": "tasks/<domain>/<task_name>/oracle-logs/oracle-evidence.json",
+        "blocked_reason": null
+      }
+    ],
+    "counts": {"verified": 1, "blocked": 0, "failed": 0, "total": 1}
+  }
+}
+```
 
 ## Failure Handling
 

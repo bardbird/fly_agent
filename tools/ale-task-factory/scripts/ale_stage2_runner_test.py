@@ -82,11 +82,33 @@ class RunOneTaskStreamsStdoutTest(unittest.TestCase):
 
 
 class PrepareTasksTest(unittest.TestCase):
+    def _write_framework_configs(self, framework: Path) -> None:
+        agent = framework / "configs" / "agents" / "claude_code.yaml"
+        agent.parent.mkdir(parents=True, exist_ok=True)
+        agent.write_text(
+            "harness: claude_code\n"
+            "model: old-model\n"
+            "config:\n"
+            "  provider: openrouter\n",
+            encoding="utf-8",
+        )
+        env = framework / "configs" / "environments" / "docker.yaml"
+        env.parent.mkdir(parents=True, exist_ok=True)
+        env.write_text(
+            "snapshots:\n"
+            "  cpu-free-ubuntu:\n"
+            "    provider: docker\n"
+            "task_data_source: local:task-data\n"
+            "output_path: null\n",
+            encoding="utf-8",
+        )
+
     def test_installs_local_task_data_for_docker_provider(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             run_dir = root / "run"
             framework = root / "framework"
+            self._write_framework_configs(framework)
             task = run_dir / "tasks" / "business_finance" / "task_authoring_01"
             (task / "input").mkdir(parents=True)
             (task / "reference").mkdir()
@@ -95,13 +117,56 @@ class PrepareTasksTest(unittest.TestCase):
             (task / "input" / "brief.md").write_text("visible", encoding="utf-8")
             (task / "reference" / "answer.json").write_text("hidden", encoding="utf-8")
 
-            r.prepare_tasks(run_dir, framework, [{"task_id": "business_finance/task_authoring_01"}])
+            r.prepare_tasks(
+                run_dir,
+                framework,
+                [{"task_id": "business_finance/task_authoring_01"}],
+                model="claude-sonnet-4-6",
+                provider="direct",
+            )
 
             linked = framework / "tasks" / "business_finance" / "task_authoring_01"
             self.assertTrue(linked.is_symlink())
             data = framework / "task-data" / "business_finance" / "task_authoring_01" / "base"
             self.assertEqual((data / "input" / "brief.md").read_text(encoding="utf-8"), "visible")
             self.assertEqual((data / "reference" / "answer.json").read_text(encoding="utf-8"), "hidden")
+            self.assertIn("provider: direct", (run_dir / "configs" / "claude_code_stage2.yaml").read_text(encoding="utf-8"))
+            self.assertIn("model: claude-sonnet-4-6", (run_dir / "configs" / "claude_code_stage2.yaml").read_text(encoding="utf-8"))
+            self.assertIn("output_path: local", (run_dir / "configs" / "docker_stage2.yaml").read_text(encoding="utf-8"))
+
+
+class TimeoutParsingTest(unittest.TestCase):
+    def test_accepts_current_vm_timeout(self):
+        with tempfile.TemporaryDirectory() as d:
+            card = Path(d) / "task_card.json"
+            _write(card, {"vm": {"timeout": 1234}})
+            self.assertEqual(r.read_task_timeout(card, 7200), 1234)
+
+    def test_accepts_legacy_timeout_s(self):
+        with tempfile.TemporaryDirectory() as d:
+            card = Path(d) / "task_card.json"
+            _write(card, {"vm": {"timeout_s": 2345, "timeout": 1234}})
+            self.assertEqual(r.read_task_timeout(card, 7200), 2345)
+
+
+class CollectTaskResultTest(unittest.TestCase):
+    def test_matches_exact_task_slug(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            run_dir = root / "run"
+            log_root = run_dir / "logs" / "ale"
+            wrong = log_root / "claude_code" / "model" / "d__other" / "v0" / "20260101"
+            right = log_root / "claude_code" / "model" / "d__t01" / "v0" / "20260102"
+            wrong.mkdir(parents=True)
+            right.mkdir(parents=True)
+            _write(wrong / "run.json", {"status": "completed", "score": 0.1})
+            _write(right / "run.json", {"status": "completed", "score": 0.9})
+
+            class Proc:
+                returncode = 0
+
+            result = r.collect_task_result(run_dir, log_root, "d/t01", Proc(), 1.0)
+            self.assertEqual(result["score"], 0.9)
 
 
 if __name__ == "__main__":
